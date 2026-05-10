@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-const DB_PATH = path.join(process.cwd(), "data", "golf.db");
+const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "golf.db");
+const VERCEL_DB_PATH = path.join("/tmp", "golf.db");
+const DB_PATH = process.env.DATABASE_FILE || (process.env.VERCEL ? VERCEL_DB_PATH : DEFAULT_DB_PATH);
 
 function open() {
   mkdirSync(path.dirname(DB_PATH), { recursive: true });
