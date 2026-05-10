@@ -6,6 +6,7 @@ type UserRow = {
   id: string;
   username: string;
   display_name: string;
+  hidden: number;
 };
 
 export async function GET() {
@@ -14,8 +15,10 @@ export async function GET() {
   if (!me.is_admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const users = db
-    .prepare("SELECT id, username, display_name FROM users ORDER BY display_name ASC")
+    .prepare(
+      "SELECT id, username, display_name, hidden FROM users ORDER BY display_name ASC",
+    )
     .all() as UserRow[];
 
-  return NextResponse.json({ users });
+  return NextResponse.json({ users: users.map((u) => ({ ...u, hidden: u.hidden === 1 })) });
 }

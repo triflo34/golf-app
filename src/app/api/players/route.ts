@@ -15,7 +15,9 @@ export async function GET() {
 
   const users = db
     .prepare(
-      `SELECT id, display_name FROM users ORDER BY display_name COLLATE NOCASE ASC`,
+      `SELECT id, display_name FROM users
+       WHERE hidden = 0
+       ORDER BY display_name COLLATE NOCASE ASC`,
     )
     .all() as { id: string; display_name: string }[];
 

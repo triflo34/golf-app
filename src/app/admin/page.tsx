@@ -10,6 +10,7 @@ type UserAccount = {
   id: string;
   username: string;
   display_name: string;
+  hidden: boolean;
 };
 
 export default function AdminPage() {
@@ -19,6 +20,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<UserAccount[] | null>(null);
   const [active, setActive] = useState<AdminGuestSummary | null>(null);
   const [resetUser, setResetUser] = useState<UserAccount | null>(null);
+  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const res = await fetch("/api/admin/guests", { cache: "no-store" });
@@ -28,14 +30,28 @@ export default function AdminPage() {
     }
     const data = await res.json();
     setGuests(data.guests ?? []);
-    
-    // Fetch users for password reset
+
     const usersRes = await fetch("/api/admin/users", { cache: "no-store" });
     if (usersRes.ok) {
       const usersData = await usersRes.json();
       setUsers(usersData.users ?? []);
+    } else {
+      setUsers([]);
     }
   }, [router]);
+
+  async function toggleHidden(userId: string, hidden: boolean) {
+    setTogglingUserId(userId);
+    const res = await fetch("/api/admin/toggle-user-hidden", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, hidden }),
+    });
+    setTogglingUserId(null);
+    if (res.ok) {
+      reload();
+    }
+  }
 
   useEffect(() => {
     if (!loading && user) reload();
@@ -125,13 +141,16 @@ export default function AdminPage() {
           Player accounts ({users?.length ?? "…"})
         </h2>
         <p className="text-xs text-gray-500 mb-3">
-          Reset a player's password.
+          Reset a player's password or hide accounts from the player picker.
         </p>
         {users === null ? (
           <div className="text-center py-6 text-gray-400 text-sm">Loading...</div>
         ) : users.length === 0 ? (
           <div className="text-center py-6 text-gray-400 text-sm">
-            No player accounts yet.
+            <p>No player accounts yet.</p>
+            <p className="mt-2 text-xs">
+              Promote a guest or register a user first; only real accounts can be hidden from the player picker.
+            </p>
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
@@ -143,17 +162,31 @@ export default function AdminPage() {
                 <div>
                   <div className="font-semibold text-gray-800 text-sm">
                     {u.display_name}
+                    {u.hidden && (
+                      <span className="ml-2 text-[10px] font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded">
+                        hidden
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-500">
                     @{u.username}
                   </div>
                 </div>
-                <button
-                  onClick={() => setResetUser(u)}
-                  className="text-sm font-medium text-blue-700 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100"
-                >
-                  Reset password
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setResetUser(u)}
+                    className="text-sm font-medium text-blue-700 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100"
+                  >
+                    Reset password
+                  </button>
+                  <button
+                    onClick={() => toggleHidden(u.id, !u.hidden)}
+                    disabled={togglingUserId === u.id}
+                    className="text-sm font-medium text-gray-700 px-3 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 disabled:opacity-50"
+                  >
+                    {u.hidden ? "Unhide" : "Hide"}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

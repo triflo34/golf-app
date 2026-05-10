@@ -28,6 +28,30 @@ export function PlayerPicker({
       .then((d) => setPlayers(d.players ?? []));
   }, []);
 
+  useEffect(() => {
+    if (!value) return;
+    const selected = players.find((p) => p.key === value);
+    if (selected) return;
+    const [kind, id] = value.split(":");
+    if (kind !== "u" || !id) return;
+
+    fetch(`/api/player?key=${encodeURIComponent(value)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && typeof d.name === "string") {
+          setPlayers((current) => [
+            ...current,
+            {
+              key: value,
+              name: d.name,
+              is_guest: false,
+              user_id: id,
+            },
+          ]);
+        }
+      });
+  }, [value, players]);
+
   const selected = players.find((p) => p.key === value) ?? null;
 
   const filtered = useMemo(() => {

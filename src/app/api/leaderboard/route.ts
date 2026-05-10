@@ -40,7 +40,8 @@ export async function GET(request: Request) {
        FROM scores s
        JOIN rounds r ON r.id = s.round_id
        LEFT JOIN users u ON u.id = s.player_id
-       WHERE r.played_at >= ? AND r.played_at <= ?`,
+       WHERE r.played_at >= ? AND r.played_at <= ?
+         AND (s.player_id IS NULL OR u.hidden = 0)`,
     )
     .all(start, end) as ScoreJoin[];
 

@@ -14,9 +14,19 @@ function open() {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   initSchema(db);
+  ensureHiddenColumn(db);
   seedAdmin(db);
   seedCourses(db);
   return db;
+}
+
+function ensureHiddenColumn(db: Database.Database) {
+  const columns = db
+    .prepare("PRAGMA table_info(users)")
+    .all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "hidden")) {
+    db.prepare("ALTER TABLE users ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0").run();
+  }
 }
 
 function initSchema(db: Database.Database) {
@@ -28,6 +38,7 @@ function initSchema(db: Database.Database) {
       avatar_url    TEXT,
       password_hash TEXT NOT NULL,
       is_admin      INTEGER NOT NULL DEFAULT 0,
+      hidden        INTEGER NOT NULL DEFAULT 0,
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
