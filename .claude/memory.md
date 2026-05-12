@@ -36,7 +36,7 @@ Social golf leaderboard app for tracking rounds, scores, and friendly competitio
   - Round form: 9/18 segmented toggle, pre-fills from course but user can override per round. Score min validation switches to 9 for 9-hole rounds.
   - APIs: `POST/PUT /api/rounds` validate and persist `hole_count`; `GET /api/rounds/[id]` returns it; round detail page shows a "9 holes" badge.
   - Leaderboard API: `?holes=18|9|all` filter (default 18). Adds placement loop with competition ranking (ties share rank, next rank skipped) and linear points `N - rank + 1`. New fields: `points`, `firsts`, `seconds`, `thirds`. Solo rounds (N<2) still don't award points or wins.
-  - Leaderboard page: holes toggle next to scope toggle; row meta now shows `rounds · wins · best`, place-count chips (1st/2nd/3rd) below name when any > 0, and a Points column on the right replacing the previous Best column.
+  - Leaderboard page: holes toggle next to scope toggle; row meta now shows `rounds · wins · best`, place-count chips (1st/2nd/3rd/4th) below name when any > 0, and a Points column on the right replacing the previous Best column. Tied finishes annotated inline as `(Nt)` per place; API exposes `*_tied` counts.
   - Prod ALTER applied via Supabase SQL editor (idempotent block in `db.ts` mirrors it).
 - Added Score Trends line chart on leaderboard page (Recharts) — per-player gross-score-over-time, all ranked players, respects season + scope toggles. Extended `/api/leaderboard` to include `series` per player. New component `src/components/score-trend-chart.tsx`. (2026-05-12)
 - Fixed pool starvation under concurrent load: `max: 1` → `max: 10`, removed `idle_timeout`, added 8s timeout on all queries. (2026-05-12)

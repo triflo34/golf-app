@@ -12,6 +12,7 @@ export default function HomePage() {
   const [season, setSeason] = useState(new Date().getFullYear());
   const [scope, setScope] = useState<"mine" | "all">("mine");
   const [holes, setHoles] = useState<"18" | "9" | "all">("18");
+  const [showPointsHelp, setShowPointsHelp] = useState(false);
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [recent, setRecent] = useState<RoundListItem[] | null>(null);
 
@@ -111,7 +112,27 @@ export default function HomePage() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setShowPointsHelp((v) => !v)}
+            aria-label="How points work"
+            className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold hover:bg-gray-200 transition"
+          >
+            ?
+          </button>
         </div>
+
+        {showPointsHelp && (
+          <div className="mb-3 text-xs text-gray-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 leading-relaxed">
+            <strong className="text-gray-800">Points</strong>: each round of N
+            players awards N pts for 1st, N-1 for 2nd, … 1 for last. Solo rounds
+            award nothing.
+            <br />
+            <strong className="text-gray-800">Ties</strong>: tied players share
+            the higher place (e.g. two tied for 1st both get N pts; next player
+            is 3rd). <em>(Nt)</em> next to a place count means N of those
+            finishes were ties.
+          </div>
+        )}
 
         {rows === null ? (
           <div className="text-center py-8 text-gray-400">Loading...</div>
@@ -169,16 +190,26 @@ export default function HomePage() {
                   <div className="text-xs text-gray-500">
                     {row.rounds_played} rounds · {row.wins} wins · best {row.best_score}
                   </div>
-                  {(row.firsts > 0 || row.seconds > 0 || row.thirds > 0) && (
-                    <div className="mt-1 flex gap-1 text-[10px] font-semibold">
+                  {(row.firsts > 0 ||
+                    row.seconds > 0 ||
+                    row.thirds > 0 ||
+                    row.fourths > 0) && (
+                    <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-semibold">
                       <span className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
                         1st {row.firsts}
+                        {row.firsts_tied > 0 && ` (${row.firsts_tied}t)`}
                       </span>
                       <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded">
                         2nd {row.seconds}
+                        {row.seconds_tied > 0 && ` (${row.seconds_tied}t)`}
                       </span>
                       <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded">
                         3rd {row.thirds}
+                        {row.thirds_tied > 0 && ` (${row.thirds_tied}t)`}
+                      </span>
+                      <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
+                        4th {row.fourths}
+                        {row.fourths_tied > 0 && ` (${row.fourths_tied}t)`}
                       </span>
                     </div>
                   )}
@@ -187,7 +218,10 @@ export default function HomePage() {
                   <div className="text-lg font-bold text-green-700">{row.avg_score}</div>
                   <div className="text-xs text-gray-500">avg</div>
                 </div>
-                <div className="text-right">
+                <div
+                  className="text-right"
+                  title="Placement points: N pts for 1st in a round of N players, N-1 for 2nd, …, 1 for last. Solo rounds award nothing."
+                >
                   <div className="text-sm font-semibold text-gray-600">{row.points}</div>
                   <div className="text-xs text-gray-500">pts</div>
                 </div>

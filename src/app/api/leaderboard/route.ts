@@ -27,6 +27,11 @@ export type LeaderboardRow = {
   firsts: number;
   seconds: number;
   thirds: number;
+  fourths: number;
+  firsts_tied: number;
+  seconds_tied: number;
+  thirds_tied: number;
+  fourths_tied: number;
   series: SeriesPoint[];
 };
 
@@ -83,6 +88,11 @@ export async function GET(request: Request) {
             firsts: 0,
             seconds: 0,
             thirds: 0,
+            fourths: 0,
+            firsts_tied: 0,
+            seconds_tied: 0,
+            thirds_tied: 0,
+            fourths_tied: 0,
             series: [],
           },
         ],
@@ -130,6 +140,11 @@ export async function GET(request: Request) {
     firsts: number;
     seconds: number;
     thirds: number;
+    fourths: number;
+    firsts_tied: number;
+    seconds_tied: number;
+    thirds_tied: number;
+    fourths_tied: number;
     series: SeriesPoint[];
   };
 
@@ -155,6 +170,11 @@ export async function GET(request: Request) {
         firsts: 0,
         seconds: 0,
         thirds: 0,
+        fourths: 0,
+        firsts_tied: 0,
+        seconds_tied: 0,
+        thirds_tied: 0,
+        fourths_tied: 0,
         series: [],
       };
       buckets.set(key, b);
@@ -173,16 +193,37 @@ export async function GET(request: Request) {
     if (players.length < 2) continue;
     const sorted = [...players].sort((a, c) => a.gross - c.gross);
     const N = sorted.length;
+    // Assign ranks.
+    const ranks: number[] = [];
     let rank = 1;
     for (let i = 0; i < sorted.length; i++) {
       if (i > 0 && sorted[i].gross > sorted[i - 1].gross) rank = i + 1;
-      const points = N - rank + 1;
+      ranks.push(rank);
+    }
+    // Count how many share each rank (for tie detection).
+    const rankSize = new Map<number, number>();
+    for (const r of ranks) rankSize.set(r, (rankSize.get(r) ?? 0) + 1);
+
+    for (let i = 0; i < sorted.length; i++) {
+      const r = ranks[i];
+      const tied = (rankSize.get(r) ?? 1) > 1;
+      const points = N - r + 1;
       const b = buckets.get(sorted[i].key);
       if (!b) continue;
       b.points += points;
-      if (rank === 1) b.firsts += 1;
-      else if (rank === 2) b.seconds += 1;
-      else if (rank === 3) b.thirds += 1;
+      if (r === 1) {
+        b.firsts += 1;
+        if (tied) b.firsts_tied += 1;
+      } else if (r === 2) {
+        b.seconds += 1;
+        if (tied) b.seconds_tied += 1;
+      } else if (r === 3) {
+        b.thirds += 1;
+        if (tied) b.thirds_tied += 1;
+      } else if (r === 4) {
+        b.fourths += 1;
+        if (tied) b.fourths_tied += 1;
+      }
     }
     // Wins = sole 1st place (preserve existing semantic).
     const min = sorted[0].gross;
@@ -210,6 +251,11 @@ export async function GET(request: Request) {
       firsts: b.firsts,
       seconds: b.seconds,
       thirds: b.thirds,
+      fourths: b.fourths,
+      firsts_tied: b.firsts_tied,
+      seconds_tied: b.seconds_tied,
+      thirds_tied: b.thirds_tied,
+      fourths_tied: b.fourths_tied,
       series: [...b.series].sort((a, c) => a.played_at.localeCompare(c.played_at)),
     });
   }
