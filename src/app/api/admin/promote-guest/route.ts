@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { db } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
 import { findUserByUsername, getCurrentUser, hashPassword } from "@/lib/auth";
 
 export async function POST(request: Request) {
@@ -45,16 +45,13 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (findUserByUsername(username)) {
+  if (await findUserByUsername(username)) {
     return NextResponse.json({ error: "Username taken" }, { status: 409 });
   }
 
-  // Verify the guest actually exists in scores.
-  const guestExists = db
-    .prepare(
-      "SELECT 1 AS x FROM scores WHERE LOWER(guest_name) = LOWER(?) LIMIT 1",
-    )
-    .get(guestName) as { x: number } | undefined;
+  const guestExists = await db
+    .prepare("SELECT 1 AS x FROM scores WHERE LOWER(guest_name) = LOWER(?) LIMIT 1")
+    .get<{ x: number }>(guestName);
   if (!guestExists) {
     return NextResponse.json({ error: "Guest not found" }, { status: 404 });
   }
@@ -62,20 +59,21 @@ export async function POST(request: Request) {
   const id = randomUUID();
   const hash = hashPassword(password);
 
-  const tx = db.transaction(() => {
-    db.prepare(
-      `INSERT INTO users (id, username, display_name, password_hash, is_admin)
-       VALUES (?, ?, ?, ?, 0)`,
-    ).run(id, username, displayName, hash);
-
-    db.prepare(
-      `UPDATE scores
-       SET player_id = ?, guest_name = NULL
-       WHERE LOWER(guest_name) = LOWER(?)`,
-    ).run(id, guestName);
+  await withTransaction(async (tx) => {
+    await tx
+      .prepare(
+        `INSERT INTO users (id, username, display_name, password_hash, is_admin)
+         VALUES (?, ?, ?, ?, 0)`,
+      )
+      .run(id, username, displayName, hash);
+    await tx
+      .prepare(
+        `UPDATE scores
+         SET player_id = ?, guest_name = NULL
+         WHERE LOWER(guest_name) = LOWER(?)`,
+      )
+      .run(id, guestName);
   });
-
-  tx();
 
   return NextResponse.json({ id, username, display_name: displayName });
 }

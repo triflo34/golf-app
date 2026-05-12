@@ -11,16 +11,16 @@ export async function GET(request: Request) {
   const q = url.searchParams.get("q")?.trim() ?? "";
 
   const rows = q
-    ? (db
+    ? await db
         .prepare(
           `SELECT * FROM courses
-           WHERE name LIKE ? OR city LIKE ?
+           WHERE name ILIKE ? OR city ILIKE ?
            ORDER BY name ASC LIMIT 200`,
         )
-        .all(`%${q}%`, `%${q}%`) as Course[])
-    : (db
+        .all<Course>(`%${q}%`, `%${q}%`)
+    : await db
         .prepare("SELECT * FROM courses ORDER BY name ASC LIMIT 200")
-        .all() as Course[]);
+        .all<Course>();
 
   return NextResponse.json({ courses: rows });
 }
@@ -72,11 +72,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Course rating must be 25–80" }, { status: 400 });
   }
 
-  const existing = db
+  const existing = await db
     .prepare(
       "SELECT id FROM courses WHERE LOWER(name) = LOWER(?) AND LOWER(city) = LOWER(?)",
     )
-    .get(name, city) as { id: number } | undefined;
+    .get<{ id: number }>(name, city);
   if (existing) {
     return NextResponse.json(
       { error: "A course with that name and city already exists", id: existing.id },
@@ -84,12 +84,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const info = db
+  const inserted = await db
     .prepare(
       `INSERT INTO courses (name, address, city, state, holes, par, slope_rating, course_rating, website, phone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
     )
-    .run(name, address, city, state, holes, par, slope, rating, website, phone);
+    .get<{ id: number }>(name, address, city, state, holes, par, slope, rating, website, phone);
 
-  return NextResponse.json({ id: info.lastInsertRowid });
+  return NextResponse.json({ id: inserted!.id });
 }

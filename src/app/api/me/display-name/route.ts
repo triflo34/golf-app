@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     );
   }
 
-  db.prepare("UPDATE users SET display_name = ? WHERE id = ?").run(displayName, user.id);
+  await db.prepare("UPDATE users SET display_name = ? WHERE id = ?").run(displayName, user.id);
 
   return NextResponse.json({ display_name: displayName });
 }

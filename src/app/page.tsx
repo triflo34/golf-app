@@ -46,7 +46,7 @@ export default function HomePage() {
     <div className="max-w-lg mx-auto px-4 py-6">
       <div className="text-center mb-6">
         <h1 className="text-2xl font-bold text-green-800">The Match</h1>
-        <p className="text-green-600 text-sm">Oakland County Golf League</p>
+        <p className="text-green-600 text-sm"></p>
       </div>
 
       <div className="flex items-center justify-center gap-3 mb-6">

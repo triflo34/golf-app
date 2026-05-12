@@ -25,12 +25,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User ID is required" }, { status: 400 });
   }
 
-  const target = db.prepare("SELECT id FROM users WHERE id = ?").get(userId) as { id: string } | undefined;
+  const target = await db
+    .prepare("SELECT id FROM users WHERE id = ?")
+    .get<{ id: string }>(userId);
   if (!target) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  db.prepare("UPDATE users SET hidden = ? WHERE id = ?").run(hidden ? 1 : 0, userId);
+  await db
+    .prepare("UPDATE users SET hidden = ? WHERE id = ?")
+    .run(hidden ? 1 : 0, userId);
 
   return NextResponse.json({ user_id: userId, hidden });
 }

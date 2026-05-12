@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const row = findUserByUsername(username);
+  const row = await findUserByUsername(username);
   if (!row || !verifyPassword(password, row.password_hash)) {
     return NextResponse.json(
       { error: "Invalid username or password" },
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const token = createSessionToken(row.id);
+  const token = await createSessionToken(row.id);
   await setSessionCookie(token);
 
   return NextResponse.json({

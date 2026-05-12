@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   const start = `${season}-01-01`;
   const end = `${season}-12-31`;
 
-  const rows = db
+  const rows = await db
     .prepare(
       `SELECT s.round_id, s.player_id, s.guest_name, u.display_name, s.gross_score
        FROM scores s
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
        WHERE r.played_at >= ? AND r.played_at <= ?
          AND (s.player_id IS NULL OR u.hidden = 0)`,
     )
-    .all(start, end) as ScoreJoin[];
+    .all<ScoreJoin>(start, end);
 
   type Bucket = {
     key: string;

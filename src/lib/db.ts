@@ -1,130 +1,183 @@
-import Database from "better-sqlite3";
+import postgres from "postgres";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
 
-const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "golf.db");
-const VERCEL_DB_PATH = path.join("/tmp", "golf.db");
-const DB_PATH = process.env.DATABASE_FILE || (process.env.VERCEL ? VERCEL_DB_PATH : DEFAULT_DB_PATH);
-
-function open() {
-  mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  initSchema(db);
-  ensureHiddenColumn(db);
-  seedAdmin(db);
-  seedCourses(db);
-  return db;
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL is not set. Add it to .env.local (use the Supabase Transaction pooler URL on port 6543).",
+  );
 }
 
-function ensureHiddenColumn(db: Database.Database) {
-  const columns = db
-    .prepare("PRAGMA table_info(users)")
-    .all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "hidden")) {
-    db.prepare("ALTER TABLE users ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0").run();
+type GlobalCache = {
+  __sql?: postgres.Sql;
+  __initPromise?: Promise<void>;
+};
+const globalForDb = globalThis as unknown as GlobalCache;
+
+const sql =
+  globalForDb.__sql ??
+  postgres(DATABASE_URL, {
+    // pgbouncer transaction mode doesn't support session-level prepared statements
+    prepare: false,
+    ssl: "require",
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
+if (process.env.NODE_ENV !== "production") globalForDb.__sql = sql;
+
+type Param = string | number | boolean | bigint | null | Date;
+
+function toPg(query: string): string {
+  let i = 0;
+  return query.replace(/\?/g, () => `$${++i}`);
+}
+
+class PreparedQuery {
+  constructor(
+    private readonly query: string,
+    private readonly client: postgres.Sql | postgres.TransactionSql,
+  ) {}
+
+  async get<T = unknown>(...params: Param[]): Promise<T | undefined> {
+    await ensureInit();
+    const rows = await this.client.unsafe<T[]>(toPg(this.query), params as never[]);
+    return (rows[0] ?? undefined) as T | undefined;
+  }
+
+  async all<T = unknown>(...params: Param[]): Promise<T[]> {
+    await ensureInit();
+    const rows = await this.client.unsafe<T[]>(toPg(this.query), params as never[]);
+    return rows as unknown as T[];
+  }
+
+  async run(...params: Param[]): Promise<{ rowCount: number }> {
+    await ensureInit();
+    const result = await this.client.unsafe(toPg(this.query), params as never[]);
+    return { rowCount: result.count ?? 0 };
   }
 }
 
-function initSchema(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id            TEXT PRIMARY KEY,
-      username      TEXT UNIQUE NOT NULL,
-      display_name  TEXT NOT NULL,
-      avatar_url    TEXT,
-      password_hash TEXT NOT NULL,
-      is_admin      INTEGER NOT NULL DEFAULT 0,
-      hidden        INTEGER NOT NULL DEFAULT 0,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+export type DbApi = {
+  prepare: (query: string) => PreparedQuery;
+  exec: (query: string) => Promise<void>;
+};
 
-    CREATE TABLE IF NOT EXISTS sessions (
-      token       TEXT PRIMARY KEY,
-      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      expires_at  INTEGER NOT NULL,
-      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-
-    CREATE TABLE IF NOT EXISTS courses (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      name          TEXT NOT NULL,
-      address       TEXT,
-      city          TEXT NOT NULL,
-      state         TEXT NOT NULL DEFAULT 'MI',
-      holes         INTEGER NOT NULL DEFAULT 18,
-      par           INTEGER NOT NULL,
-      slope_rating  REAL,
-      course_rating REAL,
-      website       TEXT,
-      phone         TEXT,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS rounds (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      course_id   INTEGER NOT NULL REFERENCES courses(id),
-      played_at   TEXT NOT NULL,
-      created_by  TEXT NOT NULL REFERENCES users(id),
-      notes       TEXT,
-      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_rounds_played_at ON rounds(played_at);
-
-    CREATE TABLE IF NOT EXISTS scores (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      round_id        INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
-      player_id       TEXT REFERENCES users(id),
-      guest_name      TEXT,
-      gross_score     INTEGER NOT NULL,
-      handicap_index  REAL,
-      net_score       REAL,
-      notes           TEXT,
-      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-      CHECK ((player_id IS NOT NULL) <> (guest_name IS NOT NULL))
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_scores_round_player
-      ON scores(round_id, player_id) WHERE player_id IS NOT NULL;
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_scores_round_guest
-      ON scores(round_id, guest_name) WHERE guest_name IS NOT NULL;
-    CREATE INDEX IF NOT EXISTS idx_scores_player ON scores(player_id);
-  `);
+function makeDb(client: postgres.Sql | postgres.TransactionSql): DbApi {
+  return {
+    prepare: (query: string) => new PreparedQuery(query, client),
+    exec: async (query: string) => {
+      await client.unsafe(query);
+    },
+  };
 }
 
-function seedAdmin(db: Database.Database) {
-  const row = db
-    .prepare("SELECT COUNT(*) as n FROM users WHERE is_admin = 1")
-    .get() as { n: number };
-  if (row.n > 0) return;
+export const db: DbApi = makeDb(sql);
 
+export async function withTransaction<T>(
+  fn: (tx: DbApi) => Promise<T>,
+): Promise<T> {
+  // postgres.js: sql.begin() returns the result of the callback wrapped in a transaction
+  return (await sql.begin((txSql) => fn(makeDb(txSql)))) as T;
+}
+
+// ---- Schema + seed bootstrap (lazy, runs once per process) ----
+
+async function bootstrap(): Promise<void> {
+  await sql.unsafe(SCHEMA_SQL);
+  await ensureHiddenColumn();
+  await seedAdmin();
+  await seedCourses();
+}
+
+function ensureInit(): Promise<void> {
+  if (!globalForDb.__initPromise) {
+    globalForDb.__initPromise = bootstrap();
+  }
+  return globalForDb.__initPromise;
+}
+
+const SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    username      TEXT UNIQUE NOT NULL,
+    display_name  TEXT NOT NULL,
+    avatar_url    TEXT,
+    password_hash TEXT NOT NULL,
+    is_admin      INTEGER NOT NULL DEFAULT 0,
+    hidden        INTEGER NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token       TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at  BIGINT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+  CREATE TABLE IF NOT EXISTS courses (
+    id            SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL,
+    address       TEXT,
+    city          TEXT NOT NULL,
+    state         TEXT NOT NULL DEFAULT 'MI',
+    holes         INTEGER NOT NULL DEFAULT 18,
+    par           INTEGER NOT NULL,
+    slope_rating  REAL,
+    course_rating REAL,
+    website       TEXT,
+    phone         TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE IF NOT EXISTS rounds (
+    id          SERIAL PRIMARY KEY,
+    course_id   INTEGER NOT NULL REFERENCES courses(id),
+    played_at   TEXT NOT NULL,
+    created_by  TEXT NOT NULL REFERENCES users(id),
+    notes       TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS idx_rounds_played_at ON rounds(played_at);
+
+  CREATE TABLE IF NOT EXISTS scores (
+    id              SERIAL PRIMARY KEY,
+    round_id        INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
+    player_id       TEXT REFERENCES users(id),
+    guest_name      TEXT,
+    gross_score     INTEGER NOT NULL,
+    handicap_index  REAL,
+    net_score       REAL,
+    notes           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((player_id IS NOT NULL) <> (guest_name IS NOT NULL))
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_scores_round_player
+    ON scores(round_id, player_id) WHERE player_id IS NOT NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_scores_round_guest
+    ON scores(round_id, guest_name) WHERE guest_name IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_scores_player ON scores(player_id);
+`;
+
+async function ensureHiddenColumn(): Promise<void> {
+  // Postgres ≥ 9.6 supports IF NOT EXISTS on ADD COLUMN.
+  await sql.unsafe(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS hidden INTEGER NOT NULL DEFAULT 0`,
+  );
+}
+
+async function seedAdmin(): Promise<void> {
+  const rows = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM users WHERE is_admin = 1`;
+  if ((rows[0]?.n ?? 0) > 0) return;
   const id = randomUUID();
   const hash = bcrypt.hashSync("admin", 10);
-  db.prepare(
-    `INSERT INTO users (id, username, display_name, password_hash, is_admin)
-     VALUES (?, ?, ?, ?, 1)`,
-  ).run(id, "admin", "Admin", hash);
-}
-
-function seedCourses(db: Database.Database) {
-  const row = db.prepare("SELECT COUNT(*) as n FROM courses").get() as {
-    n: number;
-  };
-  if (row.n > 0) return;
-
-  const insert = db.prepare(
-    `INSERT INTO courses (name, address, city, par, holes, slope_rating, course_rating, phone)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  const tx = db.transaction((rows: CourseSeed[]) => {
-    for (const c of rows) {
-      insert.run(c.name, c.address, c.city, c.par, c.holes, c.slope, c.rating, c.phone);
-    }
-  });
-  tx(OAKLAND_COURSES);
+  await sql`
+    INSERT INTO users (id, username, display_name, password_hash, is_admin)
+    VALUES (${id}, 'admin', 'Admin', ${hash}, 1)
+  `;
 }
 
 type CourseSeed = {
@@ -137,6 +190,23 @@ type CourseSeed = {
   rating: number | null;
   phone: string | null;
 };
+
+async function seedCourses(): Promise<void> {
+  const rows = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM courses`;
+  if ((rows[0]?.n ?? 0) > 0) return;
+  // Bulk insert via mapped objects
+  const records = OAKLAND_COURSES.map((c) => ({
+    name: c.name,
+    address: c.address,
+    city: c.city,
+    par: c.par,
+    holes: c.holes,
+    slope_rating: c.slope,
+    course_rating: c.rating,
+    phone: c.phone,
+  }));
+  await sql`INSERT INTO courses ${sql(records, "name", "address", "city", "par", "holes", "slope_rating", "course_rating", "phone")}`;
+}
 
 // Oakland County, MI public golf courses — ~40 entries.
 const OAKLAND_COURSES: CourseSeed[] = [
@@ -181,10 +251,3 @@ const OAKLAND_COURSES: CourseSeed[] = [
   { name: "Shepherd's Hollow Golf Club", address: "9085 Big Lake Rd", city: "Clarkston", par: 72, holes: 18, slope: 142, rating: 74.1, phone: "248-922-0300" },
   { name: "Liberty Golf Club", address: "6060 Maybee Rd", city: "Clarkston", par: 72, holes: 18, slope: 126, rating: 70.4, phone: "248-625-3731" },
 ];
-
-const globalForDb = globalThis as unknown as { __golfDb?: Database.Database };
-
-export const db: Database.Database = globalForDb.__golfDb ?? open();
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.__golfDb = db;
-}

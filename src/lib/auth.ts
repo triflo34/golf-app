@@ -36,60 +36,64 @@ export function verifyPassword(plain: string, hash: string): boolean {
   return bcrypt.compareSync(plain, hash);
 }
 
-export function createUser(opts: {
+export async function createUser(opts: {
   username: string;
   password: string;
   display_name?: string;
-}): User {
+}): Promise<User> {
   const id = randomUUID();
   const hash = hashPassword(opts.password);
   const displayName = opts.display_name?.trim() || opts.username;
-  db.prepare(
-    `INSERT INTO users (id, username, display_name, password_hash, is_admin)
-     VALUES (?, ?, ?, ?, 0)`,
-  ).run(id, opts.username, displayName, hash);
-  const row = db
+  await db
+    .prepare(
+      `INSERT INTO users (id, username, display_name, password_hash, is_admin)
+       VALUES (?, ?, ?, ?, 0)`,
+    )
+    .run(id, opts.username, displayName, hash);
+  const row = await db
     .prepare(
       "SELECT id, username, display_name, avatar_url, is_admin, created_at FROM users WHERE id = ?",
     )
-    .get(id) as UserRow;
-  return rowToUser(row);
+    .get<UserRow>(id);
+  return rowToUser(row!);
 }
 
-export function findUserByUsername(username: string): (UserRow & { password_hash: string }) | null {
-  return (
-    (db
-      .prepare(
-        "SELECT id, username, display_name, avatar_url, is_admin, created_at, password_hash FROM users WHERE username = ?",
-      )
-      .get(username) as (UserRow & { password_hash: string }) | undefined) ?? null
-  );
+export async function findUserByUsername(
+  username: string,
+): Promise<(UserRow & { password_hash: string }) | null> {
+  const row = await db
+    .prepare(
+      "SELECT id, username, display_name, avatar_url, is_admin, created_at, password_hash FROM users WHERE username = ?",
+    )
+    .get<UserRow & { password_hash: string }>(username);
+  return row ?? null;
 }
 
-export function createSessionToken(userId: string): string {
+export async function createSessionToken(userId: string): Promise<string> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
-  db.prepare(
-    "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
-  ).run(token, userId, expiresAt);
+  await db
+    .prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)")
+    .run(token, userId, expiresAt);
   return token;
 }
 
-export function destroySession(token: string): void {
-  db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+export async function destroySession(token: string): Promise<void> {
+  await db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
 }
 
-export function getUserByToken(token: string): User | null {
-  const row = db
+export async function getUserByToken(token: string): Promise<User | null> {
+  const row = await db
     .prepare(
       `SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_admin, u.created_at, s.expires_at
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token = ?`,
     )
-    .get(token) as (UserRow & { expires_at: number }) | undefined;
+    .get<UserRow & { expires_at: number | string }>(token);
   if (!row) return null;
-  if (row.expires_at < Date.now()) {
-    destroySession(token);
+  const expiresAt = typeof row.expires_at === "string" ? Number(row.expires_at) : row.expires_at;
+  if (expiresAt < Date.now()) {
+    await destroySession(token);
     return null;
   }
   return rowToUser(row);

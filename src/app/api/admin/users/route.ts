@@ -14,11 +14,11 @@ export async function GET() {
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!me.is_admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const users = db
+  const users = await db
     .prepare(
       "SELECT id, username, display_name, hidden FROM users ORDER BY display_name ASC",
     )
-    .all() as UserRow[];
+    .all<UserRow>();
 
   return NextResponse.json({ users: users.map((u) => ({ ...u, hidden: u.hidden === 1 })) });
 }

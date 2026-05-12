@@ -27,26 +27,26 @@ export async function GET(request: Request) {
     50,
   );
 
-  const rounds = db
+  const rounds = await db
     .prepare(
       `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes
        FROM rounds r JOIN courses c ON c.id = r.course_id
        ORDER BY r.played_at DESC, r.id DESC
        LIMIT ?`,
     )
-    .all(limit) as Array<{
-    id: number;
-    played_at: string;
-    course_id: number;
-    course_name: string;
-    notes: string | null;
-  }>;
+    .all<{
+      id: number;
+      played_at: string;
+      course_id: number;
+      course_name: string;
+      notes: string | null;
+    }>(limit);
 
   if (rounds.length === 0) return NextResponse.json({ rounds: [] });
 
   const ids = rounds.map((r) => r.id);
   const placeholders = ids.map(() => "?").join(",");
-  const scoreRows = db
+  const scoreRows = await db
     .prepare(
       `SELECT s.round_id, s.player_id, s.guest_name, s.gross_score,
               u.display_name
@@ -55,13 +55,13 @@ export async function GET(request: Request) {
        WHERE s.round_id IN (${placeholders})
        ORDER BY s.gross_score ASC`,
     )
-    .all(...ids) as Array<{
-    round_id: number;
-    player_id: string | null;
-    guest_name: string | null;
-    gross_score: number;
-    display_name: string | null;
-  }>;
+    .all<{
+      round_id: number;
+      player_id: string | null;
+      guest_name: string | null;
+      gross_score: number;
+      display_name: string | null;
+    }>(...ids);
 
   const byRound = new Map<number, RoundListItem["scores"]>();
   for (const s of scoreRows) {

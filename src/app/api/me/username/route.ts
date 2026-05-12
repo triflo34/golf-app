@@ -28,11 +28,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That's already your username" }, { status: 400 });
   }
 
-  if (findUserByUsername(username)) {
+  if (await findUserByUsername(username)) {
     return NextResponse.json({ error: "Username taken" }, { status: 409 });
   }
 
-  db.prepare("UPDATE users SET username = ? WHERE id = ?").run(username, user.id);
+  await db.prepare("UPDATE users SET username = ? WHERE id = ?").run(username, user.id);
 
   return NextResponse.json({ username });
 }

@@ -40,7 +40,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-green-800">The Match</h1>
-          <p className="text-green-600 mt-1">Oakland County Golf League</p>
+          <p className="text-green-600 mt-1"></p>
         </div>
 
         <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-lg p-6 space-y-4">

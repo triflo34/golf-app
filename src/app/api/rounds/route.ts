@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
 type ScoreInput = {
@@ -87,7 +87,9 @@ export async function POST(request: Request) {
     });
   }
 
-  const courseRow = db.prepare("SELECT id FROM courses WHERE id = ?").get(courseId);
+  const courseRow = await db
+    .prepare("SELECT id FROM courses WHERE id = ?")
+    .get<{ id: number }>(courseId);
   if (!courseRow) {
     return NextResponse.json({ error: "Course not found" }, { status: 404 });
   }
@@ -95,32 +97,33 @@ export async function POST(request: Request) {
   if (scores.some((s) => s.player_id)) {
     const ids = scores.map((s) => s.player_id).filter(Boolean) as string[];
     const placeholders = ids.map(() => "?").join(",");
-    const found = db
+    const found = await db
       .prepare(`SELECT id FROM users WHERE id IN (${placeholders})`)
-      .all(...ids) as { id: string }[];
+      .all<{ id: string }>(...ids);
     if (found.length !== ids.length) {
       return NextResponse.json({ error: "Unknown player" }, { status: 400 });
     }
   }
 
-  const insertRound = db.prepare(
-    `INSERT INTO rounds (course_id, played_at, created_by, notes)
-     VALUES (?, ?, ?, ?)`,
-  );
-  const insertScore = db.prepare(
-    `INSERT INTO scores (round_id, player_id, guest_name, gross_score, notes)
-     VALUES (?, ?, ?, ?, ?)`,
-  );
-
-  const tx = db.transaction(() => {
-    const info = insertRound.run(courseId, playedAt, me.id, notes);
-    const roundId = info.lastInsertRowid as number;
+  const roundId = await withTransaction(async (tx) => {
+    const inserted = await tx
+      .prepare(
+        `INSERT INTO rounds (course_id, played_at, created_by, notes)
+         VALUES (?, ?, ?, ?)
+         RETURNING id`,
+      )
+      .get<{ id: number }>(courseId, playedAt, me.id, notes);
+    const rid = inserted!.id;
     for (const s of scores) {
-      insertScore.run(roundId, s.player_id, s.guest_name, s.gross_score, s.notes);
+      await tx
+        .prepare(
+          `INSERT INTO scores (round_id, player_id, guest_name, gross_score, notes)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(rid, s.player_id ?? null, s.guest_name ?? null, s.gross_score, s.notes ?? null);
     }
-    return roundId;
+    return rid;
   });
 
-  const roundId = tx();
   return NextResponse.json({ round_id: roundId });
 }

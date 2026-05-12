@@ -32,12 +32,12 @@ export async function POST(request: Request) {
     );
   }
 
-  if (findUserByUsername(username)) {
+  if (await findUserByUsername(username)) {
     return NextResponse.json({ error: "Username taken" }, { status: 409 });
   }
 
-  const user = createUser({ username, password, display_name: displayName });
-  const token = createSessionToken(user.id);
+  const user = await createUser({ username, password, display_name: displayName });
+  const token = await createSessionToken(user.id);
   await setSessionCookie(token);
 
   return NextResponse.json({ user });

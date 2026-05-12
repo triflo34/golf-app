@@ -30,16 +30,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const user = db
+  const user = await db
     .prepare("SELECT id FROM users WHERE username = ?")
-    .get(username) as { id: string } | undefined;
+    .get<{ id: string }>(username);
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   const hash = hashPassword(password);
-  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, user.id);
+  await db
+    .prepare("UPDATE users SET password_hash = ? WHERE id = ?")
+    .run(hash, user.id);
 
   return NextResponse.json({ message: "Password reset successfully" });
 }

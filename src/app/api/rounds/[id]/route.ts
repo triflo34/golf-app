@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
 export type RoundDetail = {
@@ -30,8 +30,12 @@ type ScoreInput = {
   notes?: string | null;
 };
 
-function loadRound(id: number, currentUserId: string, isAdmin: boolean): RoundDetail | null {
-  const round = db
+async function loadRound(
+  id: number,
+  currentUserId: string,
+  isAdmin: boolean,
+): Promise<RoundDetail | null> {
+  const round = await db
     .prepare(
       `SELECT r.id, r.course_id, r.played_at, r.notes, r.created_by,
               c.name as course_name, u.display_name as created_by_name
@@ -40,20 +44,18 @@ function loadRound(id: number, currentUserId: string, isAdmin: boolean): RoundDe
        JOIN users u ON u.id = r.created_by
        WHERE r.id = ?`,
     )
-    .get(id) as
-    | {
-        id: number;
-        course_id: number;
-        played_at: string;
-        notes: string | null;
-        created_by: string;
-        course_name: string;
-        created_by_name: string;
-      }
-    | undefined;
+    .get<{
+      id: number;
+      course_id: number;
+      played_at: string;
+      notes: string | null;
+      created_by: string;
+      course_name: string;
+      created_by_name: string;
+    }>(id);
   if (!round) return null;
 
-  const scoreRows = db
+  const scoreRows = await db
     .prepare(
       `SELECT s.id, s.player_id, s.guest_name, s.gross_score, s.notes,
               u.display_name, u.username
@@ -62,15 +64,15 @@ function loadRound(id: number, currentUserId: string, isAdmin: boolean): RoundDe
        WHERE s.round_id = ?
        ORDER BY s.gross_score ASC`,
     )
-    .all(id) as Array<{
-    id: number;
-    player_id: string | null;
-    guest_name: string | null;
-    gross_score: number;
-    notes: string | null;
-    display_name: string | null;
-    username: string | null;
-  }>;
+    .all<{
+      id: number;
+      player_id: string | null;
+      guest_name: string | null;
+      gross_score: number;
+      notes: string | null;
+      display_name: string | null;
+      username: string | null;
+    }>(id);
 
   return {
     ...round,
@@ -146,7 +148,7 @@ export async function GET(
   if (!Number.isInteger(id) || id <= 0) {
     return NextResponse.json({ error: "Bad id" }, { status: 400 });
   }
-  const round = loadRound(id, me.id, me.is_admin);
+  const round = await loadRound(id, me.id, me.is_admin);
   if (!round) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(round);
 }
@@ -164,9 +166,9 @@ export async function PUT(
     return NextResponse.json({ error: "Bad id" }, { status: 400 });
   }
 
-  const existing = db
+  const existing = await db
     .prepare("SELECT created_by FROM rounds WHERE id = ?")
-    .get(id) as { created_by: string } | undefined;
+    .get<{ created_by: string }>(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!me.is_admin && existing.created_by !== me.id) {
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
@@ -201,37 +203,36 @@ export async function PUT(
   const v = validateScores(body.scores);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
 
-  const courseRow = db.prepare("SELECT id FROM courses WHERE id = ?").get(courseId);
+  const courseRow = await db
+    .prepare("SELECT id FROM courses WHERE id = ?")
+    .get<{ id: number }>(courseId);
   if (!courseRow) return NextResponse.json({ error: "Course not found" }, { status: 404 });
 
   if (v.scores.some((s) => s.player_id)) {
     const ids = v.scores.map((s) => s.player_id).filter(Boolean) as string[];
     const placeholders = ids.map(() => "?").join(",");
-    const found = db
+    const found = await db
       .prepare(`SELECT id FROM users WHERE id IN (${placeholders})`)
-      .all(...ids) as { id: string }[];
+      .all<{ id: string }>(...ids);
     if (found.length !== ids.length) {
       return NextResponse.json({ error: "Unknown player" }, { status: 400 });
     }
   }
 
-  const update = db.prepare(
-    `UPDATE rounds SET course_id = ?, played_at = ?, notes = ? WHERE id = ?`,
-  );
-  const wipe = db.prepare("DELETE FROM scores WHERE round_id = ?");
-  const insertScore = db.prepare(
-    `INSERT INTO scores (round_id, player_id, guest_name, gross_score, notes)
-     VALUES (?, ?, ?, ?, ?)`,
-  );
-
-  const tx = db.transaction(() => {
-    update.run(courseId, playedAt, notes, id);
-    wipe.run(id);
+  await withTransaction(async (tx) => {
+    await tx
+      .prepare(`UPDATE rounds SET course_id = ?, played_at = ?, notes = ? WHERE id = ?`)
+      .run(courseId, playedAt, notes, id);
+    await tx.prepare("DELETE FROM scores WHERE round_id = ?").run(id);
     for (const s of v.scores) {
-      insertScore.run(id, s.player_id, s.guest_name, s.gross_score, s.notes);
+      await tx
+        .prepare(
+          `INSERT INTO scores (round_id, player_id, guest_name, gross_score, notes)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(id, s.player_id ?? null, s.guest_name ?? null, s.gross_score, s.notes ?? null);
     }
   });
-  tx();
 
   return NextResponse.json({ ok: true });
 }
@@ -248,14 +249,14 @@ export async function DELETE(
   if (!Number.isInteger(id) || id <= 0) {
     return NextResponse.json({ error: "Bad id" }, { status: 400 });
   }
-  const existing = db
+  const existing = await db
     .prepare("SELECT created_by FROM rounds WHERE id = ?")
-    .get(id) as { created_by: string } | undefined;
+    .get<{ created_by: string }>(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!me.is_admin && existing.created_by !== me.id) {
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
-  db.prepare("DELETE FROM rounds WHERE id = ?").run(id);
+  await db.prepare("DELETE FROM rounds WHERE id = ?").run(id);
   return NextResponse.json({ ok: true });
 }

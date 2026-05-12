@@ -27,43 +27,43 @@ export type H2HResult = {
   }[];
 };
 
-function resolveName(key: string): string | null {
+async function resolveName(key: string): Promise<string | null> {
   const ref = parseKey(key);
   if (!ref) return null;
   if (ref.kind === "user") {
-    const row = db
+    const row = await db
       .prepare("SELECT display_name FROM users WHERE id = ?")
-      .get(ref.id) as { display_name: string } | undefined;
+      .get<{ display_name: string }>(ref.id);
     return row?.display_name ?? null;
   }
-  // For guests, find canonical-case name from any score row.
-  const row = db
-    .prepare(
-      "SELECT guest_name FROM scores WHERE LOWER(guest_name) = ? LIMIT 1",
-    )
-    .get(ref.name) as { guest_name: string } | undefined;
+  const row = await db
+    .prepare("SELECT guest_name FROM scores WHERE LOWER(guest_name) = ? LIMIT 1")
+    .get<{ guest_name: string }>(ref.name);
   return row?.guest_name ?? null;
 }
 
-function scoresForKey(roundIds: number[], key: string): Map<number, number> {
+async function scoresForKey(
+  roundIds: number[],
+  key: string,
+): Promise<Map<number, number>> {
   if (roundIds.length === 0) return new Map();
   const ref = parseKey(key);
   if (!ref) return new Map();
   const placeholders = roundIds.map(() => "?").join(",");
   const rows =
     ref.kind === "user"
-      ? (db
+      ? await db
           .prepare(
             `SELECT round_id, gross_score FROM scores
              WHERE round_id IN (${placeholders}) AND player_id = ?`,
           )
-          .all(...roundIds, ref.id) as { round_id: number; gross_score: number }[])
-      : (db
+          .all<{ round_id: number; gross_score: number }>(...roundIds, ref.id)
+      : await db
           .prepare(
             `SELECT round_id, gross_score FROM scores
              WHERE round_id IN (${placeholders}) AND LOWER(guest_name) = ?`,
           )
-          .all(...roundIds, ref.name) as { round_id: number; gross_score: number }[]);
+          .all<{ round_id: number; gross_score: number }>(...roundIds, ref.name);
   return new Map(rows.map((r) => [r.round_id, r.gross_score]));
 }
 
@@ -86,34 +86,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid season" }, { status: 400 });
   }
 
-  const aName = resolveName(aKey);
-  const bName = resolveName(bKey);
+  const aName = await resolveName(aKey);
+  const bName = await resolveName(bKey);
   if (!aName || !bName) {
     return NextResponse.json({ error: "Unknown player" }, { status: 404 });
   }
 
-  // Find all rounds where both A and B have a score.
   const aRef = parseKey(aKey)!;
   const bRef = parseKey(bKey)!;
 
-  const aRoundRows = (aRef.kind === "user"
-    ? db
-        .prepare("SELECT round_id FROM scores WHERE player_id = ?")
-        .all(aRef.id)
-    : db
-        .prepare(
-          "SELECT round_id FROM scores WHERE LOWER(guest_name) = ?",
-        )
-        .all(aRef.name)) as { round_id: number }[];
-  const bRoundRows = (bRef.kind === "user"
-    ? db
-        .prepare("SELECT round_id FROM scores WHERE player_id = ?")
-        .all(bRef.id)
-    : db
-        .prepare(
-          "SELECT round_id FROM scores WHERE LOWER(guest_name) = ?",
-        )
-        .all(bRef.name)) as { round_id: number }[];
+  const aRoundRows =
+    aRef.kind === "user"
+      ? await db
+          .prepare("SELECT round_id FROM scores WHERE player_id = ?")
+          .all<{ round_id: number }>(aRef.id)
+      : await db
+          .prepare("SELECT round_id FROM scores WHERE LOWER(guest_name) = ?")
+          .all<{ round_id: number }>(aRef.name);
+  const bRoundRows =
+    bRef.kind === "user"
+      ? await db
+          .prepare("SELECT round_id FROM scores WHERE player_id = ?")
+          .all<{ round_id: number }>(bRef.id)
+      : await db
+          .prepare("SELECT round_id FROM scores WHERE LOWER(guest_name) = ?")
+          .all<{ round_id: number }>(bRef.name);
 
   const aSet = new Set(aRoundRows.map((r) => r.round_id));
   const sharedRoundIds = bRoundRows
@@ -131,21 +128,20 @@ export async function GET(request: Request) {
       season != null ? " AND r.played_at >= ? AND r.played_at <= ?" : "";
     const seasonArgs =
       season != null ? [`${season}-01-01`, `${season}-12-31`] : [];
-    const roundRows = db
+    const roundRows = await db
       .prepare(
         `SELECT r.id, r.played_at, c.name as course_name
          FROM rounds r JOIN courses c ON c.id = r.course_id
          WHERE r.id IN (${placeholders})${seasonClause}
          ORDER BY r.played_at DESC`,
       )
-      .all(...sharedRoundIds, ...seasonArgs) as {
-      id: number;
-      played_at: string;
-      course_name: string;
-    }[];
+      .all<{ id: number; played_at: string; course_name: string }>(
+        ...sharedRoundIds,
+        ...seasonArgs,
+      );
 
-    const aMap = scoresForKey(sharedRoundIds, aKey);
-    const bMap = scoresForKey(sharedRoundIds, bKey);
+    const aMap = await scoresForKey(sharedRoundIds, aKey);
+    const bMap = await scoresForKey(sharedRoundIds, bKey);
 
     for (const r of roundRows) {
       const aS = aMap.get(r.id);

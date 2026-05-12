@@ -13,17 +13,17 @@ export async function GET() {
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!me.is_admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const rows = db
+  const rows = await db
     .prepare(
       `SELECT MAX(s.guest_name) AS name,
-              COUNT(DISTINCT s.round_id) AS rounds_played,
-              COUNT(*) AS scores
+              COUNT(DISTINCT s.round_id)::int AS rounds_played,
+              COUNT(*)::int AS scores
        FROM scores s
        WHERE s.guest_name IS NOT NULL
        GROUP BY LOWER(s.guest_name)
        ORDER BY LOWER(s.guest_name) ASC`,
     )
-    .all() as Array<{ name: string; rounds_played: number; scores: number }>;
+    .all<{ name: string; rounds_played: number; scores: number }>();
 
   return NextResponse.json({ guests: rows });
 }

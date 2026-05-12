@@ -13,22 +13,22 @@ export async function GET() {
   const me = await getCurrentUser();
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const users = db
+  const users = await db
     .prepare(
       `SELECT id, display_name FROM users
        WHERE hidden = 0
-       ORDER BY display_name COLLATE NOCASE ASC`,
+       ORDER BY LOWER(display_name) ASC`,
     )
-    .all() as { id: string; display_name: string }[];
+    .all<{ id: string; display_name: string }>();
 
-  const guests = db
+  const guests = await db
     .prepare(
-      `SELECT guest_name FROM scores
+      `SELECT MAX(guest_name) AS guest_name FROM scores
        WHERE guest_name IS NOT NULL
        GROUP BY LOWER(guest_name)
-       ORDER BY LOWER(guest_name) ASC`,
+       ORDER BY LOWER(MAX(guest_name)) ASC`,
     )
-    .all() as { guest_name: string }[];
+    .all<{ guest_name: string }>();
 
   const players: PlayerSummary[] = [
     ...users.map((u) => ({

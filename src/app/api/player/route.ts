@@ -50,43 +50,47 @@ export async function GET(request: Request) {
   const seasonArgs =
     season != null ? [`${season}-01-01`, `${season}-12-31`] : [];
 
-  // Pull every score row for this player along with round/course info.
-  const scoreRows = (ref.kind === "user"
-    ? db.prepare(
-        `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name
-         FROM scores s
-         JOIN rounds r ON r.id = s.round_id
-         JOIN courses c ON c.id = r.course_id
-         WHERE s.player_id = ?${seasonClause}
-         ORDER BY r.played_at DESC`,
-      ).all(ref.id, ...seasonArgs)
-    : db.prepare(
-        `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name
-         FROM scores s
-         JOIN rounds r ON r.id = s.round_id
-         JOIN courses c ON c.id = r.course_id
-         WHERE LOWER(s.guest_name) = ?${seasonClause}
-         ORDER BY r.played_at DESC`,
-      ).all(ref.name, ...seasonArgs)) as Array<{
+  type ScoreRow = {
     round_id: number;
     gross_score: number;
     played_at: string;
     course_id: number;
     course_name: string;
-  }>;
+  };
+
+  const scoreRows =
+    ref.kind === "user"
+      ? await db
+          .prepare(
+            `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name
+             FROM scores s
+             JOIN rounds r ON r.id = s.round_id
+             JOIN courses c ON c.id = r.course_id
+             WHERE s.player_id = ?${seasonClause}
+             ORDER BY r.played_at DESC`,
+          )
+          .all<ScoreRow>(ref.id, ...seasonArgs)
+      : await db
+          .prepare(
+            `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name
+             FROM scores s
+             JOIN rounds r ON r.id = s.round_id
+             JOIN courses c ON c.id = r.course_id
+             WHERE LOWER(s.guest_name) = ?${seasonClause}
+             ORDER BY r.played_at DESC`,
+          )
+          .all<ScoreRow>(ref.name, ...seasonArgs);
 
   let name = "?";
   if (ref.kind === "user") {
-    const u = db
+    const u = await db
       .prepare("SELECT display_name FROM users WHERE id = ?")
-      .get(ref.id) as { display_name: string } | undefined;
+      .get<{ display_name: string }>(ref.id);
     name = u?.display_name ?? "?";
   } else {
-    const g = db
-      .prepare(
-        "SELECT guest_name FROM scores WHERE LOWER(guest_name) = ? LIMIT 1",
-      )
-      .get(ref.name) as { guest_name: string } | undefined;
+    const g = await db
+      .prepare("SELECT guest_name FROM scores WHERE LOWER(guest_name) = ? LIMIT 1")
+      .get<{ guest_name: string }>(ref.name);
     name = g?.guest_name ?? ref.name;
   }
 
@@ -109,20 +113,19 @@ export async function GET(request: Request) {
   const scores = scoreRows.map((r) => r.gross_score);
   const total = scores.reduce((a, c) => a + c, 0);
 
-  // Wins: rounds where this player had the strict-lowest score among >=2 players.
   const roundIds = scoreRows.map((r) => r.round_id);
   const placeholders = roundIds.map(() => "?").join(",");
-  const fieldRows = db
+  const fieldRows = await db
     .prepare(
       `SELECT round_id, player_id, guest_name, gross_score
        FROM scores WHERE round_id IN (${placeholders})`,
     )
-    .all(...roundIds) as Array<{
-    round_id: number;
-    player_id: string | null;
-    guest_name: string | null;
-    gross_score: number;
-  }>;
+    .all<{
+      round_id: number;
+      player_id: string | null;
+      guest_name: string | null;
+      gross_score: number;
+    }>(...roundIds);
 
   const byRound = new Map<number, typeof fieldRows>();
   for (const r of fieldRows) {
@@ -130,19 +133,15 @@ export async function GET(request: Request) {
     byRound.get(r.round_id)!.push(r);
   }
 
-  const myKey =
-    ref.kind === "user" ? `u:${ref.id}` : `g:${ref.name}`;
+  const myKey = ref.kind === "user" ? `u:${ref.id}` : `g:${ref.name}`;
   const matchesMe = (r: (typeof fieldRows)[number]) =>
     ref.kind === "user"
       ? r.player_id === ref.id
       : (r.guest_name ?? "").toLowerCase() === ref.name;
 
-  let wins = 0;
   const recent: PlayerStats["recent"] = [];
   for (const sr of scoreRows.slice(0, 10)) {
     const field = byRound.get(sr.round_id) ?? [];
-    const minScore = Math.min(...field.map((f) => f.gross_score));
-    const winners = field.filter((f) => f.gross_score === minScore);
     const sortedAsc = [...field].sort((a, b) => a.gross_score - b.gross_score);
     const placement = sortedAsc.findIndex(matchesMe) + 1;
     recent.push({
@@ -153,12 +152,8 @@ export async function GET(request: Request) {
       placement: placement > 0 ? placement : null,
       field_size: field.length,
     });
-    if (field.length >= 2 && winners.length === 1 && matchesMe(winners[0])) {
-      wins += 1;
-    }
   }
 
-  // count full wins (not just last 10) across all rounds
   let totalWins = 0;
   for (const [, field] of byRound) {
     if (field.length < 2) continue;
@@ -204,7 +199,5 @@ export async function GET(request: Request) {
     by_course,
     recent,
   };
-  // suppress unused warning for tally vars used during recent compute
-  void wins;
   return NextResponse.json(result);
 }

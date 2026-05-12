@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const row = findUserByUsername(me.username);
+  const row = await findUserByUsername(me.username);
   if (!row || !verifyPassword(current, row.password_hash)) {
     return NextResponse.json(
       { error: "Current password is incorrect" },
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     );
   }
 
-  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
+  await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
     hashPassword(next),
     me.id,
   );

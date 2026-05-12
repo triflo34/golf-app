@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "The Match - Oakland County Golf League",
+  title: "The Match",
   description:
     "Track scores, compete head-to-head, and dominate the summer leaderboard.",
   manifest: "/manifest.json",

@@ -27,16 +27,16 @@ export async function GET(
     return NextResponse.json({ error: "Bad id" }, { status: 400 });
   }
 
-  const course = db
+  const course = await db
     .prepare("SELECT * FROM courses WHERE id = ?")
-    .get(id) as Course | undefined;
+    .get<Course>(id);
   if (!course) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const roundCount = db
-    .prepare("SELECT COUNT(*) as n FROM rounds WHERE course_id = ?")
-    .get(id) as { n: number };
+  const roundCount = await db
+    .prepare("SELECT COUNT(*)::int as n FROM rounds WHERE course_id = ?")
+    .get<{ n: number }>(id);
 
-  const topScoreRows = db
+  const topScoreRows = await db
     .prepare(
       `SELECT s.gross_score, s.guest_name, u.display_name, r.played_at
        FROM scores s
@@ -46,12 +46,12 @@ export async function GET(
        ORDER BY s.gross_score ASC, r.played_at DESC
        LIMIT 10`,
     )
-    .all(id) as Array<{
-    gross_score: number;
-    guest_name: string | null;
-    display_name: string | null;
-    played_at: string;
-  }>;
+    .all<{
+      gross_score: number;
+      guest_name: string | null;
+      display_name: string | null;
+      played_at: string;
+    }>(id);
 
   const top_scores = topScoreRows.map((s) => ({
     name: s.display_name ?? s.guest_name ?? "?",
@@ -62,7 +62,7 @@ export async function GET(
 
   return NextResponse.json({
     course,
-    rounds_played: roundCount.n,
+    rounds_played: roundCount?.n ?? 0,
     top_scores,
   } satisfies CourseDetail);
 }
