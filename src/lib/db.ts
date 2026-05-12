@@ -95,9 +95,26 @@ async function bootstrap(): Promise<void> {
   await seedCourses(sql);
 }
 
+const BOOTSTRAP_TIMEOUT_MS = 8000;
+
 function ensureInit(): Promise<void> {
   if (!globalForDb.__initPromise) {
-    globalForDb.__initPromise = bootstrap();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`db bootstrap timed out after ${BOOTSTRAP_TIMEOUT_MS}ms`)),
+        BOOTSTRAP_TIMEOUT_MS,
+      );
+    });
+    globalForDb.__initPromise = Promise.race([bootstrap(), timeoutPromise])
+      .finally(() => {
+        if (timer) clearTimeout(timer);
+      })
+      .catch((err) => {
+        console.error("[db] bootstrap failed:", err);
+        delete globalForDb.__initPromise;
+        throw err;
+      });
   }
   return globalForDb.__initPromise;
 }
