@@ -2,22 +2,21 @@ import postgres from "postgres";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL is not set. Add it to .env.local (use the Supabase Transaction pooler URL on port 6543).",
-  );
-}
-
 type GlobalCache = {
   __sql?: postgres.Sql;
   __initPromise?: Promise<void>;
 };
 const globalForDb = globalThis as unknown as GlobalCache;
 
-const sql =
-  globalForDb.__sql ??
-  postgres(DATABASE_URL, {
+function getSql(): postgres.Sql {
+  if (globalForDb.__sql) return globalForDb.__sql;
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. Add it to .env.local locally and to Project Settings → Environment Variables in Vercel (use the Supabase Transaction pooler URL on port 6543).",
+    );
+  }
+  globalForDb.__sql = postgres(url, {
     // pgbouncer transaction mode doesn't support session-level prepared statements
     prepare: false,
     ssl: "require",
@@ -25,7 +24,8 @@ const sql =
     idle_timeout: 20,
     connect_timeout: 10,
   });
-if (process.env.NODE_ENV !== "production") globalForDb.__sql = sql;
+  return globalForDb.__sql;
+}
 
 type Param = string | number | boolean | bigint | null | Date;
 
@@ -37,24 +37,28 @@ function toPg(query: string): string {
 class PreparedQuery {
   constructor(
     private readonly query: string,
-    private readonly client: postgres.Sql | postgres.TransactionSql,
+    private readonly client?: postgres.Sql | postgres.TransactionSql,
   ) {}
+
+  private resolveClient(): postgres.Sql | postgres.TransactionSql {
+    return this.client ?? getSql();
+  }
 
   async get<T = unknown>(...params: Param[]): Promise<T | undefined> {
     await ensureInit();
-    const rows = await this.client.unsafe<T[]>(toPg(this.query), params as never[]);
+    const rows = await this.resolveClient().unsafe<T[]>(toPg(this.query), params as never[]);
     return (rows[0] ?? undefined) as T | undefined;
   }
 
   async all<T = unknown>(...params: Param[]): Promise<T[]> {
     await ensureInit();
-    const rows = await this.client.unsafe<T[]>(toPg(this.query), params as never[]);
+    const rows = await this.resolveClient().unsafe<T[]>(toPg(this.query), params as never[]);
     return rows as unknown as T[];
   }
 
   async run(...params: Param[]): Promise<{ rowCount: number }> {
     await ensureInit();
-    const result = await this.client.unsafe(toPg(this.query), params as never[]);
+    const result = await this.resolveClient().unsafe(toPg(this.query), params as never[]);
     return { rowCount: result.count ?? 0 };
   }
 }
@@ -64,31 +68,31 @@ export type DbApi = {
   exec: (query: string) => Promise<void>;
 };
 
-function makeDb(client: postgres.Sql | postgres.TransactionSql): DbApi {
+function makeDb(client?: postgres.Sql | postgres.TransactionSql): DbApi {
   return {
     prepare: (query: string) => new PreparedQuery(query, client),
     exec: async (query: string) => {
-      await client.unsafe(query);
+      await (client ?? getSql()).unsafe(query);
     },
   };
 }
 
-export const db: DbApi = makeDb(sql);
+export const db: DbApi = makeDb();
 
 export async function withTransaction<T>(
   fn: (tx: DbApi) => Promise<T>,
 ): Promise<T> {
-  // postgres.js: sql.begin() returns the result of the callback wrapped in a transaction
-  return (await sql.begin((txSql) => fn(makeDb(txSql)))) as T;
+  return (await getSql().begin((txSql) => fn(makeDb(txSql)))) as T;
 }
 
 // ---- Schema + seed bootstrap (lazy, runs once per process) ----
 
 async function bootstrap(): Promise<void> {
+  const sql = getSql();
   await sql.unsafe(SCHEMA_SQL);
-  await ensureHiddenColumn();
-  await seedAdmin();
-  await seedCourses();
+  await ensureHiddenColumn(sql);
+  await seedAdmin(sql);
+  await seedCourses(sql);
 }
 
 function ensureInit(): Promise<void> {
@@ -162,14 +166,14 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_scores_player ON scores(player_id);
 `;
 
-async function ensureHiddenColumn(): Promise<void> {
+async function ensureHiddenColumn(sql: postgres.Sql): Promise<void> {
   // Postgres ≥ 9.6 supports IF NOT EXISTS on ADD COLUMN.
   await sql.unsafe(
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS hidden INTEGER NOT NULL DEFAULT 0`,
   );
 }
 
-async function seedAdmin(): Promise<void> {
+async function seedAdmin(sql: postgres.Sql): Promise<void> {
   const rows = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM users WHERE is_admin = 1`;
   if ((rows[0]?.n ?? 0) > 0) return;
   const id = randomUUID();
@@ -191,10 +195,9 @@ type CourseSeed = {
   phone: string | null;
 };
 
-async function seedCourses(): Promise<void> {
+async function seedCourses(sql: postgres.Sql): Promise<void> {
   const rows = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM courses`;
   if ((rows[0]?.n ?? 0) > 0) return;
-  // Bulk insert via mapped objects
   const records = OAKLAND_COURSES.map((c) => ({
     name: c.name,
     address: c.address,
