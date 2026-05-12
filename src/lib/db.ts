@@ -20,8 +20,7 @@ function getSql(): postgres.Sql {
     // pgbouncer transaction mode doesn't support session-level prepared statements
     prepare: false,
     ssl: "require",
-    max: 1,
-    idle_timeout: 20,
+    max: 10,
     connect_timeout: 10,
   });
   return globalForDb.__sql;
@@ -32,6 +31,22 @@ type Param = string | number | boolean | bigint | null | Date;
 function toPg(query: string): string {
   let i = 0;
   return query.replace(/\?/g, () => `$${++i}`);
+}
+
+const QUERY_TIMEOUT_MS = 8000;
+
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 class PreparedQuery {
@@ -46,19 +61,31 @@ class PreparedQuery {
 
   async get<T = unknown>(...params: Param[]): Promise<T | undefined> {
     await ensureInit();
-    const rows = await this.resolveClient().unsafe<T[]>(toPg(this.query), params as never[]);
+    const rows = await withTimeout(
+      this.resolveClient().unsafe<T[]>(toPg(this.query), params as never[]),
+      QUERY_TIMEOUT_MS,
+      "db query",
+    );
     return (rows[0] ?? undefined) as T | undefined;
   }
 
   async all<T = unknown>(...params: Param[]): Promise<T[]> {
     await ensureInit();
-    const rows = await this.resolveClient().unsafe<T[]>(toPg(this.query), params as never[]);
+    const rows = await withTimeout(
+      this.resolveClient().unsafe<T[]>(toPg(this.query), params as never[]),
+      QUERY_TIMEOUT_MS,
+      "db query",
+    );
     return rows as unknown as T[];
   }
 
   async run(...params: Param[]): Promise<{ rowCount: number }> {
     await ensureInit();
-    const result = await this.resolveClient().unsafe(toPg(this.query), params as never[]);
+    const result = await withTimeout(
+      this.resolveClient().unsafe(toPg(this.query), params as never[]),
+      QUERY_TIMEOUT_MS,
+      "db query",
+    );
     return { rowCount: result.count ?? 0 };
   }
 }
