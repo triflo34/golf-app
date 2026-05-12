@@ -11,6 +11,7 @@ export type RoundFormInitial = {
   courseId: number | null;
   playedAt: string;
   notes: string;
+  holeCount: 9 | 18;
   players: PlayerEntry[];
 };
 
@@ -18,6 +19,7 @@ export type RoundFormPayload = {
   course_id: number;
   played_at: string;
   notes: string | null;
+  hole_count: 9 | 18;
   scores: Array<
     | { player_id: string; gross_score: number }
     | { guest_name: string; gross_score: number }
@@ -39,6 +41,8 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
   const [showCoursePicker, setShowCoursePicker] = useState(false);
 
   const [playedAt, setPlayedAt] = useState(initial.playedAt);
+  const [holeCount, setHoleCount] = useState<9 | 18>(initial.holeCount);
+  const [holeCountTouched, setHoleCountTouched] = useState(false);
   const [players, setPlayers] = useState<PlayerEntry[]>(initial.players);
   const [playerQuery, setPlayerQuery] = useState("");
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
@@ -60,6 +64,14 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
     () => courses.find((c) => c.id === courseId) ?? null,
     [courses, courseId],
   );
+
+  // When the user picks a course, default hole_count from the course unless they've overridden.
+  useEffect(() => {
+    if (holeCountTouched) return;
+    if (!selectedCourse) return;
+    const courseHoles = selectedCourse.holes === 9 ? 9 : 18;
+    setHoleCount(courseHoles);
+  }, [selectedCourse, holeCountTouched]);
 
   const filteredCourses = useMemo(() => {
     const q = courseQuery.trim().toLowerCase();
@@ -131,12 +143,13 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
     if (!playedAt) return setError("Pick a date");
     if (players.length === 0) return setError("Add at least one player");
 
+    const minScore = holeCount === 9 ? 9 : 18;
     const scores: RoundFormPayload["scores"] = [];
     for (const p of players) {
       const gross = Number(p.gross);
-      if (!Number.isFinite(gross) || gross < 18 || gross > 200) {
+      if (!Number.isFinite(gross) || gross < minScore || gross > 200) {
         return setError(
-          `Score must be 18–200 for ${p.kind === "user" ? p.user.display_name : p.name}`,
+          `Score must be ${minScore}–200 for ${p.kind === "user" ? p.user.display_name : p.name}`,
         );
       }
       scores.push(
@@ -152,6 +165,7 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
         course_id: courseId,
         played_at: playedAt,
         notes: notes.trim() || null,
+        hole_count: holeCount,
         scores,
       });
     } catch (e) {
@@ -246,6 +260,29 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
           onChange={(e) => setPlayedAt(e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
         />
+
+        <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">
+          Holes
+        </label>
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+          {[9, 18].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => {
+                setHoleCount(n as 9 | 18);
+                setHoleCountTouched(true);
+              }}
+              className={`px-4 py-1.5 text-sm font-medium ${
+                holeCount === n
+                  ? "bg-green-700 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="card mb-4">
@@ -268,7 +305,7 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
               <input
                 type="number"
                 inputMode="numeric"
-                min={18}
+                min={holeCount === 9 ? 9 : 18}
                 max={200}
                 placeholder="Score"
                 value={p.gross}

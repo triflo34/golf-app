@@ -77,12 +77,19 @@ export default function RoundPage() {
       </Link>
 
       <div className="card mt-3 mb-4">
-        <Link
-          href={`/courses/${data.course_id}`}
-          className="text-xs text-green-700 font-medium hover:underline"
-        >
-          {data.course_name} →
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/courses/${data.course_id}`}
+            className="text-xs text-green-700 font-medium hover:underline"
+          >
+            {data.course_name} →
+          </Link>
+          {data.hole_count === 9 && (
+            <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+              9 holes
+            </span>
+          )}
+        </div>
         <h1 className="text-xl font-bold text-gray-800 mt-1">
           {formatLongDate(data.played_at)}
         </h1>

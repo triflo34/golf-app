@@ -25,6 +25,7 @@ export default function NewRoundPage() {
           courseId: null,
           playedAt: new Date().toISOString().slice(0, 10),
           notes: "",
+          holeCount: 18,
           players: [{ kind: "user", user, gross: "" }],
         }}
         onSubmit={async (payload) => {

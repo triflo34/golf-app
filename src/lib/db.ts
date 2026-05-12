@@ -121,6 +121,8 @@ async function bootstrap(): Promise<void> {
   await sql.unsafe(SCHEMA_SQL);
   console.log("[db] bootstrap: ensureHiddenColumn");
   await ensureHiddenColumn(sql);
+  console.log("[db] bootstrap: ensureHoleCountColumn");
+  await ensureHoleCountColumn(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -196,6 +198,7 @@ const SCHEMA_SQL = `
     played_at   TEXT NOT NULL,
     created_by  TEXT NOT NULL REFERENCES users(id),
     notes       TEXT,
+    hole_count  SMALLINT NOT NULL DEFAULT 18 CHECK (hole_count IN (9, 18)),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS idx_rounds_played_at ON rounds(played_at);
@@ -224,6 +227,24 @@ async function ensureHiddenColumn(sql: postgres.Sql): Promise<void> {
   await sql.unsafe(
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS hidden INTEGER NOT NULL DEFAULT 0`,
   );
+}
+
+async function ensureHoleCountColumn(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(
+    `ALTER TABLE rounds ADD COLUMN IF NOT EXISTS hole_count SMALLINT NOT NULL DEFAULT 18`,
+  );
+  // CHECK constraints don't have IF NOT EXISTS in older PG; guard by name.
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'rounds_hole_count_check'
+      ) THEN
+        ALTER TABLE rounds
+          ADD CONSTRAINT rounds_hole_count_check CHECK (hole_count IN (9, 18));
+      END IF;
+    END$$;
+  `);
 }
 
 async function seedAdmin(sql: postgres.Sql): Promise<void> {

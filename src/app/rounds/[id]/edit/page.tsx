@@ -65,6 +65,7 @@ export default function EditRoundPage() {
         courseId: d.course_id,
         playedAt: d.played_at,
         notes: d.notes ?? "",
+        holeCount: d.hole_count === 9 ? 9 : 18,
         players,
       });
     });

@@ -9,6 +9,7 @@ type ScoreJoin = {
   display_name: string | null;
   gross_score: number;
   played_at: string;
+  hole_count: number;
 };
 
 export type SeriesPoint = { played_at: string; gross_score: number };
@@ -22,6 +23,10 @@ export type LeaderboardRow = {
   avg_score: number;
   best_score: number;
   wins: number;
+  points: number;
+  firsts: number;
+  seconds: number;
+  thirds: number;
   series: SeriesPoint[];
 };
 
@@ -36,8 +41,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid season" }, { status: 400 });
   }
   const scope = url.searchParams.get("scope") === "all" ? "all" : "mine";
+  const holesParam = url.searchParams.get("holes");
+  const holes: "18" | "9" | "all" =
+    holesParam === "9" ? "9" : holesParam === "all" ? "all" : "18";
   const start = `${season}-01-01`;
   const end = `${season}-12-31`;
+
+  const holesFilter = holes === "all" ? "" : "AND r.hole_count = ?";
+  const holesArg: number[] = holes === "all" ? [] : [Number(holes)];
 
   // For scope=mine, find every round id where the current user has a score,
   // then only keep score rows from those rounds. Guarantees the board only
@@ -49,14 +60,15 @@ export async function GET(request: Request) {
         `SELECT DISTINCT s.round_id
          FROM scores s
          JOIN rounds r ON r.id = s.round_id
-         WHERE s.player_id = ? AND r.played_at >= ? AND r.played_at <= ?`,
+         WHERE s.player_id = ? AND r.played_at >= ? AND r.played_at <= ? ${holesFilter}`,
       )
-      .all<{ round_id: number }>(me.id, start, end);
+      .all<{ round_id: number }>(me.id, start, end, ...holesArg);
     if (myRoundRows.length === 0) {
       // No rounds for the current user in this season — return just them.
       return NextResponse.json({
         season,
         scope,
+        holes,
         leaderboard: [
           {
             key: `u:${me.id}`,
@@ -67,6 +79,10 @@ export async function GET(request: Request) {
             avg_score: 0,
             best_score: 0,
             wins: 0,
+            points: 0,
+            firsts: 0,
+            seconds: 0,
+            thirds: 0,
             series: [],
           },
         ],
@@ -92,14 +108,15 @@ export async function GET(request: Request) {
 
   const rows = await db
     .prepare(
-      `SELECT s.round_id, s.player_id, s.guest_name, u.display_name, s.gross_score, r.played_at
+      `SELECT s.round_id, s.player_id, s.guest_name, u.display_name, s.gross_score, r.played_at, r.hole_count
        FROM scores s
        JOIN rounds r ON r.id = s.round_id
        LEFT JOIN users u ON u.id = s.player_id
        WHERE r.played_at >= ? AND r.played_at <= ?
-         AND (s.player_id IS NULL OR u.hidden = 0)`,
+         AND (s.player_id IS NULL OR u.hidden = 0)
+         ${holesFilter}`,
     )
-    .all<ScoreJoin>(start, end);
+    .all<ScoreJoin>(start, end, ...holesArg);
 
   type Bucket = {
     key: string;
@@ -109,6 +126,10 @@ export async function GET(request: Request) {
     scores: number[];
     roundIds: Set<number>;
     wins: number;
+    points: number;
+    firsts: number;
+    seconds: number;
+    thirds: number;
     series: SeriesPoint[];
   };
 
@@ -130,6 +151,10 @@ export async function GET(request: Request) {
         scores: [],
         roundIds: new Set(),
         wins: 0,
+        points: 0,
+        firsts: 0,
+        seconds: 0,
+        thirds: 0,
         series: [],
       };
       buckets.set(key, b);
@@ -142,10 +167,26 @@ export async function GET(request: Request) {
     roundScores.get(row.round_id)!.push({ key, gross: row.gross_score });
   }
 
+  // Placement: competition ranking (ties share lowest rank, next rank skipped).
+  // Linear points: rank r in field of N → points = N - r + 1. Solo rounds (N<2) skipped.
   for (const [, players] of roundScores) {
     if (players.length < 2) continue;
-    const min = Math.min(...players.map((p) => p.gross));
-    const winners = players.filter((p) => p.gross === min);
+    const sorted = [...players].sort((a, c) => a.gross - c.gross);
+    const N = sorted.length;
+    let rank = 1;
+    for (let i = 0; i < sorted.length; i++) {
+      if (i > 0 && sorted[i].gross > sorted[i - 1].gross) rank = i + 1;
+      const points = N - rank + 1;
+      const b = buckets.get(sorted[i].key);
+      if (!b) continue;
+      b.points += points;
+      if (rank === 1) b.firsts += 1;
+      else if (rank === 2) b.seconds += 1;
+      else if (rank === 3) b.thirds += 1;
+    }
+    // Wins = sole 1st place (preserve existing semantic).
+    const min = sorted[0].gross;
+    const winners = sorted.filter((p) => p.gross === min);
     if (winners.length === 1) {
       const b = buckets.get(winners[0].key);
       if (b) b.wins += 1;
@@ -165,10 +206,14 @@ export async function GET(request: Request) {
       avg_score: Math.round((sum / b.scores.length) * 10) / 10,
       best_score: Math.min(...b.scores),
       wins: b.wins,
+      points: b.points,
+      firsts: b.firsts,
+      seconds: b.seconds,
+      thirds: b.thirds,
       series: [...b.series].sort((a, c) => a.played_at.localeCompare(c.played_at)),
     });
   }
   result.sort((a, b) => a.avg_score - b.avg_score);
 
-  return NextResponse.json({ season, scope, leaderboard: result });
+  return NextResponse.json({ season, scope, holes, leaderboard: result });
 }

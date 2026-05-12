@@ -8,6 +8,7 @@ export type RoundDetail = {
   course_name: string;
   played_at: string;
   notes: string | null;
+  hole_count: number;
   created_by: string;
   created_by_name: string;
   can_edit: boolean;
@@ -37,7 +38,7 @@ async function loadRound(
 ): Promise<RoundDetail | null> {
   const round = await db
     .prepare(
-      `SELECT r.id, r.course_id, r.played_at, r.notes, r.created_by,
+      `SELECT r.id, r.course_id, r.played_at, r.notes, r.hole_count, r.created_by,
               c.name as course_name, u.display_name as created_by_name
        FROM rounds r
        JOIN courses c ON c.id = r.course_id
@@ -49,6 +50,7 @@ async function loadRound(
       course_id: number;
       played_at: string;
       notes: string | null;
+      hole_count: number;
       created_by: string;
       course_name: string;
       created_by_name: string;
@@ -90,7 +92,7 @@ async function loadRound(
   };
 }
 
-function validateScores(rawScores: unknown):
+function validateScores(rawScores: unknown, holeCount: number):
   | { ok: true; scores: ScoreInput[] }
   | { ok: false; error: string } {
   if (!Array.isArray(rawScores) || rawScores.length === 0) {
@@ -100,13 +102,14 @@ function validateScores(rawScores: unknown):
     return { ok: false, error: "Max 8 players per round" };
   }
 
+  const minScore = holeCount === 9 ? 9 : 18;
   const out: ScoreInput[] = [];
   const seenPlayer = new Set<string>();
   const seenGuest = new Set<string>();
   for (const s of rawScores as Record<string, unknown>[]) {
     const gross = Number(s.gross_score);
-    if (!Number.isFinite(gross) || gross < 18 || gross > 200) {
-      return { ok: false, error: "Score must be 18–200" };
+    if (!Number.isFinite(gross) || gross < minScore || gross > 200) {
+      return { ok: false, error: `Score must be ${minScore}–200` };
     }
     const pid =
       typeof s.player_id === "string" && s.player_id.length > 0 ? s.player_id : null;
@@ -178,6 +181,7 @@ export async function PUT(
     course_id?: unknown;
     played_at?: unknown;
     notes?: unknown;
+    hole_count?: unknown;
     scores?: unknown;
   };
   try {
@@ -192,6 +196,7 @@ export async function PUT(
     typeof body.notes === "string" && body.notes.trim().length > 0
       ? body.notes.trim()
       : null;
+  const holeCount = Number(body.hole_count);
 
   if (!Number.isInteger(courseId) || courseId <= 0) {
     return NextResponse.json({ error: "Course is required" }, { status: 400 });
@@ -199,8 +204,11 @@ export async function PUT(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(playedAt)) {
     return NextResponse.json({ error: "Date is required" }, { status: 400 });
   }
+  if (holeCount !== 9 && holeCount !== 18) {
+    return NextResponse.json({ error: "hole_count must be 9 or 18" }, { status: 400 });
+  }
 
-  const v = validateScores(body.scores);
+  const v = validateScores(body.scores, holeCount);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
 
   const courseRow = await db
@@ -221,8 +229,10 @@ export async function PUT(
 
   await withTransaction(async (tx) => {
     await tx
-      .prepare(`UPDATE rounds SET course_id = ?, played_at = ?, notes = ? WHERE id = ?`)
-      .run(courseId, playedAt, notes, id);
+      .prepare(
+        `UPDATE rounds SET course_id = ?, played_at = ?, notes = ?, hole_count = ? WHERE id = ?`,
+      )
+      .run(courseId, playedAt, notes, holeCount, id);
     await tx.prepare("DELETE FROM scores WHERE round_id = ?").run(id);
     for (const s of v.scores) {
       await tx

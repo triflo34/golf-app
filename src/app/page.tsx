@@ -11,17 +11,22 @@ export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
   const [season, setSeason] = useState(new Date().getFullYear());
   const [scope, setScope] = useState<"mine" | "all">("mine");
+  const [holes, setHoles] = useState<"18" | "9" | "all">("18");
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [recent, setRecent] = useState<RoundListItem[] | null>(null);
 
-  const loadBoard = useCallback(async (s: number, sc: "mine" | "all") => {
-    setRows(null);
-    const res = await fetch(`/api/leaderboard?season=${s}&scope=${sc}`, {
-      cache: "no-store",
-    });
-    const data = await res.json();
-    setRows(data.leaderboard ?? []);
-  }, []);
+  const loadBoard = useCallback(
+    async (s: number, sc: "mine" | "all", h: "18" | "9" | "all") => {
+      setRows(null);
+      const res = await fetch(
+        `/api/leaderboard?season=${s}&scope=${sc}&holes=${h}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      setRows(data.leaderboard ?? []);
+    },
+    [],
+  );
 
   const loadRecent = useCallback(async () => {
     const res = await fetch(`/api/rounds/list?limit=5`, { cache: "no-store" });
@@ -31,10 +36,10 @@ export default function HomePage() {
 
   useEffect(() => {
     if (user) {
-      loadBoard(season, scope);
+      loadBoard(season, scope, holes);
       loadRecent();
     }
-  }, [user, season, scope, loadBoard, loadRecent]);
+  }, [user, season, scope, holes, loadBoard, loadRecent]);
 
   if (authLoading || !user) {
     return (
@@ -73,8 +78,8 @@ export default function HomePage() {
       </div>
 
       <div className="card mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-gray-800">Season Leaderboard</h2>
+        <h2 className="text-lg font-bold text-gray-800 mb-2">Season Leaderboard</h2>
+        <div className="flex flex-wrap gap-2 mb-3">
           <div className="flex bg-gray-100 rounded-lg p-0.5 text-xs font-medium">
             <button
               onClick={() => setScope("mine")}
@@ -92,6 +97,19 @@ export default function HomePage() {
             >
               Everyone
             </button>
+          </div>
+          <div className="flex bg-gray-100 rounded-lg p-0.5 text-xs font-medium">
+            {(["18", "9", "all"] as const).map((h) => (
+              <button
+                key={h}
+                onClick={() => setHoles(h)}
+                className={`px-2.5 py-1 rounded transition ${
+                  holes === h ? "bg-white text-green-700 shadow-sm" : "text-gray-500"
+                }`}
+              >
+                {h === "all" ? "All holes" : `${h} holes`}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -149,16 +167,29 @@ export default function HomePage() {
                     )}
                   </div>
                   <div className="text-xs text-gray-500">
-                    {row.rounds_played} rounds · {row.wins} wins
+                    {row.rounds_played} rounds · {row.wins} wins · best {row.best_score}
                   </div>
+                  {(row.firsts > 0 || row.seconds > 0 || row.thirds > 0) && (
+                    <div className="mt-1 flex gap-1 text-[10px] font-semibold">
+                      <span className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
+                        1st {row.firsts}
+                      </span>
+                      <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded">
+                        2nd {row.seconds}
+                      </span>
+                      <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded">
+                        3rd {row.thirds}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-green-700">{row.avg_score}</div>
                   <div className="text-xs text-gray-500">avg</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-semibold text-gray-600">{row.best_score}</div>
-                  <div className="text-xs text-gray-500">best</div>
+                  <div className="text-sm font-semibold text-gray-600">{row.points}</div>
+                  <div className="text-xs text-gray-500">pts</div>
                 </div>
               </div>
             ))}
