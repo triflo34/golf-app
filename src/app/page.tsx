@@ -207,8 +207,8 @@ export default function HomePage() {
                         3rd {row.thirds}
                         {row.thirds_tied > 0 && ` (${row.thirds_tied}t)`}
                       </span>
-                      <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
-                        4th {row.fourths}
+                      <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">
+                        💩 {row.fourths}
                         {row.fourths_tied > 0 && ` (${row.fourths_tied}t)`}
                       </span>
                     </div>
