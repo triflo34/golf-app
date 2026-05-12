@@ -19,6 +19,7 @@ export default function AdminPage() {
   const [guests, setGuests] = useState<AdminGuestSummary[] | null>(null);
   const [users, setUsers] = useState<UserAccount[] | null>(null);
   const [active, setActive] = useState<AdminGuestSummary | null>(null);
+  const [mergeSource, setMergeSource] = useState<AdminGuestSummary | null>(null);
   const [resetUser, setResetUser] = useState<UserAccount | null>(null);
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
 
@@ -113,12 +114,20 @@ export default function AdminPage() {
                     {g.rounds_played} rounds · {g.scores} scores
                   </div>
                 </div>
-                <button
-                  onClick={() => setActive(g)}
-                  className="text-sm font-medium text-green-700 px-3 py-1.5 rounded-lg bg-green-50 hover:bg-green-100"
-                >
-                  Promote
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setMergeSource(g)}
+                    className="text-sm font-medium text-gray-700 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200"
+                  >
+                    Merge
+                  </button>
+                  <button
+                    onClick={() => setActive(g)}
+                    className="text-sm font-medium text-green-700 px-3 py-1.5 rounded-lg bg-green-50 hover:bg-green-100"
+                  >
+                    Promote
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -131,6 +140,18 @@ export default function AdminPage() {
           onClose={() => setActive(null)}
           onDone={() => {
             setActive(null);
+            reload();
+          }}
+        />
+      )}
+
+      {mergeSource && guests && (
+        <MergeModal
+          source={mergeSource}
+          allGuests={guests}
+          onClose={() => setMergeSource(null)}
+          onDone={() => {
+            setMergeSource(null);
             reload();
           }}
         />
@@ -200,6 +221,131 @@ export default function AdminPage() {
           onDone={() => setResetUser(null)}
         />
       )}
+    </div>
+  );
+}
+
+function MergeModal({
+  source,
+  allGuests,
+  onClose,
+  onDone,
+}: {
+  source: AdminGuestSummary;
+  allGuests: AdminGuestSummary[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [target, setTarget] = useState("");
+  const [error, setError] = useState("");
+  const [conflicts, setConflicts] = useState<
+    { round_id: number; played_at: string; course_name: string }[] | null
+  >(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const candidates = allGuests.filter(
+    (g) => g.name.toLowerCase() !== source.name.toLowerCase(),
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setConflicts(null);
+    if (!target) {
+      setError("Pick a guest to merge into");
+      return;
+    }
+    setSubmitting(true);
+    const res = await fetch("/api/admin/merge-guests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: source.name, target }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error ?? "Failed");
+      if (Array.isArray(data.conflicts)) setConflicts(data.conflicts);
+      setSubmitting(false);
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm">
+        <h3 className="text-lg font-bold text-gray-800">
+          Merge &quot;{source.name}&quot; into…
+        </h3>
+        <p className="text-xs text-gray-500 mb-3">
+          All {source.scores} scores under &quot;{source.name}&quot; will be re-tagged with the target guest&apos;s name.
+        </p>
+
+        {error && (
+          <div className="mb-3 bg-red-50 text-red-600 text-sm p-2.5 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {conflicts && conflicts.length > 0 && (
+          <div className="mb-3 bg-amber-50 text-amber-700 text-xs p-2.5 rounded-lg">
+            <div className="font-semibold mb-1">Rounds with both guests:</div>
+            <ul className="list-disc list-inside space-y-0.5">
+              {conflicts.map((c) => (
+                <li key={c.round_id}>
+                  {c.course_name} — {c.played_at}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2">
+              Fix each by removing one of the duplicate scores in the round before merging.
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Target guest</label>
+            {candidates.length === 0 ? (
+              <div className="text-sm text-gray-400">
+                No other guests to merge into.
+              </div>
+            ) : (
+              <select
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                required
+              >
+                <option value="">Pick a guest…</option>
+                {candidates.map((g) => (
+                  <option key={g.name} value={g.name}>
+                    {g.name} ({g.scores} scores)
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="flex-1 py-2 bg-white text-gray-600 border border-gray-200 font-medium rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || candidates.length === 0}
+              className="flex-1 py-2 bg-green-700 text-white font-medium rounded-lg disabled:opacity-50"
+            >
+              {submitting ? "..." : "Merge"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

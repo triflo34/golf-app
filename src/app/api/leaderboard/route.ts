@@ -31,8 +31,59 @@ export async function GET(request: Request) {
   if (!Number.isInteger(season) || season < 2000 || season > 2100) {
     return NextResponse.json({ error: "Invalid season" }, { status: 400 });
   }
+  const scope = url.searchParams.get("scope") === "all" ? "all" : "mine";
   const start = `${season}-01-01`;
   const end = `${season}-12-31`;
+
+  // For scope=mine, find every round id where the current user has a score,
+  // then only keep score rows from those rounds. Guarantees the board only
+  // includes people the user has actually played with.
+  let allowedKeys: Set<string> | null = null;
+  if (scope === "mine") {
+    const myRoundRows = await db
+      .prepare(
+        `SELECT DISTINCT s.round_id
+         FROM scores s
+         JOIN rounds r ON r.id = s.round_id
+         WHERE s.player_id = ? AND r.played_at >= ? AND r.played_at <= ?`,
+      )
+      .all<{ round_id: number }>(me.id, start, end);
+    if (myRoundRows.length === 0) {
+      // No rounds for the current user in this season — return just them.
+      return NextResponse.json({
+        season,
+        scope,
+        leaderboard: [
+          {
+            key: `u:${me.id}`,
+            name: me.display_name,
+            is_guest: false,
+            user_id: me.id,
+            rounds_played: 0,
+            avg_score: 0,
+            best_score: 0,
+            wins: 0,
+          },
+        ],
+      });
+    }
+    const myRoundIds = myRoundRows.map((r) => r.round_id);
+    const placeholders = myRoundIds.map(() => "?").join(",");
+    const circleRows = await db
+      .prepare(
+        `SELECT DISTINCT player_id, guest_name
+         FROM scores
+         WHERE round_id IN (${placeholders})`,
+      )
+      .all<{ player_id: string | null; guest_name: string | null }>(...myRoundIds);
+    allowedKeys = new Set(
+      circleRows.map((r) =>
+        r.player_id ? `u:${r.player_id}` : `g:${(r.guest_name ?? "").toLowerCase()}`,
+      ),
+    );
+    // Make sure the current user always appears, even if their season just started.
+    allowedKeys.add(`u:${me.id}`);
+  }
 
   const rows = await db
     .prepare(
@@ -60,6 +111,7 @@ export async function GET(request: Request) {
 
   for (const row of rows) {
     const key = row.player_id ? `u:${row.player_id}` : `g:${(row.guest_name ?? "").toLowerCase()}`;
+    if (allowedKeys && !allowedKeys.has(key)) continue;
     const name = row.player_id ? row.display_name ?? "?" : row.guest_name ?? "?";
 
     let b = buckets.get(key);
@@ -94,6 +146,7 @@ export async function GET(request: Request) {
 
   const result: LeaderboardRow[] = [];
   for (const b of buckets.values()) {
+    if (b.scores.length === 0) continue;
     const sum = b.scores.reduce((a, c) => a + c, 0);
     result.push({
       key: b.key,
@@ -108,5 +161,5 @@ export async function GET(request: Request) {
   }
   result.sort((a, b) => a.avg_score - b.avg_score);
 
-  return NextResponse.json({ season, leaderboard: result });
+  return NextResponse.json({ season, scope, leaderboard: result });
 }

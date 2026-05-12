@@ -5,8 +5,9 @@ import Link from "next/link";
 import { PlayerPicker } from "@/components/player-picker";
 import type { H2HResult } from "@/app/api/h2h/route";
 import type { PlayerStats } from "@/app/api/player/route";
+import type { FunStats } from "@/app/api/stats/fun/route";
 
-type Tab = "h2h" | "player";
+type Tab = "h2h" | "player" | "fun";
 
 export default function StatsPage() {
   const [tab, setTab] = useState<Tab>("h2h");
@@ -25,7 +26,7 @@ export default function StatsPage() {
               : "bg-white text-gray-600 border border-gray-200"
           }`}
         >
-          Head-to-Head
+          H2H
         </button>
         <button
           onClick={() => setTab("player")}
@@ -37,14 +38,127 @@ export default function StatsPage() {
         >
           Player
         </button>
+        <button
+          onClick={() => setTab("fun")}
+          className={`flex-1 py-2 rounded-lg font-medium text-sm transition ${
+            tab === "fun"
+              ? "bg-green-700 text-white"
+              : "bg-white text-gray-600 border border-gray-200"
+          }`}
+        >
+          Highlights
+        </button>
       </div>
 
       <SeasonFilter season={season} onChange={setSeason} />
 
       {tab === "h2h" ? (
         <H2HTab season={season} />
-      ) : (
+      ) : tab === "player" ? (
         <PlayerTab season={season} />
+      ) : (
+        <FunTab season={season} />
+      )}
+    </div>
+  );
+}
+
+function FunTab({ season }: { season: number | "all" }) {
+  const [data, setData] = useState<FunStats | null>(null);
+
+  useEffect(() => {
+    setData(null);
+    fetch(`/api/stats/fun?${season === "all" ? "" : `season=${season}`}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((d) => setData(d));
+  }, [season]);
+
+  if (!data) {
+    return <div className="card text-center py-8 text-gray-400">Loading...</div>;
+  }
+
+  const noData =
+    !data.lowest_round && !data.biggest_blowout && !data.most_played_pair;
+  if (noData) {
+    return (
+      <div className="card text-center py-8 text-gray-400 text-sm">
+        Not enough rounds logged yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {data.lowest_round && (
+        <Link
+          href={`/rounds/${data.lowest_round.round_id}`}
+          className="card block hover:bg-green-50 transition"
+        >
+          <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+            Lowest round
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <div className="text-3xl font-bold text-green-700">
+              {data.lowest_round.gross_score}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-gray-800 truncate flex items-center gap-1.5">
+                {data.lowest_round.name}
+                {data.lowest_round.is_guest && (
+                  <span className="text-[10px] font-semibold text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded">
+                    guest
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 truncate">
+                {data.lowest_round.course_name} · {formatDate(data.lowest_round.played_at)}
+              </div>
+            </div>
+          </div>
+        </Link>
+      )}
+
+      {data.biggest_blowout && (
+        <Link
+          href={`/rounds/${data.biggest_blowout.round_id}`}
+          className="card block hover:bg-green-50 transition"
+        >
+          <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+            Biggest blowout
+          </div>
+          <div className="mt-1">
+            <div className="text-3xl font-bold text-green-700">
+              {data.biggest_blowout.margin} strokes
+            </div>
+            <div className="text-sm text-gray-700 mt-1">
+              <span className="font-semibold">{data.biggest_blowout.winner_name}</span>{" "}
+              ({data.biggest_blowout.winner_score}) over{" "}
+              <span className="font-semibold">{data.biggest_blowout.runner_up_name}</span>{" "}
+              ({data.biggest_blowout.runner_up_score})
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {data.biggest_blowout.course_name} · {formatDate(data.biggest_blowout.played_at)}
+            </div>
+          </div>
+        </Link>
+      )}
+
+      {data.most_played_pair && (
+        <div className="card">
+          <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+            Most rounds together
+          </div>
+          <div className="mt-1">
+            <div className="text-lg font-bold text-gray-800">
+              {data.most_played_pair.a_name} &amp; {data.most_played_pair.b_name}
+            </div>
+            <div className="text-sm text-green-700 font-semibold">
+              {data.most_played_pair.rounds_together} rounds
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

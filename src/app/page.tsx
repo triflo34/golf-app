@@ -9,12 +9,15 @@ import type { RoundListItem } from "@/app/api/rounds/list/route";
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
   const [season, setSeason] = useState(new Date().getFullYear());
+  const [scope, setScope] = useState<"mine" | "all">("mine");
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [recent, setRecent] = useState<RoundListItem[] | null>(null);
 
-  const loadBoard = useCallback(async (s: number) => {
+  const loadBoard = useCallback(async (s: number, sc: "mine" | "all") => {
     setRows(null);
-    const res = await fetch(`/api/leaderboard?season=${s}`, { cache: "no-store" });
+    const res = await fetch(`/api/leaderboard?season=${s}&scope=${sc}`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     setRows(data.leaderboard ?? []);
   }, []);
@@ -27,10 +30,10 @@ export default function HomePage() {
 
   useEffect(() => {
     if (user) {
-      loadBoard(season);
+      loadBoard(season, scope);
       loadRecent();
     }
-  }, [user, season, loadBoard, loadRecent]);
+  }, [user, season, scope, loadBoard, loadRecent]);
 
   if (authLoading || !user) {
     return (
@@ -69,18 +72,42 @@ export default function HomePage() {
       </div>
 
       <div className="card mb-6">
-        <h2 className="text-lg font-bold text-gray-800 mb-3">Season Leaderboard</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold text-gray-800">Season Leaderboard</h2>
+          <div className="flex bg-gray-100 rounded-lg p-0.5 text-xs font-medium">
+            <button
+              onClick={() => setScope("mine")}
+              className={`px-2.5 py-1 rounded transition ${
+                scope === "mine" ? "bg-white text-green-700 shadow-sm" : "text-gray-500"
+              }`}
+            >
+              My circle
+            </button>
+            <button
+              onClick={() => setScope("all")}
+              className={`px-2.5 py-1 rounded transition ${
+                scope === "all" ? "bg-white text-green-700 shadow-sm" : "text-gray-500"
+              }`}
+            >
+              Everyone
+            </button>
+          </div>
+        </div>
 
         {rows === null ? (
           <div className="text-center py-8 text-gray-400">Loading...</div>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 || (rows.length === 1 && rows[0].rounds_played === 0) ? (
           <div className="text-center py-8 text-gray-400">
-            <p>No rounds logged yet this season.</p>
+            <p>
+              {scope === "mine"
+                ? "You haven't played a round this season yet."
+                : "No rounds logged yet this season."}
+            </p>
             <Link
               href="/rounds/new"
               className="inline-block mt-3 text-sm font-medium text-green-700 hover:underline"
             >
-              Log the first one →
+              Log a round →
             </Link>
           </div>
         ) : (

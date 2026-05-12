@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -b /tmp/cookies.txt -X POST http://localhost:3000/api/rounds -H \"Content-Type: application/json\" -d \"{\\\\\"course_id\\\\\":20,\\\\\"played_at\\\\\":\\\\\"2026-05-13\\\\\",\\\\\"scores\\\\\":[{\\\\\"player_id\\\\\":\\\\\"103e3ad8-81f5-4529-b16e-758ddba2e23e\\\\\",\\\\\"gross_score\\\\\":80},{\\\\\"guest_name\\\\\":\\\\\"Mike\\\\\",\\\\\"gross_score\\\\\":92}]}\")",
+      "Bash(curl -s -b /tmp/cookies.txt -X POST http://localhost:3000/api/admin/merge-guests -H \"Content-Type: application/json\" -d '{\"source\":\"mikeJ\",\"target\":\"Mike\"}')",
+      "Bash(curl -s -b /tmp/cookies.txt http://localhost:3000/api/players)"
+    ]
+  }
+}
