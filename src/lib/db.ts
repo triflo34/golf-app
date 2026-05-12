@@ -104,6 +104,9 @@ async function bootstrap(): Promise<void> {
 const BOOTSTRAP_TIMEOUT_MS = 8000;
 
 function ensureInit(): Promise<void> {
+  if (process.env.SKIP_DB_BOOTSTRAP === "1") {
+    return Promise.resolve();
+  }
   if (!globalForDb.__initPromise) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
