@@ -1,18 +1,14 @@
 # Upcoming Features
 
-## 1. Navigation Stability Fix (HIGH PRIORITY)
-Problem: App crashes when navigating between tabs.
+## 1. Navigation Stability Fix — RESOLVED (2026-05-12)
+Root cause: Postgres pool wedging — `max: 1` connection + caching of a hung bootstrap promise. Cookie self-destruct in `/api/me` made the loop visible as a redirect bounce.
 
-Goals:
-- Identify root cause (frontend state, routing, or database calls)
-- Prevent crashes during tab switching
-- Ensure data fetching does not duplicate or conflict
-- Stabilize app flow across navigation
-
-Unknowns to investigate:
-- Possible DB connection issues
-- React state or routing lifecycle bugs
-- Overfetching or invalid queries on tab change
+Fixes applied:
+- Removed cookie self-destruct in `/api/me`
+- Added timeout + retry to DB `ensureInit()`
+- `SKIP_DB_BOOTSTRAP=1` env flag in Vercel Production (bypasses schema/seed)
+- Pool bumped `max: 1` → `max: 10`, removed `idle_timeout`
+- 8s timeout on all queries via `withTimeout` helper
 
 ---
 

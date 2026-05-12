@@ -8,7 +8,10 @@ type ScoreJoin = {
   guest_name: string | null;
   display_name: string | null;
   gross_score: number;
+  played_at: string;
 };
+
+export type SeriesPoint = { played_at: string; gross_score: number };
 
 export type LeaderboardRow = {
   key: string;
@@ -19,6 +22,7 @@ export type LeaderboardRow = {
   avg_score: number;
   best_score: number;
   wins: number;
+  series: SeriesPoint[];
 };
 
 export async function GET(request: Request) {
@@ -63,6 +67,7 @@ export async function GET(request: Request) {
             avg_score: 0,
             best_score: 0,
             wins: 0,
+            series: [],
           },
         ],
       });
@@ -87,7 +92,7 @@ export async function GET(request: Request) {
 
   const rows = await db
     .prepare(
-      `SELECT s.round_id, s.player_id, s.guest_name, u.display_name, s.gross_score
+      `SELECT s.round_id, s.player_id, s.guest_name, u.display_name, s.gross_score, r.played_at
        FROM scores s
        JOIN rounds r ON r.id = s.round_id
        LEFT JOIN users u ON u.id = s.player_id
@@ -104,6 +109,7 @@ export async function GET(request: Request) {
     scores: number[];
     roundIds: Set<number>;
     wins: number;
+    series: SeriesPoint[];
   };
 
   const buckets = new Map<string, Bucket>();
@@ -124,11 +130,13 @@ export async function GET(request: Request) {
         scores: [],
         roundIds: new Set(),
         wins: 0,
+        series: [],
       };
       buckets.set(key, b);
     }
     b.scores.push(row.gross_score);
     b.roundIds.add(row.round_id);
+    b.series.push({ played_at: row.played_at, gross_score: row.gross_score });
 
     if (!roundScores.has(row.round_id)) roundScores.set(row.round_id, []);
     roundScores.get(row.round_id)!.push({ key, gross: row.gross_score });
@@ -157,6 +165,7 @@ export async function GET(request: Request) {
       avg_score: Math.round((sum / b.scores.length) * 10) / 10,
       best_score: Math.min(...b.scores),
       wins: b.wins,
+      series: [...b.series].sort((a, c) => a.played_at.localeCompare(c.played_at)),
     });
   }
   result.sort((a, b) => a.avg_score - b.avg_score);

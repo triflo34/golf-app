@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { ScoreTrendChart } from "@/components/score-trend-chart";
 import type { LeaderboardRow } from "@/app/api/leaderboard/route";
 import type { RoundListItem } from "@/app/api/rounds/list/route";
 
@@ -164,6 +165,13 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      {rows && rows.some((r) => r.series.length > 0) && (
+        <div className="card mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-3">Score Trends</h2>
+          <ScoreTrendChart rows={rows} />
+        </div>
+      )}
 
       <div className="card">
         <h2 className="text-lg font-bold text-gray-800 mb-3">Recent Rounds</h2>
