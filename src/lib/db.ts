@@ -88,11 +88,17 @@ export async function withTransaction<T>(
 // ---- Schema + seed bootstrap (lazy, runs once per process) ----
 
 async function bootstrap(): Promise<void> {
+  console.log("[db] bootstrap: getSql");
   const sql = getSql();
+  console.log("[db] bootstrap: schema");
   await sql.unsafe(SCHEMA_SQL);
+  console.log("[db] bootstrap: ensureHiddenColumn");
   await ensureHiddenColumn(sql);
+  console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
+  console.log("[db] bootstrap: seedCourses");
   await seedCourses(sql);
+  console.log("[db] bootstrap: done");
 }
 
 const BOOTSTRAP_TIMEOUT_MS = 8000;
