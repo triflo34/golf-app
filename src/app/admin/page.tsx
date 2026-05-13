@@ -272,8 +272,9 @@ function MergeModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm">
+    <div className="fixed inset-0 bg-black/40 z-50 overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm my-4">
         <h3 className="text-lg font-bold text-gray-800">
           Merge &quot;{source.name}&quot; into…
         </h3>
@@ -345,6 +346,7 @@ function MergeModal({
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );
@@ -391,8 +393,9 @@ function PromoteModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm">
+    <div className="fixed inset-0 bg-black/40 z-50 overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm my-4">
         <h3 className="text-lg font-bold text-gray-800">
           Promote &quot;{guest.name}&quot;
         </h3>
@@ -461,6 +464,7 @@ function PromoteModal({
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );
@@ -507,8 +511,9 @@ function ResetPasswordModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm">
+    <div className="fixed inset-0 bg-black/40 z-50 overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm my-4">
         <h3 className="text-lg font-bold text-gray-800">
           Reset password for {user.display_name}
         </h3>
@@ -563,6 +568,7 @@ function ResetPasswordModal({
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

@@ -259,7 +259,11 @@ export async function GET(request: Request) {
       series: [...b.series].sort((a, c) => a.played_at.localeCompare(c.played_at)),
     });
   }
-  result.sort((a, b) => a.avg_score - b.avg_score);
+  result.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (a.avg_score !== b.avg_score) return a.avg_score - b.avg_score;
+    return a.best_score - b.best_score;
+  });
 
   return NextResponse.json({ season, scope, holes, leaderboard: result });
 }
