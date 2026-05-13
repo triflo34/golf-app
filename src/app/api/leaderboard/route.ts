@@ -12,7 +12,12 @@ type ScoreJoin = {
   hole_count: number;
 };
 
-export type SeriesPoint = { played_at: string; gross_score: number };
+export type SeriesPoint = {
+  played_at: string;
+  gross_score: number;
+  points: number | null;
+  rank: number | null;
+};
 
 export type LeaderboardRow = {
   key: string;
@@ -149,7 +154,10 @@ export async function GET(request: Request) {
   };
 
   const buckets = new Map<string, Bucket>();
-  const roundScores = new Map<number, Array<{ key: string; gross: number }>>();
+  const roundScores = new Map<
+    number,
+    { played_at: string; entries: Array<{ key: string; gross: number }> }
+  >();
 
   for (const row of rows) {
     const key = row.player_id ? `u:${row.player_id}` : `g:${(row.guest_name ?? "").toLowerCase()}`;
@@ -181,17 +189,34 @@ export async function GET(request: Request) {
     }
     b.scores.push(row.gross_score);
     b.roundIds.add(row.round_id);
-    b.series.push({ played_at: row.played_at, gross_score: row.gross_score });
 
-    if (!roundScores.has(row.round_id)) roundScores.set(row.round_id, []);
-    roundScores.get(row.round_id)!.push({ key, gross: row.gross_score });
+    let rs = roundScores.get(row.round_id);
+    if (!rs) {
+      rs = { played_at: row.played_at, entries: [] };
+      roundScores.set(row.round_id, rs);
+    }
+    rs.entries.push({ key, gross: row.gross_score });
   }
 
   // Placement: competition ranking (ties share lowest rank, next rank skipped).
-  // Linear points: rank r in field of N → points = N - r + 1. Solo rounds (N<2) skipped.
-  for (const [, players] of roundScores) {
-    if (players.length < 2) continue;
-    const sorted = [...players].sort((a, c) => a.gross - c.gross);
+  // Linear points: rank r in field of N → points = N - r + 1. Solo rounds (N<2) get series entries with null rank/points and are skipped for aggregation.
+  for (const [, round] of roundScores) {
+    if (round.entries.length < 2) {
+      // Solo round — still attach a series entry so the chart can show the score.
+      for (const e of round.entries) {
+        const b = buckets.get(e.key);
+        if (b) {
+          b.series.push({
+            played_at: round.played_at,
+            gross_score: e.gross,
+            points: null,
+            rank: null,
+          });
+        }
+      }
+      continue;
+    }
+    const sorted = [...round.entries].sort((a, c) => a.gross - c.gross);
     const N = sorted.length;
     // Assign ranks.
     const ranks: number[] = [];
@@ -210,6 +235,12 @@ export async function GET(request: Request) {
       const points = N - r + 1;
       const b = buckets.get(sorted[i].key);
       if (!b) continue;
+      b.series.push({
+        played_at: round.played_at,
+        gross_score: sorted[i].gross,
+        points,
+        rank: r,
+      });
       b.points += points;
       if (r === 1) {
         b.firsts += 1;
