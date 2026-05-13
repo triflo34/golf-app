@@ -22,6 +22,8 @@ export default function AdminPage() {
   const [mergeSource, setMergeSource] = useState<AdminGuestSummary | null>(null);
   const [resetUser, setResetUser] = useState<UserAccount | null>(null);
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const res = await fetch("/api/admin/guests", { cache: "no-store" });
@@ -40,6 +42,46 @@ export default function AdminPage() {
       setUsers([]);
     }
   }, [router]);
+
+  async function backfillWeather() {
+    setBackfilling(true);
+    setBackfillMsg(null);
+    try {
+      let totalProcessed = 0;
+      let totalSucceeded = 0;
+      let totalFailed = 0;
+      for (;;) {
+        const res = await fetch("/api/admin/backfill-weather?limit=25", {
+          method: "POST",
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setBackfillMsg(`Failed: ${d.error ?? res.status}`);
+          break;
+        }
+        const data = (await res.json()) as {
+          processed: number;
+          succeeded: number;
+          failed: number;
+          remaining: number;
+        };
+        totalProcessed += data.processed;
+        totalSucceeded += data.succeeded;
+        totalFailed += data.failed;
+        setBackfillMsg(
+          `${totalSucceeded} succeeded · ${totalFailed} failed · ${data.remaining} remaining…`,
+        );
+        if (data.processed === 0 || data.remaining === 0) {
+          setBackfillMsg(
+            `Done — ${totalSucceeded} succeeded, ${totalFailed} failed (${totalProcessed} rounds processed).`,
+          );
+          break;
+        }
+      }
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   async function toggleHidden(userId: string, hidden: boolean) {
     setTogglingUserId(userId);
@@ -221,6 +263,24 @@ export default function AdminPage() {
           onDone={() => setResetUser(null)}
         />
       )}
+
+      <div className="card mt-6">
+        <h2 className="font-semibold text-gray-800 mb-2 text-sm">Maintenance</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Fill in weather data for existing rounds that don&apos;t have it yet.
+          Runs in batches of 25, ~1.1s per round (Nominatim rate limit).
+        </p>
+        <button
+          onClick={backfillWeather}
+          disabled={backfilling}
+          className="text-sm font-medium text-green-700 px-3 py-1.5 rounded-lg bg-green-50 hover:bg-green-100 disabled:opacity-50"
+        >
+          {backfilling ? "Backfilling…" : "Backfill weather"}
+        </button>
+        {backfillMsg && (
+          <div className="mt-2 text-xs text-gray-600">{backfillMsg}</div>
+        )}
+      </div>
     </div>
   );
 }

@@ -11,7 +11,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { LeaderboardRow } from "@/app/api/leaderboard/route";
+import type { LeaderboardRow, SeriesPoint } from "@/app/api/leaderboard/route";
+import { wmoLabel } from "@/lib/weather-labels";
 
 const COLORS = [
   "#16a34a",
@@ -41,19 +42,20 @@ export function ScoreTrendChart({ rows }: Props) {
     return p.rank;
   };
 
-  const dateMap = new Map<string, Record<string, number | string | null>>();
+  type ChartRow = Record<string, unknown> & { played_at: string; _weather?: SeriesPoint };
+  const dateMap = new Map<string, ChartRow>();
   for (const p of players) {
     for (const point of p.series) {
       let row = dateMap.get(point.played_at);
       if (!row) {
-        row = { played_at: point.played_at };
+        row = { played_at: point.played_at, _weather: point };
         dateMap.set(point.played_at, row);
       }
       row[p.key] = fieldFor(point);
     }
   }
   const data = Array.from(dateMap.values()).sort((a, b) =>
-    (a.played_at as string).localeCompare(b.played_at as string),
+    a.played_at.localeCompare(b.played_at),
   );
 
   const formatDate = (s: string) =>
@@ -108,12 +110,7 @@ export function ScoreTrendChart({ rows }: Props) {
             reversed={yReversed}
             allowDecimals={yAllowDecimals}
           />
-          <Tooltip
-            labelFormatter={(label) =>
-              typeof label === "string" ? formatDate(label) : ""
-            }
-            contentStyle={{ fontSize: 12, borderRadius: 8 }}
-          />
+          <Tooltip content={<WeatherTooltip metric={metric} />} />
           <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
           {players.map((p, i) => (
             <Line
@@ -128,6 +125,72 @@ export function ScoreTrendChart({ rows }: Props) {
           ))}
         </LineChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+type TooltipPayloadItem = {
+  name?: string | number;
+  value?: number | string | null;
+  color?: string;
+  payload?: { _weather?: SeriesPoint };
+};
+
+function WeatherTooltip({
+  active,
+  payload,
+  label,
+  metric,
+}: {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string | number;
+  metric: Metric;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const weather = payload[0]?.payload?._weather;
+  const dateLabel =
+    typeof label === "string"
+      ? new Date(label + "T00:00:00").toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        })
+      : "";
+  const suffix = metric === "points" ? " pts" : metric === "placement" ? "" : "";
+  const prefix = metric === "placement" ? "#" : "";
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-md px-2.5 py-2 text-xs">
+      <div className="font-semibold text-gray-800 mb-1">{dateLabel}</div>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <span
+            className="inline-block w-2 h-2 rounded-full"
+            style={{ backgroundColor: p.color }}
+          />
+          <span className="text-gray-600">{p.name}:</span>
+          <span className="font-medium text-gray-800">
+            {p.value == null ? "—" : `${prefix}${p.value}${suffix}`}
+          </span>
+        </div>
+      ))}
+      {weather && weather.weather_code != null && (
+        <div className="mt-1.5 pt-1.5 border-t border-gray-100 text-gray-600">
+          <div className="font-medium text-gray-700">{wmoLabel(weather.weather_code)}</div>
+          <div className="text-[11px] flex flex-wrap gap-x-2">
+            {weather.temp_high_f != null && weather.temp_low_f != null && (
+              <span>
+                {Math.round(weather.temp_high_f)}° / {Math.round(weather.temp_low_f)}°
+              </span>
+            )}
+            {weather.wind_max_mph != null && (
+              <span>{Math.round(weather.wind_max_mph)} mph</span>
+            )}
+            {weather.precip_in != null && weather.precip_in > 0 && (
+              <span>{weather.precip_in.toFixed(2)}&quot; rain</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

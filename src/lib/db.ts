@@ -123,6 +123,10 @@ async function bootstrap(): Promise<void> {
   await ensureHiddenColumn(sql);
   console.log("[db] bootstrap: ensureHoleCountColumn");
   await ensureHoleCountColumn(sql);
+  console.log("[db] bootstrap: ensureCourseGeoColumns");
+  await ensureCourseGeoColumns(sql);
+  console.log("[db] bootstrap: ensureRoundWeatherColumns");
+  await ensureRoundWeatherColumns(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -244,6 +248,24 @@ async function ensureHoleCountColumn(sql: postgres.Sql): Promise<void> {
           ADD CONSTRAINT rounds_hole_count_check CHECK (hole_count IN (9, 18));
       END IF;
     END$$;
+  `);
+}
+
+async function ensureCourseGeoColumns(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS latitude  DOUBLE PRECISION;
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+  `);
+}
+
+async function ensureRoundWeatherColumns(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE rounds ADD COLUMN IF NOT EXISTS temp_high_f       REAL;
+    ALTER TABLE rounds ADD COLUMN IF NOT EXISTS temp_low_f        REAL;
+    ALTER TABLE rounds ADD COLUMN IF NOT EXISTS wind_max_mph      REAL;
+    ALTER TABLE rounds ADD COLUMN IF NOT EXISTS precip_in         REAL;
+    ALTER TABLE rounds ADD COLUMN IF NOT EXISTS weather_code      SMALLINT;
+    ALTER TABLE rounds ADD COLUMN IF NOT EXISTS weather_fetched_at TIMESTAMPTZ;
   `);
 }
 

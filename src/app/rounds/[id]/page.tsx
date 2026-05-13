@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import type { RoundDetail } from "@/app/api/rounds/[id]/route";
+import type { RoundDetail, RoundWeatherSummary } from "@/app/api/rounds/[id]/route";
+import { wmoLabel } from "@/lib/weather-labels";
 
 export default function RoundPage() {
   const params = useParams<{ id: string }>();
@@ -101,6 +102,7 @@ export default function RoundPage() {
             {data.notes}
           </div>
         )}
+        {data.weather && <WeatherStrip weather={data.weather} />}
       </div>
 
       <div className="card mb-4">
@@ -192,4 +194,32 @@ function formatLongDate(s: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function WeatherStrip({ weather }: { weather: RoundWeatherSummary }) {
+  const hi = weather.temp_high_f;
+  const lo = weather.temp_low_f;
+  const wind = weather.wind_max_mph;
+  const precip = weather.precip_in;
+  const label = wmoLabel(weather.weather_code);
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 bg-blue-50/60 rounded-lg px-3 py-2">
+      <span className="font-medium text-gray-800">{label}</span>
+      {hi != null && lo != null && (
+        <span>
+          <span className="text-gray-400">Hi/Lo</span> {Math.round(hi)}° / {Math.round(lo)}°
+        </span>
+      )}
+      {wind != null && (
+        <span>
+          <span className="text-gray-400">Wind</span> {Math.round(wind)} mph
+        </span>
+      )}
+      {precip != null && precip > 0 && (
+        <span>
+          <span className="text-gray-400">Precip</span> {precip.toFixed(2)}&quot;
+        </span>
+      )}
+    </div>
+  );
 }

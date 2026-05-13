@@ -12,7 +12,7 @@ Fixes applied:
 
 ---
 
-## 2. Leaderboard Graphs
+## 2. Leaderboard Graphs — COMPLETED (2026-05-12)
 Add visual graphs for leaderboard performance.
 
 Requirements:
@@ -23,7 +23,7 @@ Requirements:
 
 ---
 
-## 3. 9 Hole Round Support
+## 3. 9 Hole Round Support — COMPLETED (2026-05-12)
 Add ability to track 9 hole rounds.
 
 Rules:
@@ -33,8 +33,9 @@ Rules:
 
 ---
 
-## 4. Leaderboard Rework (Fairness System)
+## 4. Leaderboard Rework (Fairness System) — ON HOLD
 Current issue: groups that play more dominate unfairly.
+Status: deferred — user wants to decide on approach before implementation.
 
 Goals:
 - Normalize leaderboard fairness across group sizes
@@ -49,14 +50,15 @@ Possible approaches:
 - adjusted leaderboard by participation
 
 ---
-## 5. Twosome Leaderboard
+## 5. Twosome Leaderboard — ON HOLD
 Add separate leaderboard support for recurring 2 player groups.
+Status: deferred — 9-hole leaderboard toggle already exists; revisit if/when #4 is decided.
 
 Goal:
 - prevent smaller groups from distorting global standings
 - allow fair competition tracking by group type
 
-## 6. Placement System
+## 6. Placement System — COMPLETED (2026-05-12)
 Add ranking points for placements.
 
 Examples:
@@ -69,10 +71,16 @@ Goal:
 
 ---
 
-## 7. Weather Data Integration (LOW PRIORITY)
+## 7. Weather Data Integration — COMPLETED (2026-05-13)
 - Pull weather data for rounds
 - Store conditions with rounds
 - Optional display on round history
+
+Provider: Open-Meteo (archive for >5 days old, forecast w/ past_days for recent).
+Geocoder: Nominatim (OpenStreetMap), with 1.1s pacing + 429 retry.
+Save flow: `after()`-scheduled `populateRoundWeather` on POST and PUT (PUT only re-fetches when course_id or played_at changed).
+Backfill: `/api/admin/backfill-weather` (admin-gated, batched 25, looped from admin UI).
+UI: weather strip on round detail; custom tooltip on leaderboard Score Trends chart.
 
 ---
 

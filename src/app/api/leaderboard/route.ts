@@ -10,6 +10,11 @@ type ScoreJoin = {
   gross_score: number;
   played_at: string;
   hole_count: number;
+  temp_high_f: number | null;
+  temp_low_f: number | null;
+  wind_max_mph: number | null;
+  precip_in: number | null;
+  weather_code: number | null;
 };
 
 export type SeriesPoint = {
@@ -17,6 +22,11 @@ export type SeriesPoint = {
   gross_score: number;
   points: number | null;
   rank: number | null;
+  temp_high_f: number | null;
+  temp_low_f: number | null;
+  wind_max_mph: number | null;
+  precip_in: number | null;
+  weather_code: number | null;
 };
 
 export type LeaderboardRow = {
@@ -123,7 +133,9 @@ export async function GET(request: Request) {
 
   const rows = await db
     .prepare(
-      `SELECT s.round_id, s.player_id, s.guest_name, u.display_name, s.gross_score, r.played_at, r.hole_count
+      `SELECT s.round_id, s.player_id, s.guest_name, u.display_name, s.gross_score,
+              r.played_at, r.hole_count,
+              r.temp_high_f, r.temp_low_f, r.wind_max_mph, r.precip_in, r.weather_code
        FROM scores s
        JOIN rounds r ON r.id = s.round_id
        LEFT JOIN users u ON u.id = s.player_id
@@ -153,10 +165,21 @@ export async function GET(request: Request) {
     series: SeriesPoint[];
   };
 
+  type RoundWeatherFields = {
+    temp_high_f: number | null;
+    temp_low_f: number | null;
+    wind_max_mph: number | null;
+    precip_in: number | null;
+    weather_code: number | null;
+  };
   const buckets = new Map<string, Bucket>();
   const roundScores = new Map<
     number,
-    { played_at: string; entries: Array<{ key: string; gross: number }> }
+    {
+      played_at: string;
+      weather: RoundWeatherFields;
+      entries: Array<{ key: string; gross: number }>;
+    }
   >();
 
   for (const row of rows) {
@@ -192,7 +215,17 @@ export async function GET(request: Request) {
 
     let rs = roundScores.get(row.round_id);
     if (!rs) {
-      rs = { played_at: row.played_at, entries: [] };
+      rs = {
+        played_at: row.played_at,
+        weather: {
+          temp_high_f: row.temp_high_f,
+          temp_low_f: row.temp_low_f,
+          wind_max_mph: row.wind_max_mph,
+          precip_in: row.precip_in,
+          weather_code: row.weather_code,
+        },
+        entries: [],
+      };
       roundScores.set(row.round_id, rs);
     }
     rs.entries.push({ key, gross: row.gross_score });
@@ -211,6 +244,7 @@ export async function GET(request: Request) {
             gross_score: e.gross,
             points: null,
             rank: null,
+            ...round.weather,
           });
         }
       }
@@ -240,6 +274,7 @@ export async function GET(request: Request) {
         gross_score: sorted[i].gross,
         points,
         rank: r,
+        ...round.weather,
       });
       b.points += points;
       if (r === 1) {

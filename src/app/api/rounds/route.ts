@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { populateRoundWeather } from "@/lib/weather";
 
 type ScoreInput = {
   player_id?: string | null;
@@ -133,6 +134,8 @@ export async function POST(request: Request) {
     }
     return rid;
   });
+
+  after(() => populateRoundWeather(roundId));
 
   return NextResponse.json({ round_id: roundId });
 }

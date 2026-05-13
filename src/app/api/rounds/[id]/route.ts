@@ -1,6 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { populateRoundWeather } from "@/lib/weather";
+
+export type RoundWeatherSummary = {
+  temp_high_f: number | null;
+  temp_low_f: number | null;
+  wind_max_mph: number | null;
+  precip_in: number | null;
+  weather_code: number | null;
+};
 
 export type RoundDetail = {
   id: number;
@@ -12,6 +21,7 @@ export type RoundDetail = {
   created_by: string;
   created_by_name: string;
   can_edit: boolean;
+  weather: RoundWeatherSummary | null;
   scores: {
     id: number;
     player_id: string | null;
@@ -39,6 +49,8 @@ async function loadRound(
   const round = await db
     .prepare(
       `SELECT r.id, r.course_id, r.played_at, r.notes, r.hole_count, r.created_by,
+              r.temp_high_f, r.temp_low_f, r.wind_max_mph, r.precip_in, r.weather_code,
+              r.weather_fetched_at,
               c.name as course_name, u.display_name as created_by_name
        FROM rounds r
        JOIN courses c ON c.id = r.course_id
@@ -52,10 +64,26 @@ async function loadRound(
       notes: string | null;
       hole_count: number;
       created_by: string;
+      temp_high_f: number | null;
+      temp_low_f: number | null;
+      wind_max_mph: number | null;
+      precip_in: number | null;
+      weather_code: number | null;
+      weather_fetched_at: string | null;
       course_name: string;
       created_by_name: string;
     }>(id);
   if (!round) return null;
+
+  const weather: RoundWeatherSummary | null = round.weather_fetched_at
+    ? {
+        temp_high_f: round.temp_high_f,
+        temp_low_f: round.temp_low_f,
+        wind_max_mph: round.wind_max_mph,
+        precip_in: round.precip_in,
+        weather_code: round.weather_code,
+      }
+    : null;
 
   const scoreRows = await db
     .prepare(
@@ -78,6 +106,7 @@ async function loadRound(
 
   return {
     ...round,
+    weather,
     can_edit: isAdmin || round.created_by === currentUserId,
     scores: scoreRows.map((s) => ({
       id: s.id,
@@ -170,8 +199,8 @@ export async function PUT(
   }
 
   const existing = await db
-    .prepare("SELECT created_by FROM rounds WHERE id = ?")
-    .get<{ created_by: string }>(id);
+    .prepare("SELECT created_by, course_id, played_at FROM rounds WHERE id = ?")
+    .get<{ created_by: string; course_id: number; played_at: string }>(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!me.is_admin && existing.created_by !== me.id) {
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
@@ -227,12 +256,25 @@ export async function PUT(
     }
   }
 
+  const weatherStale =
+    existing.course_id !== courseId || existing.played_at !== playedAt;
+
   await withTransaction(async (tx) => {
     await tx
       .prepare(
         `UPDATE rounds SET course_id = ?, played_at = ?, notes = ?, hole_count = ? WHERE id = ?`,
       )
       .run(courseId, playedAt, notes, holeCount, id);
+    if (weatherStale) {
+      await tx
+        .prepare(
+          `UPDATE rounds
+           SET temp_high_f = NULL, temp_low_f = NULL, wind_max_mph = NULL,
+               precip_in = NULL, weather_code = NULL, weather_fetched_at = NULL
+           WHERE id = ?`,
+        )
+        .run(id);
+    }
     await tx.prepare("DELETE FROM scores WHERE round_id = ?").run(id);
     for (const s of v.scores) {
       await tx
@@ -243,6 +285,10 @@ export async function PUT(
         .run(id, s.player_id ?? null, s.guest_name ?? null, s.gross_score, s.notes ?? null);
     }
   });
+
+  if (weatherStale) {
+    after(() => populateRoundWeather(id));
+  }
 
   return NextResponse.json({ ok: true });
 }
