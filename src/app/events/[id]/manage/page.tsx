@@ -1,0 +1,568 @@
+"use client";
+
+import Link from "next/link";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth-provider";
+import type { EventStatus, SideGame, SideGameKind, User } from "@/lib/types";
+
+type ScrambleTeamData = {
+  round_id: number | null;
+  teams: {
+    id: number;
+    name: string;
+    members: { user_id: string; display_name: string }[];
+  }[];
+};
+
+function ScrambleTeamsSection({
+  eventId,
+  players,
+  scrambleData,
+  disabled,
+  onSaved,
+}: {
+  eventId: number;
+  players: {
+    user_id: string;
+    role: "organizer" | "player";
+    group_num: number | null;
+    display_name: string;
+    username: string;
+  }[];
+  scrambleData: ScrambleTeamData | null;
+  disabled: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const initialAssignments = useMemo(() => {
+    const m: Record<string, number | null> = {};
+    if (!scrambleData) return m;
+    scrambleData.teams.forEach((t, idx) => {
+      for (const member of t.members) {
+        m[member.user_id] = idx + 1;
+      }
+    });
+    return m;
+  }, [scrambleData]);
+  const [assignments, setAssignments] = useState<Record<string, number | null>>(initialAssignments);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAssignments(initialAssignments);
+  }, [initialAssignments]);
+
+  if (!scrambleData) return null;
+  if (!scrambleData.round_id) {
+    return (
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Scramble teams</h2>
+        <div className="rounded-md bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-600">
+          Scramble round will be created when the event starts.
+        </div>
+      </section>
+    );
+  }
+
+  function setTeamNum(userId: string, value: string) {
+    const v = value === "" ? null : Number(value);
+    if (v != null && (!Number.isInteger(v) || v < 1 || v > 20)) return;
+    setAssignments((a) => ({ ...a, [userId]: v }));
+  }
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    try {
+      const byTeam = new Map<number, string[]>();
+      for (const p of players) {
+        const n = assignments[p.user_id];
+        if (n != null) {
+          if (!byTeam.has(n)) byTeam.set(n, []);
+          byTeam.get(n)!.push(p.user_id);
+        }
+      }
+      const teamsPayload = Array.from(byTeam.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([num, ids]) => ({ name: `Team ${num}`, member_ids: ids }));
+      const res = await fetch(`/api/events/${eventId}/scramble-teams`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teams: teamsPayload }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Save failed");
+      await onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-700 mb-2">Scramble teams (round 2)</h2>
+      {err && (
+        <div className="mb-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          {err}
+        </div>
+      )}
+      <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
+        {players.map((p) => (
+          <li key={p.user_id} className="px-3 py-2 flex items-center justify-between gap-2">
+            <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
+              {p.display_name}
+            </span>
+            <label className="text-xs text-gray-500 flex items-center gap-1">
+              Team
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={assignments[p.user_id] ?? ""}
+                onChange={(e) => setTeamNum(p.user_id, e.target.value)}
+                disabled={disabled}
+                className="w-14 rounded border border-gray-300 px-1 py-0.5 text-xs"
+              />
+            </label>
+          </li>
+        ))}
+      </ul>
+      {!disabled && (
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="mt-2 px-3 py-1.5 rounded-md bg-green-700 text-white text-sm font-medium disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save teams"}
+        </button>
+      )}
+    </section>
+  );
+}
+
+type EventDetail = {
+  id: number;
+  name: string;
+  course_id: number;
+  course_name: string;
+  start_date: string;
+  end_date: string;
+  entry_fee_cents: number;
+  description: string | null;
+  status: EventStatus;
+  exclude_from_leaderboard: boolean;
+  created_by: string;
+  created_at: string;
+};
+
+type Participant = {
+  user_id: string;
+  role: "organizer" | "player";
+  group_num: number | null;
+  display_name: string;
+  username: string;
+};
+
+const SIDE_GAME_LABELS: Record<SideGameKind, string> = {
+  poker: "Poker",
+  best18: "Best 18",
+  worst18: "Worst 18",
+  most_same: "Most Same Number (R1)",
+  scramble_winners: "3-Man Scramble Winners",
+};
+const ALL_KINDS: SideGameKind[] = ["poker", "best18", "worst18", "most_same", "scramble_winners"];
+
+export default function EventManagePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
+  const [event, setEvent] = useState<EventDetail | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [sideGames, setSideGames] = useState<SideGame[]>([]);
+  const [scrambleData, setScrambleData] = useState<{
+    round_id: number | null;
+    teams: { id: number; name: string; members: { user_id: string; display_name: string }[] }[];
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [picker, setPicker] = useState("");
+
+  const isOrganizer = useMemo(
+    () => Boolean(user) && participants.some((p) => p.user_id === user?.id && p.role === "organizer"),
+    [user, participants],
+  );
+
+  const players = useMemo(() => participants.filter((p) => p.role === "player"), [participants]);
+
+  const enabledKinds = useMemo(
+    () => new Set(sideGames.map((g) => g.kind)),
+    [sideGames],
+  );
+
+  const reload = useCallback(async () => {
+    setError(null);
+    const [detail, users, games, teams] = await Promise.all([
+      fetch(`/api/events/${id}`, { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/users", { cache: "no-store" }).then((r) => r.json()),
+      fetch(`/api/events/${id}/side-games`, { cache: "no-store" }).then((r) => r.json()),
+      fetch(`/api/events/${id}/scramble-teams`, { cache: "no-store" }).then((r) => r.json()),
+    ]);
+    if (detail.error) {
+      setError(detail.error);
+      return;
+    }
+    setEvent(detail.event);
+    setParticipants(detail.participants ?? []);
+    setAllUsers(users.users ?? []);
+    setSideGames(games.side_games ?? []);
+    setScrambleData({ round_id: teams.round_id ?? null, teams: teams.teams ?? [] });
+  }, [id]);
+
+  useEffect(() => {
+    if (user) reload();
+  }, [user, reload]);
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-pulse text-green-700 text-lg">Loading...</div>
+      </div>
+    );
+  }
+  if (!event) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6">
+        <Link href={`/events/${id}`} className="text-sm text-green-700">
+          ← Event
+        </Link>
+        {error && (
+          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!isOrganizer) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6">
+        <Link href={`/events/${id}`} className="text-sm text-green-700">
+          ← Event
+        </Link>
+        <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+          Only organizers can manage this event.
+        </div>
+      </div>
+    );
+  }
+
+  const locked = event.status === "in_progress" || event.status === "completed" || event.status === "archived";
+  const playerIds = new Set(players.map((p) => p.user_id));
+  const organizerIds = new Set(participants.filter((p) => p.role === "organizer").map((p) => p.user_id));
+  const candidates = allUsers.filter(
+    (u) => !playerIds.has(u.id) && !organizerIds.has(u.id),
+  );
+
+  async function addPlayer() {
+    if (!picker) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}/participants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: picker }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Add failed");
+      setPicker("");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Add failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePlayer(userId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}/participants/${userId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Remove failed");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Remove failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setGroupNum(userId: string, groupNum: number | null) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}/participants/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_num: groupNum }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Update failed");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    }
+  }
+
+  async function toggleSideGame(kind: SideGameKind) {
+    if (locked) return;
+    const next = enabledKinds.has(kind)
+      ? sideGames.filter((g) => g.kind !== kind)
+      : [...sideGames, { id: 0, event_id: event!.id, kind, pot_cents: 0, config: null }];
+    await saveSideGames(next.map((g) => ({ kind: g.kind, pot_cents: g.pot_cents })));
+  }
+
+  async function updatePot(kind: SideGameKind, dollars: number) {
+    if (locked) return;
+    const next = sideGames.map((g) =>
+      g.kind === kind ? { ...g, pot_cents: Math.max(0, Math.round(dollars * 100)) } : g,
+    );
+    await saveSideGames(next.map((g) => ({ kind: g.kind, pot_cents: g.pot_cents })));
+  }
+
+  async function saveSideGames(entries: { kind: SideGameKind; pot_cents: number }[]) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}/side-games`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ side_games: entries }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    }
+  }
+
+  async function completeEvent() {
+    if (!confirm("Mark this event as completed? Final payouts will be calculated.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      router.push(`/events/${id}`);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startEvent() {
+    if (!confirm("Start the event? Roster and side games will be locked.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}/start`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Start failed");
+      router.push(`/events/${id}`);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Start failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="max-w-lg mx-auto px-4 py-6 pb-24 space-y-6">
+      <div>
+        <Link href={`/events/${id}`} className="text-sm text-green-700">
+          ← {event.name}
+        </Link>
+        <h1 className="mt-2 text-2xl font-bold text-green-800">Manage event</h1>
+        <div className="text-xs text-gray-500">Status: {event.status.replace("_", " ")}</div>
+      </div>
+
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">
+          Players ({players.length}/8)
+        </h2>
+        {players.length === 0 ? (
+          <div className="text-sm text-gray-500">No players yet.</div>
+        ) : (
+          <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
+            {players.map((p) => (
+              <li key={p.user_id} className="px-3 py-2 flex items-center justify-between gap-2">
+                <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
+                  {p.display_name}
+                </span>
+                <label className="text-xs text-gray-500 flex items-center gap-1">
+                  Group
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={p.group_num ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setGroupNum(p.user_id, v === "" ? null : Number(v));
+                    }}
+                    disabled={locked}
+                    className="w-14 rounded border border-gray-300 px-1 py-0.5 text-xs"
+                  />
+                </label>
+                {!locked && (
+                  <button
+                    type="button"
+                    onClick={() => removePlayer(p.user_id)}
+                    disabled={busy}
+                    className="text-xs text-red-700 hover:underline disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!locked && players.length < 8 && (
+          <div className="mt-3 flex gap-2">
+            <select
+              value={picker}
+              onChange={(e) => setPicker(e.target.value)}
+              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="">Add a player…</option>
+              {candidates.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={addPlayer}
+              disabled={busy || !picker}
+              className="px-3 py-2 rounded-md bg-green-700 text-white text-sm font-medium disabled:opacity-50"
+            >
+              Add
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Side games</h2>
+        <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
+          {ALL_KINDS.map((kind) => {
+            const game = sideGames.find((g) => g.kind === kind);
+            const enabled = Boolean(game);
+            return (
+              <li key={kind} className="px-3 py-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={() => toggleSideGame(kind)}
+                  disabled={locked}
+                />
+                <span className="flex-1 text-sm text-gray-900">{SIDE_GAME_LABELS[kind]}</span>
+                {enabled && (
+                  <label className="text-xs text-gray-500 flex items-center gap-1">
+                    Pot $
+                    <input
+                      type="number"
+                      min={0}
+                      step={5}
+                      value={(game!.pot_cents / 100).toString()}
+                      onChange={(e) => updatePot(kind, Number(e.target.value))}
+                      disabled={locked}
+                      className="w-20 rounded border border-gray-300 px-1 py-0.5 text-xs"
+                    />
+                  </label>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <ScrambleTeamsSection
+        eventId={Number(id)}
+        players={players}
+        scrambleData={scrambleData}
+        disabled={
+          event.status === "completed" || event.status === "archived"
+        }
+        onSaved={reload}
+      />
+
+      {!locked && (
+        <section className="rounded-md border border-green-300 bg-green-50 p-3">
+          <div className="text-sm font-semibold text-green-900">Start event</div>
+          <p className="mt-1 text-xs text-green-900/80">
+            Locks the roster and side games, creates round 1 (individual) and round 2
+            (scramble), and seeds the poker deck if Poker is enabled.
+          </p>
+          <button
+            type="button"
+            onClick={startEvent}
+            disabled={busy || players.length < 2}
+            className="mt-2 w-full rounded-md bg-green-700 px-4 py-2 text-white font-semibold disabled:opacity-50"
+          >
+            Start event
+          </button>
+          {players.length < 2 && (
+            <p className="mt-1 text-xs text-amber-700">Need at least 2 players.</p>
+          )}
+        </section>
+      )}
+
+      {event.status === "in_progress" && (
+        <section className="rounded-md border border-purple-300 bg-purple-50 p-3">
+          <div className="text-sm font-semibold text-purple-900">Complete event</div>
+          <p className="mt-1 text-xs text-purple-900/80">
+            Marks the event as Completed. Final payouts are computed from the standings.
+          </p>
+          <button
+            type="button"
+            onClick={completeEvent}
+            disabled={busy}
+            className="mt-2 w-full rounded-md bg-purple-700 px-4 py-2 text-white font-semibold disabled:opacity-50"
+          >
+            Mark completed
+          </button>
+        </section>
+      )}
+    </div>
+  );
+}

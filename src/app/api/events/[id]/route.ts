@@ -1,0 +1,162 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import type { EventStatus } from "@/lib/types";
+
+type EventDetailRow = {
+  id: number;
+  name: string;
+  course_id: number;
+  course_name: string;
+  start_date: string;
+  end_date: string;
+  entry_fee_cents: number;
+  description: string | null;
+  status: EventStatus;
+  exclude_from_leaderboard: boolean;
+  created_by: string;
+  created_at: string;
+};
+
+type ParticipantRow = {
+  user_id: string;
+  role: "organizer" | "player";
+  group_num: number | null;
+  display_name: string;
+  username: string;
+};
+
+type RoundRow = {
+  id: number;
+  round_number: number;
+  round_format: "individual" | "scramble";
+  hole_count: number;
+  played_at: string;
+};
+
+async function loadEvent(eventId: number) {
+  const event = await db
+    .prepare(
+      `SELECT e.id, e.name, e.course_id, c.name AS course_name,
+              e.start_date, e.end_date, e.entry_fee_cents, e.description,
+              e.status, e.exclude_from_leaderboard, e.created_by, e.created_at
+       FROM events e JOIN courses c ON c.id = e.course_id
+       WHERE e.id = ?`,
+    )
+    .get<EventDetailRow>(eventId);
+  if (!event) return null;
+  const participants = await db
+    .prepare(
+      `SELECT ep.user_id, ep.role, ep.group_num, u.display_name, u.username
+       FROM event_participants ep JOIN users u ON u.id = ep.user_id
+       WHERE ep.event_id = ?
+       ORDER BY ep.role DESC, u.display_name ASC`,
+    )
+    .all<ParticipantRow>(eventId);
+  const rounds = await db
+    .prepare(
+      `SELECT id, round_number, round_format, hole_count, played_at
+       FROM rounds WHERE event_id = ?
+       ORDER BY round_number ASC, id ASC`,
+    )
+    .all<RoundRow>(eventId);
+  return { event, participants, rounds };
+}
+
+async function isOrganizer(eventId: number, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 AS ok FROM event_participants
+       WHERE event_id = ? AND user_id = ? AND role = 'organizer'`,
+    )
+    .get<{ ok: number }>(eventId, userId);
+  return Boolean(row);
+}
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const eventId = Number(id);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return NextResponse.json({ error: "Invalid event id" }, { status: 400 });
+  }
+
+  const result = await loadEvent(eventId);
+  if (!result) return NextResponse.json({ error: "Event not found" }, { status: 404 });
+
+  return NextResponse.json(result);
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const eventId = Number(id);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return NextResponse.json({ error: "Invalid event id" }, { status: 400 });
+  }
+
+  if (!(await isOrganizer(eventId, me.id))) {
+    return NextResponse.json({ error: "Only organizers can update events" }, { status: 403 });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  const updates: string[] = [];
+  const args: (string | number | boolean | null)[] = [];
+
+  if (typeof body.name === "string") {
+    const n = body.name.trim();
+    if (n.length === 0 || n.length > 120) {
+      return NextResponse.json({ error: "Invalid name" }, { status: 400 });
+    }
+    updates.push("name = ?");
+    args.push(n);
+  }
+  if (typeof body.description === "string" || body.description === null) {
+    updates.push("description = ?");
+    args.push(body.description === null ? null : String(body.description).trim() || null);
+  }
+  if (typeof body.entry_fee_cents === "number") {
+    updates.push("entry_fee_cents = ?");
+    args.push(Math.max(0, Math.round(body.entry_fee_cents)));
+  }
+  if (typeof body.exclude_from_leaderboard === "boolean") {
+    updates.push("exclude_from_leaderboard = ?");
+    args.push(body.exclude_from_leaderboard);
+  }
+  if (typeof body.status === "string") {
+    const allowed: EventStatus[] = ["draft", "open", "in_progress", "completed", "archived"];
+    if (!allowed.includes(body.status as EventStatus)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+    updates.push("status = ?");
+    args.push(body.status);
+  }
+
+  if (updates.length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
+  args.push(eventId);
+  await db
+    .prepare(`UPDATE events SET ${updates.join(", ")} WHERE id = ?`)
+    .run(...args);
+
+  const fresh = await loadEvent(eventId);
+  return NextResponse.json(fresh);
+}
