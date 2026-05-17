@@ -81,8 +81,29 @@ export default function PokerPage({
 
   useEffect(() => {
     if (!user) return;
-    const t = setInterval(load, 20_000);
-    return () => clearInterval(t);
+    let timer: ReturnType<typeof setInterval> | undefined;
+    function start() {
+      stop();
+      timer = setInterval(load, 30_000);
+    }
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") {
+        load();
+        start();
+      } else {
+        stop();
+      }
+    }
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [user, load]);
 
   const myHand = useMemo(

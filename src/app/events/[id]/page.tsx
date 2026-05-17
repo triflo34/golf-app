@@ -110,12 +110,40 @@ export default function EventDetailPage({
     if (user) load();
   }, [user, load]);
 
+  // Poll standings on a timer, but pause when the tab is hidden or the event
+  // is in a state where nothing changes (draft, completed, archived).
   useEffect(() => {
     if (!user) return;
+    const status = data?.event.status;
+    const isLive = status === "open" || status === "in_progress";
+
     loadStandings();
-    const t = setInterval(loadStandings, 20_000);
-    return () => clearInterval(t);
-  }, [user, loadStandings]);
+    if (!isLive) return;
+
+    let timer: ReturnType<typeof setInterval> | undefined;
+    function start() {
+      stop();
+      timer = setInterval(loadStandings, 30_000);
+    }
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") {
+        loadStandings();
+        start();
+      } else {
+        stop();
+      }
+    }
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [user, loadStandings, data?.event.status]);
 
   if (authLoading || !user) {
     return (

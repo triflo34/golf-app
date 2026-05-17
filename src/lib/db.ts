@@ -294,6 +294,7 @@ const SCHEMA_SQL = `
     round_id  INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
     name      TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_scramble_teams_round ON scramble_teams(round_id);
 
   CREATE TABLE IF NOT EXISTS scramble_team_members (
     team_id  INTEGER NOT NULL REFERENCES scramble_teams(id) ON DELETE CASCADE,

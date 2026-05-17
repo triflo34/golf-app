@@ -85,25 +85,26 @@ type TeamMemberRow = { team_id: number; user_id: string };
 type SideGameRow = { kind: SideGameSummary["kind"]; pot_cents: number };
 
 export async function loadEventStandings(eventId: number): Promise<EventStandings> {
-  const players = await db
-    .prepare(
-      `SELECT ep.user_id, u.display_name
-       FROM event_participants ep JOIN users u ON u.id = ep.user_id
-       WHERE ep.event_id = ? AND ep.role = 'player'
-       ORDER BY u.display_name ASC`,
-    )
-    .all<PlayerRow>(eventId);
-
-  const rounds = await db
-    .prepare(
-      `SELECT id, round_number, hole_count, course_id, round_format FROM rounds
-       WHERE event_id = ? ORDER BY round_number ASC`,
-    )
-    .all<RoundRow>(eventId);
-
-  const sideGameRows = await db
-    .prepare("SELECT kind, pot_cents FROM side_games WHERE event_id = ?")
-    .all<SideGameRow>(eventId);
+  // Independent up-front queries: run in parallel.
+  const [players, rounds, sideGameRows] = await Promise.all([
+    db
+      .prepare(
+        `SELECT ep.user_id, u.display_name
+         FROM event_participants ep JOIN users u ON u.id = ep.user_id
+         WHERE ep.event_id = ? AND ep.role = 'player'
+         ORDER BY u.display_name ASC`,
+      )
+      .all<PlayerRow>(eventId),
+    db
+      .prepare(
+        `SELECT id, round_number, hole_count, course_id, round_format FROM rounds
+         WHERE event_id = ? ORDER BY round_number ASC`,
+      )
+      .all<RoundRow>(eventId),
+    db
+      .prepare("SELECT kind, pot_cents FROM side_games WHERE event_id = ?")
+      .all<SideGameRow>(eventId),
+  ]);
 
   if (rounds.length === 0 || players.length === 0) {
     return {
@@ -117,17 +118,20 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
   }
 
   const courseId = rounds[0].course_id;
-  const holes = await ensureCourseHoles(courseId);
-  const parByHole = new Map(holes.map((h) => [h.hole_number, h.par]));
-
   const roundIds = rounds.map((r) => r.id);
   const placeholders = roundIds.map(() => "?").join(",");
-  const scoreRows = await db
-    .prepare(
-      `SELECT round_id, player_id, hole_number, strokes
-       FROM hole_scores WHERE round_id IN (${placeholders})`,
-    )
-    .all<HoleScoreRow>(...roundIds);
+
+  // ensureCourseHoles + hole_scores fetch are independent — parallel.
+  const [holes, scoreRows] = await Promise.all([
+    ensureCourseHoles(courseId),
+    db
+      .prepare(
+        `SELECT round_id, player_id, hole_number, strokes
+         FROM hole_scores WHERE round_id IN (${placeholders})`,
+      )
+      .all<HoleScoreRow>(...roundIds),
+  ]);
+  const parByHole = new Map(holes.map((h) => [h.hole_number, h.par]));
 
   // Fan out team_hole_scores onto each team member for scramble rounds, so the
   // leaderboard math (and best/worst-18) doesn't have to special-case them.
