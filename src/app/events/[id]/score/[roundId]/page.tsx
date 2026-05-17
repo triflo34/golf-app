@@ -80,6 +80,12 @@ export default function ScorePage({
   const [hole, setHole] = useState(1);
   const [saving, setSaving] = useState<string | null>(null);
 
+  // Optimistic overlays: { "key": strokes | null } where null means "cleared".
+  // `key` is `${playerId}:${hole}` for individual or `team:${teamId}:${hole}` for scramble.
+  const [pendingScores, setPendingScores] = useState<Map<string, number | null>>(
+    new Map(),
+  );
+
   const load = useCallback(async () => {
     const res = await fetch(`/api/events/${id}/rounds/${roundId}`, { cache: "no-store" });
     if (!res.ok) {
@@ -89,10 +95,40 @@ export default function ScorePage({
     }
     setError(null);
     setData(await res.json());
+    // Fresh server data is authoritative — drop any pending overlays.
+    setPendingScores(new Map());
   }, [id, roundId]);
 
   useEffect(() => {
     if (user) load();
+  }, [user, load]);
+
+  // Background refresh so peer edits show up. Pauses when the tab is hidden.
+  useEffect(() => {
+    if (!user) return;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    function start() {
+      stop();
+      timer = setInterval(load, 30_000);
+    }
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") {
+        load();
+        start();
+      } else {
+        stop();
+      }
+    }
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [user, load]);
 
   const isScramble = data?.round.round_format === "scramble";
@@ -124,8 +160,27 @@ export default function ScorePage({
     for (const s of data.scores) {
       m.set(`${s.player_id}:${s.hole_number}`, s);
     }
+    // Overlay pending optimistic updates.
+    for (const [key, strokes] of pendingScores) {
+      if (key.startsWith("team:")) continue;
+      if (strokes === null) {
+        m.delete(key);
+      } else {
+        const [playerId, holeStr] = key.split(":");
+        const hn = Number(holeStr);
+        m.set(key, {
+          id: -1,
+          player_id: playerId,
+          hole_number: hn,
+          strokes,
+          updated_by: user?.id ?? null,
+          updated_by_name: user?.display_name ?? null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
     return m;
-  }, [data]);
+  }, [data, pendingScores, user]);
 
   const teamScoreMap = useMemo(() => {
     const m = new Map<string, TeamScoreInfo>();
@@ -133,8 +188,29 @@ export default function ScorePage({
     for (const s of data.team_scores) {
       m.set(`${s.team_id}:${s.hole_number}`, s);
     }
+    for (const [key, strokes] of pendingScores) {
+      if (!key.startsWith("team:")) continue;
+      // key shape: team:<teamId>:<hole>
+      const parts = key.split(":");
+      const teamId = Number(parts[1]);
+      const hn = Number(parts[2]);
+      const mapKey = `${teamId}:${hn}`;
+      if (strokes === null) {
+        m.delete(mapKey);
+      } else {
+        m.set(mapKey, {
+          id: -1,
+          team_id: teamId,
+          hole_number: hn,
+          strokes,
+          updated_by: user?.id ?? null,
+          updated_by_name: user?.display_name ?? null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
     return m;
-  }, [data]);
+  }, [data, pendingScores, user]);
 
   const totals = useMemo(() => {
     const t = new Map<string, { strokes: number; through: number; vsPar: number }>();
@@ -204,52 +280,83 @@ export default function ScorePage({
   const { round, holes, players, teams } = data;
   const currentPar = holes.find((h) => h.hole_number === hole)?.par ?? 4;
 
-  async function setStrokes(playerId: string, strokes: number | null) {
+  function setStrokes(playerId: string, strokes: number | null) {
     const key = `${playerId}:${hole}`;
+    // Snapshot previous pending value so we can revert on failure.
+    const prev = pendingScores.get(key);
+    const hadPrev = pendingScores.has(key);
+    // Optimistic: update UI immediately.
+    setPendingScores((m) => {
+      const next = new Map(m);
+      next.set(key, strokes);
+      return next;
+    });
     setSaving(key);
     setError(null);
-    try {
-      const res = await fetch(`/api/events/${id}/rounds/${roundId}/holes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          player_id: playerId,
-          hole_number: hole,
-          strokes,
-        }),
+    // Fire-and-forget; don't refetch on success — the optimistic value already matches.
+    fetch(`/api/events/${id}/rounds/${roundId}/holes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        player_id: playerId,
+        hole_number: hole,
+        strokes,
+      }),
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error ?? "Save failed");
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Save failed");
+        setPendingScores((m) => {
+          const next = new Map(m);
+          if (hadPrev) next.set(key, prev as number | null);
+          else next.delete(key);
+          return next;
+        });
+      })
+      .finally(() => {
+        setSaving((curr) => (curr === key ? null : curr));
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? "Save failed");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving((curr) => (curr === key ? null : curr));
-    }
   }
 
-  async function setTeamStrokes(teamId: number, strokes: number | null) {
+  function setTeamStrokes(teamId: number, strokes: number | null) {
     const key = `team:${teamId}:${hole}`;
+    const prev = pendingScores.get(key);
+    const hadPrev = pendingScores.has(key);
+    setPendingScores((m) => {
+      const next = new Map(m);
+      next.set(key, strokes);
+      return next;
+    });
     setSaving(key);
     setError(null);
-    try {
-      const res = await fetch(`/api/events/${id}/rounds/${roundId}/team-holes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          team_id: teamId,
-          hole_number: hole,
-          strokes,
-        }),
+    fetch(`/api/events/${id}/rounds/${roundId}/team-holes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        team_id: teamId,
+        hole_number: hole,
+        strokes,
+      }),
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error ?? "Save failed");
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Save failed");
+        setPendingScores((m) => {
+          const next = new Map(m);
+          if (hadPrev) next.set(key, prev as number | null);
+          else next.delete(key);
+          return next;
+        });
+      })
+      .finally(() => {
+        setSaving((curr) => (curr === key ? null : curr));
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? "Save failed");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving((curr) => (curr === key ? null : curr));
-    }
   }
 
   return (
@@ -356,7 +463,7 @@ export default function ScorePage({
                   <button
                     type="button"
                     onClick={() => setTeamStrokes(tm.id, Math.max(1, (score?.strokes ?? currentPar) - 1))}
-                    disabled={isSaving}
+                    /* optimistic: no disable */
                     className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
                   >
                     −
@@ -374,7 +481,7 @@ export default function ScorePage({
                   <button
                     type="button"
                     onClick={() => setTeamStrokes(tm.id, (score?.strokes ?? currentPar) + 1)}
-                    disabled={isSaving}
+                    /* optimistic: no disable */
                     className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
                   >
                     +
@@ -383,7 +490,7 @@ export default function ScorePage({
                     <button
                       type="button"
                       onClick={() => setTeamStrokes(tm.id, null)}
-                      disabled={isSaving}
+                      /* optimistic: no disable */
                       className="ml-1 text-xs text-gray-400 hover:text-red-600"
                       title="Clear"
                     >
@@ -424,7 +531,7 @@ export default function ScorePage({
                 <button
                   type="button"
                   onClick={() => setStrokes(p.user_id, Math.max(1, (score?.strokes ?? currentPar) - 1))}
-                  disabled={isSaving}
+                  /* optimistic: no disable */
                   className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
                 >
                   −
@@ -442,7 +549,7 @@ export default function ScorePage({
                 <button
                   type="button"
                   onClick={() => setStrokes(p.user_id, (score?.strokes ?? currentPar) + 1)}
-                  disabled={isSaving}
+                  /* optimistic: no disable */
                   className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
                 >
                   +
@@ -451,7 +558,7 @@ export default function ScorePage({
                   <button
                     type="button"
                     onClick={() => setStrokes(p.user_id, null)}
-                    disabled={isSaving}
+                    /* optimistic: no disable */
                     className="ml-1 text-xs text-gray-400 hover:text-red-600"
                     title="Clear"
                   >
