@@ -26,6 +26,7 @@ function ScrambleTeamsSection({
   players: {
     user_id: string;
     role: "organizer" | "player";
+    is_organizer: boolean;
     group_num: number | null;
     display_name: string;
     username: string;
@@ -161,6 +162,7 @@ type EventDetail = {
 type Participant = {
   user_id: string;
   role: "organizer" | "player";
+  is_organizer: boolean;
   group_num: number | null;
   display_name: string;
   username: string;
@@ -197,11 +199,12 @@ export default function EventManagePage({
   const [picker, setPicker] = useState("");
 
   const isOrganizer = useMemo(
-    () => Boolean(user) && participants.some((p) => p.user_id === user?.id && p.role === "organizer"),
+    () => Boolean(user) && participants.some((p) => p.user_id === user?.id && p.is_organizer),
     [user, participants],
   );
 
-  const players = useMemo(() => participants.filter((p) => p.role === "player"), [participants]);
+  // Everyone in event_participants plays, including organizers.
+  const players = useMemo(() => participants, [participants]);
 
   const enabledKinds = useMemo(
     () => new Set(sideGames.map((g) => g.kind)),
@@ -267,11 +270,8 @@ export default function EventManagePage({
   }
 
   const locked = event.status === "in_progress" || event.status === "completed" || event.status === "archived";
-  const playerIds = new Set(players.map((p) => p.user_id));
-  const organizerIds = new Set(participants.filter((p) => p.role === "organizer").map((p) => p.user_id));
-  const candidates = allUsers.filter(
-    (u) => !playerIds.has(u.id) && !organizerIds.has(u.id),
-  );
+  const participantIds = new Set(participants.map((p) => p.user_id));
+  const candidates = allUsers.filter((u) => !participantIds.has(u.id));
 
   async function addPlayer() {
     if (!picker) return;
@@ -380,6 +380,27 @@ export default function EventManagePage({
     }
   }
 
+  async function deleteEvent() {
+    if (
+      !confirm(
+        "Delete this event? All rounds, scores, side games, and poker state will be removed. This cannot be undone.",
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Delete failed");
+      router.push("/events");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+      setBusy(false);
+    }
+  }
+
   async function startEvent() {
     if (!confirm("Start the event? Roster and side games will be locked.")) return;
     setBusy(true);
@@ -425,6 +446,11 @@ export default function EventManagePage({
               <li key={p.user_id} className="px-3 py-2 flex items-center justify-between gap-2">
                 <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                   {p.display_name}
+                  {p.is_organizer && (
+                    <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 align-middle">
+                      organizer
+                    </span>
+                  )}
                 </span>
                 <label className="text-xs text-gray-500 flex items-center gap-1">
                   Group
@@ -441,7 +467,7 @@ export default function EventManagePage({
                     className="w-14 rounded border border-gray-300 px-1 py-0.5 text-xs"
                   />
                 </label>
-                {!locked && (
+                {!locked && !p.is_organizer && (
                   <button
                     type="button"
                     onClick={() => removePlayer(p.user_id)}
@@ -563,6 +589,22 @@ export default function EventManagePage({
           </button>
         </section>
       )}
+
+      <section className="rounded-md border border-red-300 bg-red-50 p-3">
+        <div className="text-sm font-semibold text-red-900">Danger zone</div>
+        <p className="mt-1 text-xs text-red-900/80">
+          Permanently delete this event and all of its rounds, scores, side games,
+          and poker state. This cannot be undone.
+        </p>
+        <button
+          type="button"
+          onClick={deleteEvent}
+          disabled={busy}
+          className="mt-2 w-full rounded-md border border-red-700 bg-white px-4 py-2 text-red-700 font-semibold disabled:opacity-50 hover:bg-red-700 hover:text-white"
+        >
+          Delete event
+        </button>
+      </section>
     </div>
   );
 }

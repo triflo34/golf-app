@@ -6,7 +6,7 @@ async function isOrganizer(eventId: number, userId: string): Promise<boolean> {
   const row = await db
     .prepare(
       `SELECT 1 AS ok FROM event_participants
-       WHERE event_id = ? AND user_id = ? AND role = 'organizer'`,
+       WHERE event_id = ? AND user_id = ? AND is_organizer = TRUE`,
     )
     .get<{ ok: number }>(eventId, userId);
   return Boolean(row);
@@ -78,15 +78,14 @@ export async function POST(
     return NextResponse.json({ error: "Max 8 players per event" }, { status: 409 });
   }
 
+  // Everyone is role='player' now; is_organizer is the additional flag and
+  // is preserved on conflict so re-adding doesn't strip organizer rights.
   await db
     .prepare(
       `INSERT INTO event_participants (event_id, user_id, role, group_num)
        VALUES (?, ?, 'player', ?)
        ON CONFLICT (event_id, user_id) DO UPDATE
-         SET role = CASE WHEN event_participants.role = 'organizer'
-                         THEN event_participants.role
-                         ELSE 'player' END,
-             group_num = EXCLUDED.group_num`,
+         SET group_num = EXCLUDED.group_num`,
     )
     .run(eventId, userId, groupNum);
 

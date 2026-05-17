@@ -131,6 +131,8 @@ async function bootstrap(): Promise<void> {
   await ensureRoundEventColumns(sql);
   console.log("[db] bootstrap: ensureCourseApiColumns");
   await ensureCourseApiColumns(sql);
+  console.log("[db] bootstrap: ensureEventParticipantOrganizerFlag");
+  await ensureEventParticipantOrganizerFlag(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -248,10 +250,12 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 
   CREATE TABLE IF NOT EXISTS event_participants (
-    event_id   INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    user_id    TEXT NOT NULL REFERENCES users(id),
-    role       TEXT NOT NULL CHECK (role IN ('organizer','player')),
-    group_num  SMALLINT,
+    event_id     INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    user_id      TEXT NOT NULL REFERENCES users(id),
+    role         TEXT NOT NULL DEFAULT 'player'
+                  CHECK (role IN ('organizer','player')),
+    is_organizer BOOLEAN NOT NULL DEFAULT FALSE,
+    group_num    SMALLINT,
     PRIMARY KEY (event_id, user_id)
   );
   CREATE INDEX IF NOT EXISTS idx_event_participants_user ON event_participants(user_id);
@@ -401,6 +405,24 @@ async function ensureRoundWeatherColumns(sql: postgres.Sql): Promise<void> {
     ALTER TABLE rounds ADD COLUMN IF NOT EXISTS precip_in         REAL;
     ALTER TABLE rounds ADD COLUMN IF NOT EXISTS weather_code      SMALLINT;
     ALTER TABLE rounds ADD COLUMN IF NOT EXISTS weather_fetched_at TIMESTAMPTZ;
+  `);
+}
+
+async function ensureEventParticipantOrganizerFlag(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE event_participants
+      ADD COLUMN IF NOT EXISTS is_organizer BOOLEAN NOT NULL DEFAULT FALSE;
+  `);
+  // Backfill: any existing 'organizer' role rows become role='player' + is_organizer=true.
+  await sql.unsafe(`
+    UPDATE event_participants
+      SET is_organizer = TRUE
+      WHERE role = 'organizer' AND is_organizer = FALSE;
+  `);
+  await sql.unsafe(`
+    UPDATE event_participants
+      SET role = 'player'
+      WHERE role = 'organizer';
   `);
 }
 

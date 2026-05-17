@@ -107,12 +107,15 @@ export default function PokerPage({
   }, [user, load]);
 
   const myHand = useMemo(
-    () => (user && data ? data.hands.find((h) => h.player_id === user.id) : null),
+    () =>
+      user && data && Array.isArray(data.hands)
+        ? data.hands.find((h) => h.player_id === user.id) ?? null
+        : null,
     [user, data],
   );
   const mySwaps = useMemo(
     () =>
-      user && data
+      user && data && Array.isArray(data.pending_swaps)
         ? data.pending_swaps.filter((s) => s.player_id === user.id)
         : [],
     [user, data],

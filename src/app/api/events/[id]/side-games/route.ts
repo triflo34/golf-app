@@ -15,7 +15,7 @@ async function isOrganizer(eventId: number, userId: string): Promise<boolean> {
   const row = await db
     .prepare(
       `SELECT 1 AS ok FROM event_participants
-       WHERE event_id = ? AND user_id = ? AND role = 'organizer'`,
+       WHERE event_id = ? AND user_id = ? AND is_organizer = TRUE`,
     )
     .get<{ ok: number }>(eventId, userId);
   return Boolean(row);

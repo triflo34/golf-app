@@ -21,6 +21,7 @@ type EventDetailRow = {
 type ParticipantRow = {
   user_id: string;
   role: "organizer" | "player";
+  is_organizer: boolean;
   group_num: number | null;
   display_name: string;
   username: string;
@@ -47,10 +48,11 @@ async function loadEvent(eventId: number) {
   if (!event) return null;
   const participants = await db
     .prepare(
-      `SELECT ep.user_id, ep.role, ep.group_num, u.display_name, u.username
+      `SELECT ep.user_id, ep.role, ep.is_organizer, ep.group_num,
+              u.display_name, u.username
        FROM event_participants ep JOIN users u ON u.id = ep.user_id
        WHERE ep.event_id = ?
-       ORDER BY ep.role DESC, u.display_name ASC`,
+       ORDER BY ep.is_organizer DESC, u.display_name ASC`,
     )
     .all<ParticipantRow>(eventId);
   const rounds = await db
@@ -67,7 +69,7 @@ async function isOrganizer(eventId: number, userId: string): Promise<boolean> {
   const row = await db
     .prepare(
       `SELECT 1 AS ok FROM event_participants
-       WHERE event_id = ? AND user_id = ? AND role = 'organizer'`,
+       WHERE event_id = ? AND user_id = ? AND is_organizer = TRUE`,
     )
     .get<{ ok: number }>(eventId, userId);
   return Boolean(row);
@@ -90,6 +92,39 @@ export async function GET(
   if (!result) return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
   return NextResponse.json(result);
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const eventId = Number(id);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return NextResponse.json({ error: "Invalid event id" }, { status: 400 });
+  }
+
+  const allowed = me.is_admin || (await isOrganizer(eventId, me.id));
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Only organizers or admins can delete events" },
+      { status: 403 },
+    );
+  }
+
+  // events.id is referenced by rounds.event_id with ON DELETE SET NULL.
+  // Delete the rounds explicitly so the per-hole + score-edit cascades fire.
+  await db.prepare("DELETE FROM rounds WHERE event_id = ?").run(eventId);
+  const result = await db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+
+  if (result.rowCount === 0) {
+    return NextResponse.json({ error: "Event not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 export async function PATCH(

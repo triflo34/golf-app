@@ -116,8 +116,8 @@ export async function POST(request: Request) {
     const id = inserted!.id;
     await tx
       .prepare(
-        `INSERT INTO event_participants (event_id, user_id, role)
-         VALUES (?, ?, 'organizer')`,
+        `INSERT INTO event_participants (event_id, user_id, role, is_organizer)
+         VALUES (?, ?, 'player', TRUE)`,
       )
       .run(id, me.id);
     return id;

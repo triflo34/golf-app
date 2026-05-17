@@ -41,7 +41,12 @@ export async function GET(
     )
     .get<{ ok: number }>(eventId);
   if (!enabled) {
-    return NextResponse.json({ enabled: false });
+    return NextResponse.json({
+      enabled: false,
+      hands: [],
+      pending_swaps: [],
+      deck: null,
+    });
   }
 
   const hands = await db

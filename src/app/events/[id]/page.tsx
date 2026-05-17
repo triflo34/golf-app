@@ -31,6 +31,7 @@ type EventDetail = {
 type Participant = {
   user_id: string;
   role: "organizer" | "player";
+  is_organizer: boolean;
   group_num: number | null;
   display_name: string;
   username: string;
@@ -176,9 +177,10 @@ export default function EventDetailPage({
 
   const { event, participants, rounds } = data;
   const isOrganizer = participants.some(
-    (p) => p.user_id === user.id && p.role === "organizer",
+    (p) => p.user_id === user.id && p.is_organizer,
   );
-  const players = participants.filter((p) => p.role === "player");
+  // Everyone in event_participants is a player; organizer is an additional flag.
+  const players = participants;
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 pb-24">
