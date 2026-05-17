@@ -129,6 +129,8 @@ async function bootstrap(): Promise<void> {
   await ensureRoundWeatherColumns(sql);
   console.log("[db] bootstrap: ensureRoundEventColumns");
   await ensureRoundEventColumns(sql);
+  console.log("[db] bootstrap: ensureCourseApiColumns");
+  await ensureCourseApiColumns(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -398,6 +400,18 @@ async function ensureRoundWeatherColumns(sql: postgres.Sql): Promise<void> {
     ALTER TABLE rounds ADD COLUMN IF NOT EXISTS precip_in         REAL;
     ALTER TABLE rounds ADD COLUMN IF NOT EXISTS weather_code      SMALLINT;
     ALTER TABLE rounds ADD COLUMN IF NOT EXISTS weather_fetched_at TIMESTAMPTZ;
+  `);
+}
+
+async function ensureCourseApiColumns(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS external_id     TEXT;
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS last_fetched_at TIMESTAMPTZ;
+    ALTER TABLE course_holes ADD COLUMN IF NOT EXISTS yardage INTEGER;
+  `);
+  await sql.unsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_courses_external_id
+      ON courses(external_id) WHERE external_id IS NOT NULL;
   `);
 }
 

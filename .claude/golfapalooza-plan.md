@@ -42,7 +42,24 @@ Last updated: 2026-05-13
 - Poker manual winner pick at end of event (organizer eyeballs hands; not yet recorded in `side_game_results`)
 - Clearing an individual hole score against a poker-enabled event leaves a small drift in the player's running totals (we don't fully reverse the cards that hole granted). Re-entering the score makes it consistent again. Documented in `applyPokerForHoleSave`.
 - Photo uploads, push notifications, websockets, offline queue, spectator follow (all explicitly out of MVP)
-- Per-hole par editor — defaults seeded from `courses.par` split by `ensureCourseHoles`. Organizer can hand-edit DB if a specific course needs accurate per-hole pars; UI not built.
+
+## Course API integration (GolfCourseAPI.com)
+
+Real per-hole pars + handicap + yardages now imported on demand, no more all-par-4 scorecards.
+
+**What landed:**
+- Schema: `courses.external_id`, `courses.last_fetched_at`, `course_holes.yardage`; unique partial index `uq_courses_external_id` (when not null). Inline via `ensureCourseApiColumns()` + standalone migration at `supabase/migrations/2026-05-13-course-api.sql`.
+- Client `src/lib/golf-course-api.ts`: typed `searchCoursesExternal(q)` + `fetchCourseDetailExternal(id)`. Auth header `Authorization: Key <GOLFCOURSE_API_KEY>`. 8-second fetch timeout. Defensive parsers normalize search hits + course detail into `ExternalSearchHit` / `ExternalCourseDetail` — parsers are best-guess against the public docs (which are gated behind login) and need a real sample response to verify.
+- Search API: `GET /api/courses/search?q=…` — checks local DB first (always), then external. External hits are filtered to drop any whose `external_id` is already imported. Returns tagged `source: 'local' | 'external'`. Returns `external_error` if the API key is missing or the call fails, without breaking local results.
+- Import API: `POST /api/courses/import` body `{ external_id }` — short-circuits to existing local row if already imported; otherwise one external call, writes `courses` + `course_holes` rows (par + handicap + yardage per hole) in one tx, stamps `last_fetched_at`.
+- Admin refresh: `POST /api/admin/courses/[id]/refresh` (admin-only, requires `external_id` on the course) — replaces per-hole rows, updates last_fetched.
+- UI: `/courses/new` now has a search box at the top with 350ms debounce, 2-char minimum, results tagged "saved" (local) or "import" (external). One-tap pick: saved → jumps to course detail; import → POSTs `/import` and jumps to the new course. Manual entry form still available below.
+
+**Env var required:** `GOLFCOURSE_API_KEY` in `.env.local` and Vercel env vars. Get one free at golfcourseapi.com (300 req/day; we cache so it's effectively unlimited).
+
+**Open: parser verification.** The GolfCourseAPI docs are gated. The parser handles several plausible shapes (top-level vs `data` vs `courses` vs `results` array; top-level `holes` vs `tees[0].holes`; multiple field name aliases per hole). Once a real sample response is in hand, only `src/lib/golf-course-api.ts:parseSearchResponse` and `parseCourseDetail` should need adjustment.
+
+**TypeScript + build clean.**
 
 ## Deployment note
 

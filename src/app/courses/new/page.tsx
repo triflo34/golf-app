@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import type { CourseSearchResult } from "@/app/api/courses/search/route";
 
 export default function NewCoursePage() {
   const router = useRouter();
@@ -17,6 +18,68 @@ export default function NewCoursePage() {
   const [website, setWebsite] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Course search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<CourseSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const searchSeqRef = useRef(0);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setSearchError(null);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      const seq = ++searchSeqRef.current;
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/courses/search?q=${encodeURIComponent(q)}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (seq !== searchSeqRef.current) return; // stale
+        if (!res.ok) throw new Error(data.error ?? "Search failed");
+        setSearchResults(data.results ?? []);
+        setSearchError(data.external_error ?? null);
+      } catch (e) {
+        if (seq !== searchSeqRef.current) return;
+        setSearchError(e instanceof Error ? e.message : "Search failed");
+        setSearchResults([]);
+      } finally {
+        if (seq === searchSeqRef.current) setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  async function pickResult(result: CourseSearchResult) {
+    if (result.source === "local") {
+      router.push(`/courses/${result.local_id}`);
+      router.refresh();
+      return;
+    }
+    setImportingId(result.external_id);
+    setSearchError(null);
+    try {
+      const res = await fetch("/api/courses/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ external_id: result.external_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Import failed");
+      router.push(`/courses/${data.id}`);
+      router.refresh();
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : "Import failed");
+      setImportingId(null);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,6 +117,77 @@ export default function NewCoursePage() {
         ← Courses
       </Link>
       <h1 className="text-2xl font-bold text-green-800 my-4">Add a Course</h1>
+
+      <section className="card mb-4 space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Search GolfCourseAPI
+          </label>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Type at least 2 characters…"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Pulls real per-hole pars. One API call per imported course — then it&rsquo;s cached forever.
+          </p>
+        </div>
+
+        {searching && <div className="text-xs text-gray-500">Searching…</div>}
+        {searchError && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
+            {searchError}
+          </div>
+        )}
+        {searchResults.length > 0 && (
+          <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
+            {searchResults.map((r) => {
+              const key = r.source === "local" ? `L${r.local_id}` : `E${r.external_id}`;
+              const importing = r.source === "external" && importingId === r.external_id;
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    disabled={importing}
+                    onClick={() => pickResult(r)}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {r.name}
+                      </span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                          r.source === "local"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-blue-100 text-blue-800"
+                        }`}
+                      >
+                        {r.source === "local" ? "saved" : "import"}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {[r.city, r.state, r.country].filter(Boolean).join(", ") || "—"}
+                      {r.source === "local" && ` · ${r.holes} holes · par ${r.par}`}
+                    </div>
+                    {importing && (
+                      <div className="text-[10px] text-blue-700 mt-0.5">Importing…</div>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <details className="mb-4">
+        <summary className="text-sm font-medium text-green-700 cursor-pointer">
+          Or enter a course manually
+        </summary>
+      </details>
 
       {error && (
         <div className="mb-4 bg-red-50 text-red-600 text-sm p-3 rounded-lg">
