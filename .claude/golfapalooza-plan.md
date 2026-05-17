@@ -1,11 +1,11 @@
 # Golfapalooza Implementation Plan
 
-Deadline: Memorial Weekend 2026 (~May 23–25). Today: 2026-05-13.
+Deadline: Memorial Weekend 2026 (~May 23–25). Today: 2026-05-14.
 Source spec: `.claude/feature intakep2.md`
 
 ## Progress
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 
 **Done:**
 - Plan written (`.claude/golfapalooza-plan.md`)
@@ -41,6 +41,7 @@ Last updated: 2026-05-13
 **Deferred / known gaps:**
 - Poker manual winner pick at end of event (organizer eyeballs hands; not yet recorded in `side_game_results`)
 - Clearing an individual hole score against a poker-enabled event leaves a small drift in the player's running totals (we don't fully reverse the cards that hole granted). Re-entering the score makes it consistent again. Documented in `applyPokerForHoleSave`.
+- Per-hole par editor UI for courses not in GolfCourseAPI (today: hand-edit `course_holes` via SQL)
 - Photo uploads, push notifications, websockets, offline queue, spectator follow (all explicitly out of MVP)
 
 ## Course API integration (GolfCourseAPI.com)
@@ -57,13 +58,38 @@ Real per-hole pars + handicap + yardages now imported on demand, no more all-par
 
 **Env var required:** `GOLFCOURSE_API_KEY` in `.env.local` and Vercel env vars. Get one free at golfcourseapi.com (300 req/day; we cache so it's effectively unlimited).
 
-**Open: parser verification.** The GolfCourseAPI docs are gated. The parser handles several plausible shapes (top-level vs `data` vs `courses` vs `results` array; top-level `holes` vs `tees[0].holes`; multiple field name aliases per hole). Once a real sample response is in hand, only `src/lib/golf-course-api.ts:parseSearchResponse` and `parseCourseDetail` should need adjustment.
+**Parser verified (2026-05-14).** Real GolfCourseAPI response confirmed: top-level envelope `{ course: {...} }`; `tees` is an object keyed by gender (`{ female: [...], male: [...] }`), each value an array of tee objects with their own `holes: [{par, yardage, handicap}]`. Parser now unwraps `course`/`data`/`result` envelopes and walks `tees.male` → `tees.female` → any other gender bucket to find the first tee with a non-empty holes array. Holes don't carry an explicit `hole_number` field; defaults to `idx + 1`. Verified end-to-end with Indian Springs Metropark (par 71, mix of 3s/4s/5s).
+
+## Post-MVP iterations (2026-05-14)
+
+Shipping work after the original MVP commit, in order:
+
+- **Course API parser fixes.** `parseCourseDetail` now accepts the requested external_id as a fallback (the API's detail response wraps things under `course`); added envelope unwrapping for `course` / `data` / `result`. Discovered the tees-as-gender-keyed-object shape and updated hole extraction. Console-logs the raw response when no holes are found, for future iterations.
+- **Side games perf.** `loadEventStandings` now parallelizes the three independent up-front queries (players + rounds + side_games) and the `ensureCourseHoles` + hole_scores fetch. Added missing index `idx_scramble_teams_round`. Event hub + poker page polling pauses when the tab is hidden and skips entirely for draft/completed/archived events. Poll bumped 20s → 30s. Migration: `supabase/migrations/2026-05-14-perf-index.sql`.
+- **Scoring optimistic UI.** Score buttons no longer wait for the full server roundtrip + round refetch. Local `pendingScores: Map<key, strokes|null>` overlays fetched data; +/− updates the display instantly and fires the save in the background. On failure, the optimistic value reverts unless the user has already typed past it. Background 30s refresh (visibility-aware) brings in peer edits. Buttons are no longer disabled while a save is in flight — you can mash + to bump 4 → 7 in one motion.
+- **Poker page crash #1 (empty data).** `GET /api/events/[id]/poker` was returning `{ enabled: false }` without `hands`/`pending_swaps` arrays when poker wasn't enabled, and the page's `useMemo` tried `data.hands.find(...)` → crash. API now always returns the arrays; page guards with `Array.isArray`.
+- **Organizer can play.** Split `event_participants` role: added `is_organizer BOOLEAN` flag, normalized all rows to `role='player'`. Event creator becomes `role='player'` + `is_organizer=true`, so they're in the players list and can score. All seven `isOrganizer()` API checks switched from `role='organizer'` to `is_organizer=TRUE`. Manage page shows an "organizer" badge; the Remove button is hidden for organizers. Migration: `supabase/migrations/2026-05-14-organizer-flag.sql`.
+- **Delete event.** `DELETE /api/events/[id]` — organizer or admin. Removes rounds first so the cascade clears hole_scores / score_edits / scramble teams / team_hole_scores / side games / poker state. Manage page has a red "Danger zone" button.
+- **Poker crash #2 (JSONB-as-string).** The `postgres` lib with `prepare:false` (required for the pgbouncer transaction pooler) returns JSONB columns as text strings instead of parsed arrays. That broke poker rendering with `cards.map is not a function` and was silently corrupting `poker_hands.cards` inside `applyPokerForHoleSave` (spreading a string into the array). Added defensive `asJson` / `asJsonArray` normalization at every read site: `GET /api/events/[id]/poker` (cards, drawn, incoming_card), `lib/poker.ts` (`loadHand`, `loadDeck`). Existing corrupted data on a poker-enabled event needs a one-shot reset:
+  ```sql
+  UPDATE poker_hands SET cards='[]'::jsonb, wild_count=0, bogey_count=0 WHERE event_id = <id>;
+  UPDATE poker_deck_state SET drawn='[]'::jsonb WHERE event_id = <id>;
+  DELETE FROM poker_swap_queue WHERE event_id = <id>;
+  ```
+  or just delete the event entirely.
 
 **TypeScript + build clean.**
 
 ## Deployment note
 
-`SKIP_DB_BOOTSTRAP=1` is set in Vercel Prod (per memory). New tables/columns will NOT auto-create on deploy — either run the new SQL manually against the prod DB before first request, or unset that env var for one bootstrap pass and re-set it.
+`SKIP_DB_BOOTSTRAP=1` is set in Vercel Prod (per memory). New tables/columns will NOT auto-create on deploy. Migrations to run in prod in order (all idempotent):
+
+1. `supabase/migrations/2026-05-13-events.sql` — original Golfapalooza schema
+2. `supabase/migrations/2026-05-13-course-api.sql` — `external_id`, `last_fetched_at`, `yardage`
+3. `supabase/migrations/2026-05-14-perf-index.sql` — `idx_scramble_teams_round`
+4. `supabase/migrations/2026-05-14-organizer-flag.sql` — `is_organizer` flag + backfill
+
+Plus `GOLFCOURSE_API_KEY` in Vercel env vars (Production scope) before course imports work in prod.
 
 ## Scope decisions (locked)
 
