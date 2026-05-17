@@ -3,24 +3,39 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import type { PokerCard } from "@/lib/types";
 
-type HandRow = {
+// JSONB columns can come back as text strings when the postgres lib is
+// configured with prepare:false (which we are, for the pgbouncer pooler).
+// Parse defensively.
+function asJson<T>(v: unknown, fallback: T): T {
+  if (v == null) return fallback;
+  if (typeof v === "string") {
+    try {
+      return JSON.parse(v) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return v as T;
+}
+
+type HandRowRaw = {
   player_id: string;
   display_name: string;
-  cards: PokerCard[];
+  cards: unknown;
   wild_count: number;
   bogey_count: number;
 };
 
-type SwapRow = {
+type SwapRowRaw = {
   id: number;
   player_id: string;
-  incoming_card: PokerCard | null;
+  incoming_card: unknown;
   delta: number;
   resolved_at: string | null;
   created_at: string;
 };
 
-type DeckRow = { num_decks: number; drawn: PokerCard[] };
+type DeckRowRaw = { num_decks: number; drawn: unknown };
 
 export async function GET(
   _request: Request,
@@ -49,34 +64,46 @@ export async function GET(
     });
   }
 
-  const hands = await db
+  const handsRaw = await db
     .prepare(
       `SELECT ph.player_id, u.display_name, ph.cards, ph.wild_count, ph.bogey_count
        FROM poker_hands ph JOIN users u ON u.id = ph.player_id
        WHERE ph.event_id = ?
        ORDER BY u.display_name ASC`,
     )
-    .all<HandRow>(eventId);
+    .all<HandRowRaw>(eventId);
 
-  const swaps = await db
+  const swapsRaw = await db
     .prepare(
       `SELECT id, player_id, incoming_card, delta, resolved_at, created_at
        FROM poker_swap_queue
        WHERE event_id = ? AND resolved_at IS NULL
        ORDER BY created_at ASC, id ASC`,
     )
-    .all<SwapRow>(eventId);
+    .all<SwapRowRaw>(eventId);
 
-  const deck = await db
+  const deckRaw = await db
     .prepare(
       "SELECT num_decks, drawn FROM poker_deck_state WHERE event_id = ?",
     )
-    .get<DeckRow>(eventId);
+    .get<DeckRowRaw>(eventId);
+
+  const hands = handsRaw.map((h) => ({
+    ...h,
+    cards: asJson<PokerCard[]>(h.cards, []),
+  }));
+  const pending_swaps = swapsRaw.map((s) => ({
+    ...s,
+    incoming_card: asJson<PokerCard | null>(s.incoming_card, null),
+  }));
+  const deck = deckRaw
+    ? { ...deckRaw, drawn: asJson<PokerCard[]>(deckRaw.drawn, []) }
+    : null;
 
   return NextResponse.json({
     enabled: true,
     hands,
-    pending_swaps: swaps,
+    pending_swaps,
     deck,
   });
 }

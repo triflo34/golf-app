@@ -69,6 +69,20 @@ type DeckRow = {
   drawn: PokerCard[];
 };
 
+// JSONB columns can come back as text strings with prepare:false; normalize.
+function asJsonArray<T>(v: unknown): T[] {
+  if (Array.isArray(v)) return v as T[];
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 async function loadHand(
   tx: DbApi,
   eventId: number,
@@ -79,8 +93,13 @@ async function loadHand(
       `SELECT cards, wild_count, bogey_count FROM poker_hands
        WHERE event_id = ? AND player_id = ?`,
     )
-    .get<HandRow>(eventId, playerId);
-  return row ?? null;
+    .get<{ cards: unknown; wild_count: number; bogey_count: number }>(eventId, playerId);
+  if (!row) return null;
+  return {
+    cards: asJsonArray<PokerCard>(row.cards),
+    wild_count: row.wild_count,
+    bogey_count: row.bogey_count,
+  };
 }
 
 async function loadDeck(tx: DbApi, eventId: number): Promise<DeckRow | null> {
@@ -88,8 +107,12 @@ async function loadDeck(tx: DbApi, eventId: number): Promise<DeckRow | null> {
     .prepare(
       `SELECT num_decks, drawn FROM poker_deck_state WHERE event_id = ?`,
     )
-    .get<DeckRow>(eventId);
-  return row ?? null;
+    .get<{ num_decks: number; drawn: unknown }>(eventId);
+  if (!row) return null;
+  return {
+    num_decks: row.num_decks,
+    drawn: asJsonArray<PokerCard>(row.drawn),
+  };
 }
 
 async function appendDrawn(tx: DbApi, eventId: number, cards: PokerCard[]): Promise<void> {
