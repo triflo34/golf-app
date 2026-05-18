@@ -3,15 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Course } from "@/lib/types";
+import type { FavoriteCourseRow } from "@/app/api/favorites/route";
 
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[] | null>(null);
+  const [favorites, setFavorites] = useState<FavoriteCourseRow[] | null>(null);
   const [q, setQ] = useState("");
 
   useEffect(() => {
     fetch("/api/courses")
       .then((r) => r.json())
       .then((d) => setCourses(d.courses ?? []));
+    fetch("/api/favorites")
+      .then((r) => r.json())
+      .then((d) => setFavorites(d.favorites ?? []))
+      .catch(() => setFavorites([]));
   }, []);
 
   const filtered = useMemo(() => {
@@ -44,6 +50,33 @@ export default function CoursesPage() {
         placeholder="Search by name or city…"
         className="w-full mb-4 px-3 py-2.5 border border-gray-300 rounded-lg text-gray-900"
       />
+
+      {!q && favorites && favorites.length > 0 && (
+        <div className="card p-0 overflow-hidden mb-4">
+          <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wide font-semibold text-red-700">
+            ♥ Favorites
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {favorites.map((c) => (
+              <li key={`fav-${c.id}`}>
+                <Link
+                  href={`/courses/${c.id}`}
+                  className="flex items-center justify-between px-4 py-3 hover:bg-red-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-gray-800 truncate">
+                      {c.name}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {c.city} · par {c.par} · {c.holes} holes
+                    </div>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="card p-0 overflow-hidden">
         {filtered === null ? (

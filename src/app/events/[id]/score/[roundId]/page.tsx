@@ -14,7 +14,12 @@ type RoundInfo = {
   played_at: string;
 };
 
-type HolePar = { hole_number: number; par: number };
+type HolePar = {
+  hole_number: number;
+  par: number;
+  handicap_index: number | null;
+  yardage: number | null;
+};
 
 type PlayerInfo = {
   user_id: string;
@@ -278,7 +283,10 @@ export default function ScorePage({
   }
 
   const { round, holes, players, teams } = data;
-  const currentPar = holes.find((h) => h.hole_number === hole)?.par ?? 4;
+  const currentHole = holes.find((h) => h.hole_number === hole);
+  const currentPar = currentHole?.par ?? 4;
+  const currentYardage = currentHole?.yardage ?? null;
+  const currentHandicap = currentHole?.handicap_index ?? null;
 
   function setStrokes(playerId: string, strokes: number | null) {
     const key = `${playerId}:${hole}`;
@@ -382,7 +390,15 @@ export default function ScorePage({
         <div className="text-center">
           <div className="text-sm text-gray-500">Hole</div>
           <div className="text-3xl font-bold text-green-800 leading-none">{hole}</div>
-          <div className="text-xs text-gray-500">Par {currentPar}</div>
+          <div className="text-xs text-gray-500">
+            Par {currentPar}
+            {currentYardage != null && (
+              <> · {currentYardage} yds</>
+            )}
+            {currentHandicap != null && (
+              <> · HCP {currentHandicap}</>
+            )}
+          </div>
         </div>
         <button
           type="button"

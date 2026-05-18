@@ -75,6 +75,7 @@ export async function GET(request: Request) {
 
   let external: CourseSearchResult[] = [];
   let externalError: string | null = null;
+  let rateLimited = false;
 
   if (process.env.GOLFCOURSE_API_KEY) {
     try {
@@ -90,12 +91,18 @@ export async function GET(request: Request) {
           country: h.country,
         }));
     } catch (err) {
-      externalError =
-        err instanceof GolfCourseApiError
-          ? err.message
-          : err instanceof Error
+      if (err instanceof GolfCourseApiError && err.status === 429) {
+        rateLimited = true;
+        externalError =
+          "GolfCourseAPI daily rate limit reached. Saved courses still work; new searches resume tomorrow.";
+      } else {
+        externalError =
+          err instanceof GolfCourseApiError
             ? err.message
-            : "External search failed";
+            : err instanceof Error
+              ? err.message
+              : "External search failed";
+      }
     }
   } else {
     externalError = "GOLFCOURSE_API_KEY not set — external search disabled";
@@ -104,5 +111,6 @@ export async function GET(request: Request) {
   return NextResponse.json({
     results: [...local, ...external],
     external_error: externalError,
+    rate_limited: rateLimited,
   });
 }

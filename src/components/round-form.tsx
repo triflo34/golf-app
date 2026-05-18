@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Course, User } from "@/lib/types";
+import type { CourseSearchResult } from "@/app/api/courses/search/route";
 
 export type PlayerEntry =
   | { kind: "user"; user: User; gross: string }
@@ -39,6 +40,12 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
   const [courseId, setCourseId] = useState<number | null>(initial.courseId);
   const [courseQuery, setCourseQuery] = useState("");
   const [showCoursePicker, setShowCoursePicker] = useState(false);
+  const [apiHits, setApiHits] = useState<CourseSearchResult[]>([]);
+  const [apiSearching, setApiSearching] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiRateLimited, setApiRateLimited] = useState(false);
+  const [importingExtId, setImportingExtId] = useState<string | null>(null);
+  const apiSeqRef = useRef(0);
 
   const [playedAt, setPlayedAt] = useState(initial.playedAt);
   const [holeCount, setHoleCount] = useState<9 | 18>(initial.holeCount);
@@ -83,6 +90,83 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
       )
       .slice(0, 30);
   }, [courses, courseQuery]);
+
+  // Debounced GolfCourseAPI search — runs only when picker is open and query
+  // has at least 2 chars. Surfaces external hits below local matches so a
+  // brand-new course can be imported without leaving the round form.
+  useEffect(() => {
+    if (!showCoursePicker || courseId != null) {
+      setApiHits([]);
+      setApiError(null);
+      return;
+    }
+    const q = courseQuery.trim();
+    if (q.length < 2) {
+      setApiHits([]);
+      setApiError(null);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      const seq = ++apiSeqRef.current;
+      setApiSearching(true);
+      try {
+        const res = await fetch(`/api/courses/search?q=${encodeURIComponent(q)}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (seq !== apiSeqRef.current) return;
+        if (!res.ok) throw new Error(data.error ?? "Search failed");
+        // Only external hits — local ones are already in `filteredCourses`.
+        const hits: CourseSearchResult[] = (data.results ?? []).filter(
+          (r: CourseSearchResult) => r.source === "external",
+        );
+        setApiHits(hits);
+        setApiError(data.external_error ?? null);
+        setApiRateLimited(Boolean(data.rate_limited));
+      } catch (e) {
+        if (seq !== apiSeqRef.current) return;
+        setApiError(e instanceof Error ? e.message : "Search failed");
+        setApiHits([]);
+      } finally {
+        if (seq === apiSeqRef.current) setApiSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [courseQuery, showCoursePicker, courseId]);
+
+  async function importAndSelect(externalId: string) {
+    setImportingExtId(externalId);
+    setApiError(null);
+    try {
+      const res = await fetch("/api/courses/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ external_id: externalId }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Import failed");
+      // Pull the now-existing local course so it's in the picker list and
+      // selectedCourse renders properly.
+      const courseRes = await fetch(`/api/courses/${body.id}`, { cache: "no-store" });
+      if (courseRes.ok) {
+        const data = await courseRes.json();
+        if (data?.course) {
+          setCourses((prev) =>
+            prev.some((c) => c.id === data.course.id)
+              ? prev
+              : [...prev, data.course],
+          );
+        }
+      }
+      setCourseId(body.id);
+      setCourseQuery("");
+      setShowCoursePicker(false);
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImportingExtId(null);
+    }
+  }
 
   const takenUserIds = new Set(
     players
@@ -222,30 +306,91 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
             />
             {showCoursePicker && (
-              <div className="mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
-                {filteredCourses.length === 0 ? (
-                  <div className="p-3 text-sm text-gray-400">No courses match</div>
+              <div className="mt-2 max-h-72 overflow-y-auto border border-gray-200 rounded-lg">
+                {filteredCourses.length === 0 && apiHits.length === 0 && !apiSearching ? (
+                  <div className="p-3 text-sm text-gray-400">
+                    {courseQuery.trim().length < 2
+                      ? "Type at least 2 characters to search the GolfCourseAPI."
+                      : "No courses match."}
+                  </div>
                 ) : (
-                  filteredCourses.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        setCourseId(c.id);
-                        setCourseQuery("");
-                        setShowCoursePicker(false);
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0"
-                    >
-                      <div className="text-sm font-semibold text-gray-800">
-                        {c.name}
+                  <>
+                    {filteredCourses.map((c) => (
+                      <button
+                        key={`L${c.id}`}
+                        type="button"
+                        onClick={() => {
+                          setCourseId(c.id);
+                          setCourseQuery("");
+                          setShowCoursePicker(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold text-gray-800 truncate">
+                            {c.name}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 shrink-0">
+                            saved
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {c.city} · par {c.par}
+                        </div>
+                      </button>
+                    ))}
+                    {apiHits.length > 0 && filteredCourses.length > 0 && (
+                      <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400 bg-gray-50 border-t border-b border-gray-100">
+                        From GolfCourseAPI
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {c.city} · par {c.par}
+                    )}
+                    {apiHits.map((r) => {
+                      if (r.source !== "external") return null;
+                      const importing = importingExtId === r.external_id;
+                      return (
+                        <button
+                          key={`E${r.external_id}`}
+                          type="button"
+                          disabled={Boolean(importingExtId)}
+                          onClick={() => importAndSelect(r.external_id)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 disabled:opacity-50"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-gray-800 truncate">
+                              {r.name}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 shrink-0">
+                              import
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {[r.city, r.state, r.country].filter(Boolean).join(", ") || "—"}
+                          </div>
+                          {importing && (
+                            <div className="text-[10px] text-blue-700 mt-0.5">
+                              Importing…
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {apiSearching && (
+                      <div className="px-3 py-2 text-xs text-gray-500">
+                        Searching GolfCourseAPI…
                       </div>
-                    </button>
-                  ))
+                    )}
+                  </>
                 )}
+                {apiRateLimited ? (
+                  <div className="px-3 py-2 text-xs text-orange-800 bg-orange-50 border-t border-orange-200">
+                    ⏱ Daily GolfCourseAPI limit reached. Saved courses still
+                    work; new searches resume tomorrow.
+                  </div>
+                ) : apiError ? (
+                  <div className="px-3 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200">
+                    {apiError}
+                  </div>
+                ) : null}
               </div>
             )}
           </>

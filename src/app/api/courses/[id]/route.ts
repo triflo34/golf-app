@@ -3,9 +3,18 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import type { Course } from "@/lib/types";
 
+export type CourseHoleDetail = {
+  hole_number: number;
+  par: number;
+  handicap_index: number | null;
+  yardage: number | null;
+};
+
 export type CourseDetail = {
   course: Course;
   rounds_played: number;
+  holes: CourseHoleDetail[];
+  is_favorite: boolean;
   top_scores: {
     name: string;
     is_guest: boolean;
@@ -36,6 +45,19 @@ export async function GET(
     .prepare("SELECT COUNT(*)::int as n FROM rounds WHERE course_id = ?")
     .get<{ n: number }>(id);
 
+  const holes = await db
+    .prepare(
+      `SELECT hole_number, par, handicap_index, yardage FROM course_holes
+       WHERE course_id = ? ORDER BY hole_number ASC`,
+    )
+    .all<CourseHoleDetail>(id);
+
+  const favRow = await db
+    .prepare(
+      "SELECT 1 AS ok FROM favorite_courses WHERE user_id = ? AND course_id = ?",
+    )
+    .get<{ ok: number }>(me.id, id);
+
   const topScoreRows = await db
     .prepare(
       `SELECT s.gross_score, s.guest_name, u.display_name, r.played_at
@@ -63,6 +85,8 @@ export async function GET(
   return NextResponse.json({
     course,
     rounds_played: roundCount?.n ?? 0,
+    holes,
+    is_favorite: Boolean(favRow),
     top_scores,
   } satisfies CourseDetail);
 }

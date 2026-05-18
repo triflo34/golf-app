@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { CourseSearchResult } from "@/app/api/courses/search/route";
+import type { RecentSearchRow } from "@/app/api/recent-searches/route";
 
 export default function NewCoursePage() {
   const router = useRouter();
@@ -24,8 +25,46 @@ export default function NewCoursePage() {
   const [searchResults, setSearchResults] = useState<CourseSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
+  const [recents, setRecents] = useState<RecentSearchRow[]>([]);
   const searchSeqRef = useRef(0);
+  const loggedQueryRef = useRef<string>("");
+
+  const loadRecents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/recent-searches", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRecents(data.recent ?? []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRecents();
+  }, [loadRecents]);
+
+  async function logSearch(q: string) {
+    if (loggedQueryRef.current === q) return;
+    loggedQueryRef.current = q;
+    try {
+      await fetch("/api/recent-searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q }),
+      });
+      loadRecents();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function clearRecents() {
+    await fetch("/api/recent-searches", { method: "DELETE" });
+    setRecents([]);
+  }
 
   useEffect(() => {
     const q = searchQuery.trim();
@@ -46,6 +85,9 @@ export default function NewCoursePage() {
         if (!res.ok) throw new Error(data.error ?? "Search failed");
         setSearchResults(data.results ?? []);
         setSearchError(data.external_error ?? null);
+        setRateLimited(Boolean(data.rate_limited));
+        // Log the search term as a "recent" once per typed phrase (after debounce).
+        if (!data.rate_limited) void logSearch(q);
       } catch (e) {
         if (seq !== searchSeqRef.current) return;
         setSearchError(e instanceof Error ? e.message : "Search failed");
@@ -136,9 +178,49 @@ export default function NewCoursePage() {
         </div>
 
         {searching && <div className="text-xs text-gray-500">Searching…</div>}
-        {searchError && (
+        {rateLimited ? (
+          <div className="text-xs text-orange-800 bg-orange-50 border border-orange-200 p-2.5 rounded">
+            <div className="font-semibold text-orange-900 mb-0.5">
+              ⏱ Daily search limit reached
+            </div>
+            <div>
+              GolfCourseAPI free tier caps at 300 requests/day. Saved courses
+              still load. New imports resume tomorrow — or add a course manually
+              below for now.
+            </div>
+          </div>
+        ) : searchError ? (
           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
             {searchError}
+          </div>
+        ) : null}
+
+        {!searchQuery.trim() && recents.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">
+                Recent searches
+              </span>
+              <button
+                type="button"
+                onClick={clearRecents}
+                className="text-[10px] text-gray-400 hover:text-gray-600"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {recents.map((r) => (
+                <button
+                  key={r.query}
+                  type="button"
+                  onClick={() => setSearchQuery(r.query)}
+                  className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+                >
+                  {r.query}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {searchResults.length > 0 && (
