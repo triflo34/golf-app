@@ -68,6 +68,7 @@ export default function PokerPage({
   const [data, setData] = useState<LoadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reorderPick, setReorderPick] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/events/${id}/poker`, { cache: "no-store" });
@@ -157,6 +158,54 @@ export default function PokerPage({
         </div>
       </div>
     );
+  }
+
+  async function reorderSwap(from: number, to: number) {
+    if (from === to) return;
+    setBusy(true);
+    setError(null);
+    // Optimistic: swap locally so the UI doesn't flicker through a stale fetch.
+    setData((prev) => {
+      if (!prev || !user) return prev;
+      const next = { ...prev, hands: prev.hands.map((h) => ({ ...h })) };
+      const me = next.hands.find((h) => h.player_id === user.id);
+      if (!me) return prev;
+      const cards = [...me.cards];
+      if (from < 0 || to < 0 || from >= cards.length || to >= cards.length) {
+        return prev;
+      }
+      [cards[from], cards[to]] = [cards[to], cards[from]];
+      me.cards = cards;
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/events/${id}/poker/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Failed");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onCardTap(idx: number) {
+    if (reorderPick == null) {
+      setReorderPick(idx);
+      return;
+    }
+    if (reorderPick === idx) {
+      setReorderPick(null);
+      return;
+    }
+    const from = reorderPick;
+    setReorderPick(null);
+    void reorderSwap(from, idx);
   }
 
   async function resolveSwap(
@@ -297,19 +346,42 @@ export default function PokerPage({
             <div className="flex flex-wrap gap-2">
               {Array.from({ length: 5 }).map((_, i) => {
                 const c = myHand.cards[i];
-                return c ? (
-                  <CardFace key={i} card={c} />
-                ) : (
-                  <span
+                if (!c) {
+                  return (
+                    <span
+                      key={i}
+                      className="inline-flex items-center justify-center w-12 h-16 rounded-md border border-dashed border-gray-300 text-xs text-gray-400"
+                    >
+                      empty
+                    </span>
+                  );
+                }
+                const selected = reorderPick === i;
+                return (
+                  <button
                     key={i}
-                    className="inline-flex items-center justify-center w-12 h-16 rounded-md border border-dashed border-gray-300 text-xs text-gray-400"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onCardTap(i)}
+                    className={`relative rounded-md focus:outline-none disabled:opacity-50 transition ${
+                      selected
+                        ? "ring-2 ring-blue-500 ring-offset-2 -translate-y-1"
+                        : "hover:ring-2 hover:ring-blue-300"
+                    }`}
+                    aria-pressed={selected}
+                    aria-label={`Card ${i + 1}${selected ? " (selected)" : ""}`}
                   >
-                    empty
-                  </span>
+                    <CardFace card={c} />
+                  </button>
                 );
               })}
             </div>
-            <div className="mt-3 text-xs text-gray-600">
+            <div className="mt-2 text-[11px] text-gray-500">
+              {reorderPick == null
+                ? "Tap a card, then another, to swap their positions."
+                : "Tap another card to swap, or tap the selected card again to cancel."}
+            </div>
+            <div className="mt-2 text-xs text-gray-600">
               {myHand.bogey_count} bogey{myHand.bogey_count === 1 ? "" : "s"} this event
             </div>
           </div>
