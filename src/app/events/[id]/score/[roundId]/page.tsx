@@ -462,6 +462,18 @@ export default function ScorePage({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    onClick={() => setTeamStrokes(tm.id, currentPar)}
+                    className={`h-9 px-2 rounded-md border text-xs font-semibold ${
+                      score?.strokes === currentPar
+                        ? "border-green-600 bg-green-600 text-white"
+                        : "border-green-300 bg-green-50 text-green-800"
+                    }`}
+                    title={`Set to par (${currentPar})`}
+                  >
+                    Par
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setTeamStrokes(tm.id, Math.max(1, (score?.strokes ?? currentPar) - 1))}
                     /* optimistic: no disable */
                     className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
@@ -528,6 +540,18 @@ export default function ScorePage({
                 )}
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setStrokes(p.user_id, currentPar)}
+                  className={`h-9 px-2 rounded-md border text-xs font-semibold ${
+                    score?.strokes === currentPar
+                      ? "border-green-600 bg-green-600 text-white"
+                      : "border-green-300 bg-green-50 text-green-800"
+                  }`}
+                  title={`Set to par (${currentPar})`}
+                >
+                  Par
+                </button>
                 <button
                   type="button"
                   onClick={() => setStrokes(p.user_id, Math.max(1, (score?.strokes ?? currentPar) - 1))}
