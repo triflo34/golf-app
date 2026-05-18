@@ -52,11 +52,18 @@ export async function GET(
     )
     .all<CourseHoleDetail>(id);
 
-  const favRow = await db
-    .prepare(
-      "SELECT 1 AS ok FROM favorite_courses WHERE user_id = ? AND course_id = ?",
-    )
-    .get<{ ok: number }>(me.id, id);
+  // favorite_courses may not exist yet on environments where the migration
+  // hasn't run (Vercel Prod has SKIP_DB_BOOTSTRAP=1). Degrade gracefully.
+  let favRow: { ok: number } | null = null;
+  try {
+    favRow = (await db
+      .prepare(
+        "SELECT 1 AS ok FROM favorite_courses WHERE user_id = ? AND course_id = ?",
+      )
+      .get<{ ok: number }>(me.id, id)) ?? null;
+  } catch (err) {
+    console.warn("[courses/[id]] favorite_courses query failed:", err);
+  }
 
   const topScoreRows = await db
     .prepare(

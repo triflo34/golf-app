@@ -41,7 +41,7 @@ Last updated: 2026-05-14
 **Deferred / known gaps:**
 - Poker manual winner pick at end of event (organizer eyeballs hands; not yet recorded in `side_game_results`)
 - Clearing an individual hole score against a poker-enabled event leaves a small drift in the player's running totals (we don't fully reverse the cards that hole granted). Re-entering the score makes it consistent again. Documented in `applyPokerForHoleSave`.
-- Per-hole par editor UI for courses not in GolfCourseAPI (today: hand-edit `course_holes` via SQL)
+- ~~Per-hole par editor UI for courses not in GolfCourseAPI (today: hand-edit `course_holes` via SQL)~~ — shipped 2026-05-18 as `/courses/[id]/edit-holes`
 - Photo uploads, push notifications, websockets, offline queue, spectator follow (all explicitly out of MVP)
 
 ## Course API integration (GolfCourseAPI.com)
@@ -84,6 +84,23 @@ Shipping work after the original MVP commit, in order:
 - **Poker swap UI: one decision at a time.** The page used to render every pending swap at once (so the next incoming card was visible before you resolved the current one). Now shows only `mySwaps[0]` with an "(N more after this)" hint; resolving advances to the next.
 - **Wild redesign — shared community card.** Wilds are no longer a per-player counter. There's now exactly ONE community wild per event, drawn from the shared deck, visible to all players. Players' effective hand is their 5 cards + the community wild = 6 cards for the manual judging pass. Re-rolls randomly on every birdie or eagle (sticky semantics — only when transitioning into birdie/eagle from a non-birdie/eagle score). Seeded at event start. Old wild stays in `deck.drawn` (shared-deck "once drawn, always drawn" rule). Per-player `poker_hands.wild_count` is left in place as a vestigial 0 (no reads, no writes from app code). Schema add: `poker_deck_state.wild_card JSONB`. Migration: `supabase/migrations/2026-05-18-poker-wild-card.sql`.
 
+## Post-MVP iterations (2026-05-18) — golffinder.md catch-up
+
+Knocked out most of the unfinished items from `.claude/golffinder.md` in one session.
+
+- **Hole-score snapshots (LOAD-BEARING).** Per-hole scores now carry their own `par`/`handicap_index`/`yardage` columns copied from `course_holes` at first save. Leaderboard + scramble standings read `s.par` first, falling back to current `course_holes` only for legacy rows. Means vs-par stays correct even if an admin later re-links/refreshes a course. Migration: `supabase/migrations/2026-05-18-hole-score-snapshots.sql` — includes one-shot backfill from current `course_holes` for any NULL columns. **Must be applied before deployment** or score saves and standings will 500 on the new columns.
+- **Inline GolfCourseAPI search in round creation.** `round-form.tsx` now debounces a call to `/api/courses/search` when the local-course filter has no good match. External hits render with an "import" badge; selecting auto-imports + selects in one step.
+- **Yardages on scorecard UIs.** Course detail page now renders a front/back-nine scorecard table with par/yardage/HCP rows. Live-scoring hole header shows yardage + HCP next to par.
+- **Admin per-hole edit page.** `PATCH /api/admin/courses/[id]/holes` + `/courses/[id]/edit-holes` with inline editable par/HCP/yardage. Only mutates `course_holes`; existing `hole_scores` keep their snapshots so historical rounds don't shift.
+- **30-day staleness banner.** Course detail page shows an amber "data may be out of date" notice when `last_fetched_at` is ≥30 days old. Admins still drive the refresh action.
+- **Favorites.** New `favorite_courses` table, `GET/POST/DELETE /api/favorites`, heart toggle on course detail, favorites section at top of `/courses` list.
+- **Recent searches.** New `recent_course_searches` table (capped 20/user), `GET/POST/DELETE /api/recent-searches`, chip list under the search input on `/courses/new`. Logged after successful debounced API call.
+- **Rate-limit empty state.** Search route detects HTTP 429 and returns `rate_limited:true`. UI shows a distinct "daily limit reached, saved courses still work" message instead of a generic error.
+- **Offline support (queue-only).** `src/lib/offline-queue.ts` IndexedDB FIFO of pending mutations. `fetchOrQueue()` wraps score save POSTs: when `navigator.onLine` is false or the request throws, the mutation goes to the queue; `online` event auto-drains serially. `OfflineBanner` (mounted globally) shows offline status + queued count + Sync Now. Wired into event individual + scramble score paths. Full PWA service-worker / page cache intentionally deferred — queue covers the highest-value mid-round bad-signal scenario.
+- **Defensive degradation.** `/api/courses/[id]`, `/api/favorites`, `/api/recent-searches` all wrap their new-table queries in try/catch so the app doesn't 500 when a deployment lands before its migration runs. Course favorites just degrades to `is_favorite: false`; favorites POST returns a clean 503 with a hint to run the migration.
+
+**Skipped per user (deferred to v2):** multi-tee model, full service-worker / cache-first PWA, Phase 4 stretch (GPS, mini map, community edits, tee recommendations).
+
 **TypeScript + build clean.**
 
 ## Deployment note
@@ -95,6 +112,8 @@ Shipping work after the original MVP commit, in order:
 3. `supabase/migrations/2026-05-14-perf-index.sql` — `idx_scramble_teams_round`
 4. `supabase/migrations/2026-05-14-organizer-flag.sql` — `is_organizer` flag + backfill
 5. `supabase/migrations/2026-05-18-poker-wild-card.sql` — `poker_deck_state.wild_card` JSONB
+6. `supabase/migrations/2026-05-18-hole-score-snapshots.sql` — `par`/`handicap_index`/`yardage` on `hole_scores` + `team_hole_scores`, plus backfill **(REQUIRED before code that references the new columns runs in prod — otherwise score saves and standings 500)**
+7. `supabase/migrations/2026-05-18-favorites-and-recents.sql` — `favorite_courses` + `recent_course_searches` tables
 
 Plus `GOLFCOURSE_API_KEY` in Vercel env vars (Production scope) before course imports work in prod.
 
