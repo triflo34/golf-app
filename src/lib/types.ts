@@ -20,6 +20,8 @@ export type Course = {
   website: string | null;
   phone: string | null;
   created_at: string;
+  external_id: string | null;
+  last_fetched_at: string | null;
 };
 
 export type Round = {
