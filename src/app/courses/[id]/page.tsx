@@ -101,13 +101,22 @@ export default function CourseDetailPage() {
       )}
 
       {user?.is_admin && (
-        <AdminApiPanel
-          courseId={c.id}
-          externalId={c.external_id ?? null}
-          lastFetchedAt={c.last_fetched_at ?? null}
-          courseName={c.name}
-          onChanged={load}
-        />
+        <>
+          <AdminRenamePanel
+            courseId={c.id}
+            initialName={c.name}
+            initialCity={c.city}
+            initialState={c.state}
+            onChanged={load}
+          />
+          <AdminApiPanel
+            courseId={c.id}
+            externalId={c.external_id ?? null}
+            lastFetchedAt={c.last_fetched_at ?? null}
+            courseName={c.name}
+            onChanged={load}
+          />
+        </>
       )}
 
       {data.holes && data.holes.length > 0 && (
@@ -241,6 +250,151 @@ function ScorecardTable({
     <div className="space-y-3">
       {nine(front, "Front")}
       {nine(back, "Back")}
+    </div>
+  );
+}
+
+function AdminRenamePanel({
+  courseId,
+  initialName,
+  initialCity,
+  initialState,
+  onChanged,
+}: {
+  courseId: number;
+  initialName: string;
+  initialCity: string;
+  initialState: string;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(initialName);
+  const [city, setCity] = useState(initialCity);
+  const [state, setState] = useState(initialState);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setName(initialName);
+    setCity(initialCity);
+    setState(initialState);
+  }, [initialName, initialCity, initialState]);
+
+  const dirty =
+    name.trim() !== initialName ||
+    city.trim() !== initialCity ||
+    state.trim() !== initialState;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/courses/${courseId}/rename`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          city: city.trim(),
+          state: state.trim(),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Save failed");
+      onChanged();
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="card mb-4 border border-gray-200 bg-gray-50 flex items-center justify-between">
+        <span className="text-xs text-gray-600">
+          Admin · course basics
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-xs font-medium text-gray-700 px-3 py-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-100"
+        >
+          Rename / edit
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card mb-4 border border-gray-300 bg-white">
+      <h2 className="font-semibold text-gray-800 text-sm mb-3">
+        Rename / edit course basics
+      </h2>
+      <div className="space-y-2">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm"
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <label className="block text-xs text-gray-500 mb-1">City</label>
+            <input
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">State</label>
+            <input
+              type="text"
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm"
+            />
+          </div>
+        </div>
+      </div>
+      {error && (
+        <div className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded">
+          {error}
+        </div>
+      )}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setName(initialName);
+            setCity(initialCity);
+            setState(initialState);
+            setError(null);
+          }}
+          disabled={busy}
+          className="flex-1 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy || !dirty}
+          className="flex-1 py-2 bg-green-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-gray-500">
+        Renaming doesn&rsquo;t affect existing rounds or scorecards — they
+        reference this course by id.
+      </p>
     </div>
   );
 }
