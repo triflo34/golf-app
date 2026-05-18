@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { fetchOrQueue } from "@/lib/offline-queue";
 
 type RoundInfo = {
   id: number;
@@ -302,16 +303,14 @@ export default function ScorePage({
     setSaving(key);
     setError(null);
     // Fire-and-forget; don't refetch on success — the optimistic value already matches.
-    fetch(`/api/events/${id}/rounds/${roundId}/holes`, {
+    // fetchOrQueue returns null when offline (queued for later) — treat as success.
+    fetchOrQueue(`/api/events/${id}/rounds/${roundId}/holes`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        player_id: playerId,
-        hole_number: hole,
-        strokes,
-      }),
+      body: { player_id: playerId, hole_number: hole, strokes },
+      label: `hole ${hole} for ${playerId.slice(0, 8)}`,
     })
       .then(async (res) => {
+        if (res === null) return; // queued offline
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error ?? "Save failed");
       })
@@ -340,16 +339,13 @@ export default function ScorePage({
     });
     setSaving(key);
     setError(null);
-    fetch(`/api/events/${id}/rounds/${roundId}/team-holes`, {
+    fetchOrQueue(`/api/events/${id}/rounds/${roundId}/team-holes`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        team_id: teamId,
-        hole_number: hole,
-        strokes,
-      }),
+      body: { team_id: teamId, hole_number: hole, strokes },
+      label: `hole ${hole} for team ${teamId}`,
     })
       .then(async (res) => {
+        if (res === null) return; // queued offline
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error ?? "Save failed");
       })

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 import { BottomNav } from "@/components/nav";
+import { OfflineBanner } from "@/components/offline-banner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <AuthProvider>
           <main className="flex-1 pb-nav">{children}</main>
+          <OfflineBanner />
           <BottomNav />
         </AuthProvider>
       </body>
