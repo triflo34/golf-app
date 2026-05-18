@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ensureCourseHoles } from "@/lib/events";
 
 type RoundRow = {
   id: number;
   event_id: number;
+  course_id: number;
   round_format: "individual" | "scramble";
   hole_count: number;
 };
@@ -54,7 +56,7 @@ export async function POST(
 
   const round = await db
     .prepare(
-      "SELECT id, event_id, round_format, hole_count FROM rounds WHERE id = ? AND event_id = ?",
+      "SELECT id, event_id, course_id, round_format, hole_count FROM rounds WHERE id = ? AND event_id = ?",
     )
     .get<RoundRow>(rid, eventId);
   if (!round) {
@@ -81,6 +83,12 @@ export async function POST(
   if (!team) {
     return NextResponse.json({ error: "Team not found for this round" }, { status: 404 });
   }
+
+  const holes = await ensureCourseHoles(round.course_id);
+  const holeMeta = holes.find((h) => h.hole_number === holeNumber);
+  const par = holeMeta?.par ?? 4;
+  const handicapIndex = holeMeta?.handicap_index ?? null;
+  const yardage = holeMeta?.yardage ?? null;
 
   await withTransaction(async (tx) => {
     const existing = await tx
@@ -111,10 +119,19 @@ export async function POST(
     } else {
       await tx
         .prepare(
-          `INSERT INTO team_hole_scores (team_id, hole_number, strokes, updated_by)
-           VALUES (?, ?, ?, ?)`,
+          `INSERT INTO team_hole_scores
+             (team_id, hole_number, strokes, par, handicap_index, yardage, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(teamId, holeNumber, strokes, me.id);
+        .run(
+          teamId,
+          holeNumber,
+          strokes,
+          par,
+          handicapIndex,
+          yardage,
+          me.id,
+        );
     }
   });
 

@@ -135,6 +135,8 @@ async function bootstrap(): Promise<void> {
   await ensureEventParticipantOrganizerFlag(sql);
   console.log("[db] bootstrap: ensurePokerWildCardColumn");
   await ensurePokerWildCardColumn(sql);
+  console.log("[db] bootstrap: ensureHoleScoreSnapshotColumns");
+  await ensureHoleScoreSnapshotColumns(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -271,13 +273,16 @@ const SCHEMA_SQL = `
   );
 
   CREATE TABLE IF NOT EXISTS hole_scores (
-    id          SERIAL PRIMARY KEY,
-    round_id    INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
-    player_id   TEXT NOT NULL REFERENCES users(id),
-    hole_number SMALLINT NOT NULL,
-    strokes     SMALLINT NOT NULL,
-    updated_by  TEXT REFERENCES users(id),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id             SERIAL PRIMARY KEY,
+    round_id       INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
+    player_id      TEXT NOT NULL REFERENCES users(id),
+    hole_number    SMALLINT NOT NULL,
+    strokes        SMALLINT NOT NULL,
+    par            SMALLINT,
+    handicap_index SMALLINT,
+    yardage        INTEGER,
+    updated_by     TEXT REFERENCES users(id),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (round_id, player_id, hole_number)
   );
   CREATE INDEX IF NOT EXISTS idx_hole_scores_round ON hole_scores(round_id);
@@ -309,12 +314,15 @@ const SCHEMA_SQL = `
   );
 
   CREATE TABLE IF NOT EXISTS team_hole_scores (
-    id          SERIAL PRIMARY KEY,
-    team_id     INTEGER NOT NULL REFERENCES scramble_teams(id) ON DELETE CASCADE,
-    hole_number SMALLINT NOT NULL,
-    strokes     SMALLINT NOT NULL,
-    updated_by  TEXT REFERENCES users(id),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id             SERIAL PRIMARY KEY,
+    team_id        INTEGER NOT NULL REFERENCES scramble_teams(id) ON DELETE CASCADE,
+    hole_number    SMALLINT NOT NULL,
+    strokes        SMALLINT NOT NULL,
+    par            SMALLINT,
+    handicap_index SMALLINT,
+    yardage        INTEGER,
+    updated_by     TEXT REFERENCES users(id),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (team_id, hole_number)
   );
   CREATE INDEX IF NOT EXISTS idx_team_hole_scores_team ON team_hole_scores(team_id);
@@ -432,6 +440,42 @@ async function ensureEventParticipantOrganizerFlag(sql: postgres.Sql): Promise<v
 async function ensurePokerWildCardColumn(sql: postgres.Sql): Promise<void> {
   await sql.unsafe(`
     ALTER TABLE poker_deck_state ADD COLUMN IF NOT EXISTS wild_card JSONB;
+  `);
+}
+
+async function ensureHoleScoreSnapshotColumns(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE hole_scores      ADD COLUMN IF NOT EXISTS par            SMALLINT;
+    ALTER TABLE hole_scores      ADD COLUMN IF NOT EXISTS handicap_index SMALLINT;
+    ALTER TABLE hole_scores      ADD COLUMN IF NOT EXISTS yardage        INTEGER;
+    ALTER TABLE team_hole_scores ADD COLUMN IF NOT EXISTS par            SMALLINT;
+    ALTER TABLE team_hole_scores ADD COLUMN IF NOT EXISTS handicap_index SMALLINT;
+    ALTER TABLE team_hole_scores ADD COLUMN IF NOT EXISTS yardage        INTEGER;
+  `);
+  // Backfill snapshot values from current course_holes for any rows that
+  // were created before snapshotting existed. Idempotent — only touches NULLs.
+  await sql.unsafe(`
+    UPDATE hole_scores hs
+      SET par            = ch.par,
+          handicap_index = ch.handicap_index,
+          yardage        = ch.yardage
+      FROM rounds r
+      JOIN course_holes ch
+        ON ch.course_id = r.course_id AND ch.hole_number = hs.hole_number
+      WHERE hs.round_id = r.id
+        AND (hs.par IS NULL OR hs.handicap_index IS NULL OR hs.yardage IS NULL);
+  `);
+  await sql.unsafe(`
+    UPDATE team_hole_scores ths
+      SET par            = ch.par,
+          handicap_index = ch.handicap_index,
+          yardage        = ch.yardage
+      FROM scramble_teams st
+      JOIN rounds r ON r.id = st.round_id
+      JOIN course_holes ch
+        ON ch.course_id = r.course_id AND ch.hole_number = ths.hole_number
+      WHERE ths.team_id = st.id
+        AND (ths.par IS NULL OR ths.handicap_index IS NULL OR ths.yardage IS NULL);
   `);
 }
 

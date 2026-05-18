@@ -74,12 +74,14 @@ type HoleScoreRow = {
   player_id: string;
   hole_number: number;
   strokes: number;
+  par: number | null;
 };
 type TeamScoreRow = {
   team_id: number;
   hole_number: number;
   strokes: number;
   round_id: number;
+  par: number | null;
 };
 type TeamMemberRow = { team_id: number; user_id: string };
 type SideGameRow = { kind: SideGameSummary["kind"]; pot_cents: number };
@@ -126,11 +128,12 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
     ensureCourseHoles(courseId),
     db
       .prepare(
-        `SELECT round_id, player_id, hole_number, strokes
+        `SELECT round_id, player_id, hole_number, strokes, par
          FROM hole_scores WHERE round_id IN (${placeholders})`,
       )
       .all<HoleScoreRow>(...roundIds),
   ]);
+  // Live course pars as a fallback for any rows that pre-date snapshotting.
   const parByHole = new Map(holes.map((h) => [h.hole_number, h.par]));
 
   // Fan out team_hole_scores onto each team member for scramble rounds, so the
@@ -140,7 +143,7 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
     const sPlaceholders = scrambleRoundIds.map(() => "?").join(",");
     const teamScores = await db
       .prepare(
-        `SELECT ths.team_id, ths.hole_number, ths.strokes, st.round_id
+        `SELECT ths.team_id, ths.hole_number, ths.strokes, ths.par, st.round_id
          FROM team_hole_scores ths
          JOIN scramble_teams st ON st.id = ths.team_id
          WHERE st.round_id IN (${sPlaceholders})`,
@@ -167,6 +170,7 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
             player_id: uid,
             hole_number: ts.hole_number,
             strokes: ts.strokes,
+            par: ts.par,
           });
         }
       }
@@ -200,7 +204,10 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
       let rStrokes = 0;
       for (const s of rs) {
         rStrokes += s.strokes;
-        vsPar += s.strokes - (parByHole.get(s.hole_number) ?? 4);
+        // Prefer snapshotted par on the row; fall back to current course_holes
+        // for rows that were written before snapshotting existed.
+        const parForHole = s.par ?? parByHole.get(s.hole_number) ?? 4;
+        vsPar += s.strokes - parForHole;
       }
       strokes += rStrokes;
       through += rs.length;
@@ -325,10 +332,15 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
         const tPlaceholders = teamIds.map(() => "?").join(",");
         const teamScores = await db
           .prepare(
-            `SELECT team_id, hole_number, strokes FROM team_hole_scores
+            `SELECT team_id, hole_number, strokes, par FROM team_hole_scores
              WHERE team_id IN (${tPlaceholders})`,
           )
-          .all<{ team_id: number; hole_number: number; strokes: number }>(...teamIds);
+          .all<{
+            team_id: number;
+            hole_number: number;
+            strokes: number;
+            par: number | null;
+          }>(...teamIds);
         const memberRows = await db
           .prepare(
             `SELECT m.team_id, m.user_id, u.display_name
@@ -337,7 +349,10 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
              ORDER BY u.display_name ASC`,
           )
           .all<{ team_id: number; user_id: string; display_name: string }>(...teamIds);
-        const scoresByTeam = new Map<number, { hole_number: number; strokes: number }[]>();
+        const scoresByTeam = new Map<
+          number,
+          { hole_number: number; strokes: number; par: number | null }[]
+        >();
         for (const s of teamScores) {
           if (!scoresByTeam.has(s.team_id)) scoresByTeam.set(s.team_id, []);
           scoresByTeam.get(s.team_id)!.push(s);
@@ -356,7 +371,8 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
           let vsPar = 0;
           for (const s of ss) {
             strokes += s.strokes;
-            vsPar += s.strokes - (parByHole.get(s.hole_number) ?? 4);
+            const parForHole = s.par ?? parByHole.get(s.hole_number) ?? 4;
+            vsPar += s.strokes - parForHole;
           }
           return {
             team_id: t.id,

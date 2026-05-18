@@ -23,6 +23,13 @@ export const SCORE_TYPE_LABEL: Record<ScoreType, string> = {
   worse: "+3 or worse",
 };
 
+export type CourseHoleMeta = {
+  hole_number: number;
+  par: number;
+  handicap_index: number | null;
+  yardage: number | null;
+};
+
 /**
  * If a course has no per-hole par rows yet, seed defaults: par-4 across the board.
  * Organizer can edit later. Returns whatever rows now exist, sorted by hole_number.
@@ -30,13 +37,13 @@ export const SCORE_TYPE_LABEL: Record<ScoreType, string> = {
 export async function ensureCourseHoles(
   courseId: number,
   tx: DbApi = db,
-): Promise<{ hole_number: number; par: number }[]> {
+): Promise<CourseHoleMeta[]> {
   const existing = await tx
     .prepare(
-      `SELECT hole_number, par FROM course_holes
+      `SELECT hole_number, par, handicap_index, yardage FROM course_holes
        WHERE course_id = ? ORDER BY hole_number ASC`,
     )
-    .all<{ hole_number: number; par: number }>(courseId);
+    .all<CourseHoleMeta>(courseId);
   if (existing.length > 0) return existing;
 
   const course = await tx
@@ -71,5 +78,10 @@ export async function ensureCourseHoles(
       .run(courseId, i + 1, pars[i]);
   }
 
-  return pars.map((par, idx) => ({ hole_number: idx + 1, par }));
+  return pars.map((par, idx) => ({
+    hole_number: idx + 1,
+    par,
+    handicap_index: null,
+    yardage: null,
+  }));
 }

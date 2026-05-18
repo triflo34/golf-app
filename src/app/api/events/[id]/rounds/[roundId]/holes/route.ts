@@ -86,7 +86,10 @@ export async function POST(
   }
 
   const holes = await ensureCourseHoles(round.course_id);
-  const par = holes.find((h) => h.hole_number === holeNumber)?.par ?? 4;
+  const holeMeta = holes.find((h) => h.hole_number === holeNumber);
+  const par = holeMeta?.par ?? 4;
+  const handicapIndex = holeMeta?.handicap_index ?? null;
+  const yardage = holeMeta?.yardage ?? null;
 
   await withTransaction(async (tx) => {
     const existing = await tx
@@ -124,6 +127,8 @@ export async function POST(
 
     if (existing) {
       if (existing.strokes === strokes) return; // no-op
+      // strokes change only — leave existing snapshot fields alone so historical
+      // par/handicap/yardage stay tied to what they were when the row was first saved.
       await tx
         .prepare(
           `UPDATE hole_scores
@@ -142,11 +147,20 @@ export async function POST(
       const inserted = await tx
         .prepare(
           `INSERT INTO hole_scores
-             (round_id, player_id, hole_number, strokes, updated_by)
-           VALUES (?, ?, ?, ?, ?)
+             (round_id, player_id, hole_number, strokes, par, handicap_index, yardage, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            RETURNING id`,
         )
-        .get<{ id: number }>(rid, playerId, holeNumber, strokes, me.id);
+        .get<{ id: number }>(
+          rid,
+          playerId,
+          holeNumber,
+          strokes,
+          par,
+          handicapIndex,
+          yardage,
+          me.id,
+        );
       await tx
         .prepare(
           `INSERT INTO score_edits
