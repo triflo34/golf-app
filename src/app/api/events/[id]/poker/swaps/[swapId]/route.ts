@@ -13,10 +13,37 @@ type SwapRow = {
 };
 
 type HandRow = {
-  cards: PokerCard[];
+  cards: unknown;
 };
 
 const MAX_HAND = 5;
+
+// JSONB returns as a string under prepare:false (pgbouncer pooler).
+function asCards(v: unknown): PokerCard[] {
+  if (Array.isArray(v)) return v as PokerCard[];
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? (parsed as PokerCard[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function asIncoming(v: unknown): PokerCard | null {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return parsed && typeof parsed === "object" ? (parsed as PokerCard) : null;
+    } catch {
+      return null;
+    }
+  }
+  return v as PokerCard;
+}
 
 export async function POST(
   request: Request,
@@ -58,17 +85,19 @@ export async function POST(
     if (!swap) throw new Error("Swap not found");
     if (swap.resolved_at) throw new Error("Swap already resolved");
 
-    const hand = await tx
+    const handRaw = await tx
       .prepare(
         `SELECT cards FROM poker_hands WHERE event_id = ? AND player_id = ?`,
       )
       .get<HandRow>(eventId, swap.player_id);
-    if (!hand) throw new Error("Player hand not found");
+    if (!handRaw) throw new Error("Player hand not found");
 
-    let nextCards = [...hand.cards];
+    const currentCards = asCards(handRaw.cards);
+    const incomingCard = asIncoming(swap.incoming_card);
+    let nextCards = [...currentCards];
     let swappedCard: PokerCard | null = null;
 
-    if (swap.incoming_card && action === "swap") {
+    if (incomingCard && action === "swap") {
       if (
         discardIndex == null ||
         !Number.isInteger(discardIndex) ||
@@ -78,9 +107,9 @@ export async function POST(
         throw new Error("discard_index out of range");
       }
       swappedCard = nextCards[discardIndex];
-      nextCards[discardIndex] = swap.incoming_card;
-    } else if (swap.incoming_card && action === "skip") {
-      swappedCard = swap.incoming_card; // we're discarding the new one
+      nextCards[discardIndex] = incomingCard;
+    } else if (incomingCard && action === "skip") {
+      swappedCard = incomingCard; // we're discarding the new one
       // Hand unchanged. The incoming card stays in deck.drawn (the deck doesn't get cards back —
       // shared-deck semantics: once drawn, always drawn).
     } else if (swap.delta < 0 && action === "discard") {

@@ -45,17 +45,17 @@ export function drawRandomCard(
 }
 
 /** Per-hole card grant (NOT counting bogey-pair triggers; that's handled separately). */
-function baseGrantForType(type: ScoreType): { cards: number; wilds: number; isBogey: boolean } {
+function baseGrantForType(type: ScoreType): { cards: number; isBogey: boolean; rerollsWild: boolean } {
   switch (type) {
     case "eagle_or_better":
     case "birdie":
-      return { cards: 2, wilds: 1, isBogey: false };
+      return { cards: 2, isBogey: false, rerollsWild: true };
     case "par":
-      return { cards: 1, wilds: 0, isBogey: false };
+      return { cards: 1, isBogey: false, rerollsWild: false };
     case "bogey":
-      return { cards: 0, wilds: 0, isBogey: true };
+      return { cards: 0, isBogey: true, rerollsWild: false };
     default:
-      return { cards: 0, wilds: 0, isBogey: false };
+      return { cards: 0, isBogey: false, rerollsWild: false };
   }
 }
 
@@ -195,7 +195,7 @@ export async function applyPokerForHoleSave(
   const oldType = oldStrokes != null ? classifyScore(oldStrokes, par) : null;
 
   const newG = baseGrantForType(newType);
-  const oldG = oldType ? baseGrantForType(oldType) : { cards: 0, wilds: 0, isBogey: false };
+  const oldG = oldType ? baseGrantForType(oldType) : { cards: 0, isBogey: false, rerollsWild: false };
 
   // ---- Bogey count maintenance + threshold draws ----
   let bogeyTriggerCards = 0;
@@ -209,14 +209,13 @@ export async function applyPokerForHoleSave(
 
   // ---- Base cards delta ----
   const cardDelta = newG.cards - oldG.cards + bogeyTriggerCards;
-  const wildDelta = newG.wilds - oldG.wilds;
 
-  // Apply wilds directly (they don't displace cards).
-  hand.wild_count = Math.max(0, hand.wild_count + wildDelta);
+  // Track all newly drawn cards (hand cards + the re-rolled community wild)
+  // so we can append them all to deck.drawn in one pass.
+  let drawnNow: PokerCard[] = deck.drawn;
 
   // Apply card deltas.
   if (cardDelta > 0) {
-    let drawnNow: PokerCard[] = deck.drawn;
     for (let i = 0; i < cardDelta; i++) {
       const card = drawRandomCard(deck.num_decks, drawnNow);
       if (!card) break; // deck exhausted
@@ -227,15 +226,31 @@ export async function applyPokerForHoleSave(
         await enqueueSwap(tx, eventId, playerId, card, 1);
       }
     }
-    // Persist new draws to deck
-    const newlyDrawn = drawnNow.slice(deck.drawn.length);
-    await appendDrawn(tx, eventId, newlyDrawn);
   } else if (cardDelta < 0) {
     // Enqueue discard prompts; do NOT auto-remove from hand.
     for (let i = 0; i < -cardDelta; i++) {
       await enqueueSwap(tx, eventId, playerId, null, -1);
     }
   }
+
+  // ---- Community wild re-roll on transitions into birdie/eagle ----
+  // Sticky: only re-roll when transitioning from non-rerolling to rerolling.
+  // Old wild stays in deck.drawn (shared-deck semantics).
+  if (newG.rerollsWild && !oldG.rerollsWild) {
+    const newWild = drawRandomCard(deck.num_decks, drawnNow);
+    if (newWild) {
+      drawnNow = [...drawnNow, newWild];
+      await tx
+        .prepare(
+          `UPDATE poker_deck_state SET wild_card = ?::jsonb WHERE event_id = ?`,
+        )
+        .run(JSON.stringify(newWild), eventId);
+    }
+  }
+
+  // Persist any new draws (hand cards + re-rolled wild) to deck.drawn.
+  const newlyDrawn = drawnNow.slice(deck.drawn.length);
+  await appendDrawn(tx, eventId, newlyDrawn);
 
   await persistHand(tx, eventId, playerId, hand);
 }

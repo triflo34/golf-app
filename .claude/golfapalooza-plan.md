@@ -78,6 +78,12 @@ Shipping work after the original MVP commit, in order:
   ```
   or just delete the event entirely.
 
+## Post-MVP iterations (2026-05-18)
+
+- **Poker swap "max size 5" bug.** Same JSONB-as-string class as crash #2 — `POST /api/events/[id]/poker/swaps/[swapId]` was reading `poker_hands.cards` raw, so `[...hand.cards]` spread the JSON *string* (≈100 chars) into `nextCards`, blowing the `nextCards.length > MAX_HAND` guard on every swap attempt. Fixed by parsing `cards` and `incoming_card` through local `asCards` / `asIncoming` helpers.
+- **Poker swap UI: one decision at a time.** The page used to render every pending swap at once (so the next incoming card was visible before you resolved the current one). Now shows only `mySwaps[0]` with an "(N more after this)" hint; resolving advances to the next.
+- **Wild redesign — shared community card.** Wilds are no longer a per-player counter. There's now exactly ONE community wild per event, drawn from the shared deck, visible to all players. Players' effective hand is their 5 cards + the community wild = 6 cards for the manual judging pass. Re-rolls randomly on every birdie or eagle (sticky semantics — only when transitioning into birdie/eagle from a non-birdie/eagle score). Seeded at event start. Old wild stays in `deck.drawn` (shared-deck "once drawn, always drawn" rule). Per-player `poker_hands.wild_count` is left in place as a vestigial 0 (no reads, no writes from app code). Schema add: `poker_deck_state.wild_card JSONB`. Migration: `supabase/migrations/2026-05-18-poker-wild-card.sql`.
+
 **TypeScript + build clean.**
 
 ## Deployment note
@@ -88,6 +94,7 @@ Shipping work after the original MVP commit, in order:
 2. `supabase/migrations/2026-05-13-course-api.sql` — `external_id`, `last_fetched_at`, `yardage`
 3. `supabase/migrations/2026-05-14-perf-index.sql` — `idx_scramble_teams_round`
 4. `supabase/migrations/2026-05-14-organizer-flag.sql` — `is_organizer` flag + backfill
+5. `supabase/migrations/2026-05-18-poker-wild-card.sql` — `poker_deck_state.wild_card` JSONB
 
 Plus `GOLFCOURSE_API_KEY` in Vercel env vars (Production scope) before course imports work in prod.
 

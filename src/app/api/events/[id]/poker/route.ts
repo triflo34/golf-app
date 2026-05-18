@@ -35,7 +35,20 @@ type SwapRowRaw = {
   created_at: string;
 };
 
-type DeckRowRaw = { num_decks: number; drawn: unknown };
+type DeckRowRaw = { num_decks: number; drawn: unknown; wild_card: unknown };
+
+function asWild(v: unknown): PokerCard | null {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return parsed && typeof parsed === "object" ? (parsed as PokerCard) : null;
+    } catch {
+      return null;
+    }
+  }
+  return v as PokerCard;
+}
 
 export async function GET(
   _request: Request,
@@ -84,7 +97,7 @@ export async function GET(
 
   const deckRaw = await db
     .prepare(
-      "SELECT num_decks, drawn FROM poker_deck_state WHERE event_id = ?",
+      "SELECT num_decks, drawn, wild_card FROM poker_deck_state WHERE event_id = ?",
     )
     .get<DeckRowRaw>(eventId);
 
@@ -97,7 +110,11 @@ export async function GET(
     incoming_card: asJson<PokerCard | null>(s.incoming_card, null),
   }));
   const deck = deckRaw
-    ? { ...deckRaw, drawn: asJson<PokerCard[]>(deckRaw.drawn, []) }
+    ? {
+        num_decks: deckRaw.num_decks,
+        drawn: asJson<PokerCard[]>(deckRaw.drawn, []),
+        wild_card: asWild(deckRaw.wild_card),
+      }
     : null;
 
   return NextResponse.json({

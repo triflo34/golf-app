@@ -26,7 +26,11 @@ type LoadResult = {
   enabled: boolean;
   hands: HandRow[];
   pending_swaps: SwapRow[];
-  deck: { num_decks: number; drawn: PokerCard[] } | null;
+  deck: {
+    num_decks: number;
+    drawn: PokerCard[];
+    wild_card: PokerCard | null;
+  } | null;
 };
 
 const SUIT_GLYPH: Record<PokerCard["suit"], string> = {
@@ -193,70 +197,96 @@ export default function PokerPage({
         </div>
       )}
 
-      {mySwaps.length > 0 && myHand && (
-        <section className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3">
-          <div className="text-sm font-semibold text-amber-900">
-            {mySwaps.length} pending {mySwaps.length === 1 ? "decision" : "decisions"}
-          </div>
-          <ul className="mt-2 space-y-3">
-            {mySwaps.map((s) => (
-              <li key={s.id} className="rounded-md bg-white border border-amber-200 p-2">
-                {s.incoming_card ? (
-                  <div>
-                    <div className="text-xs text-gray-600 mb-1">
-                      New card drawn — keep it and discard one, or skip:
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CardFace card={s.incoming_card} />
-                      <span className="text-xs text-gray-500">incoming</span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {myHand.cards.map((c, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => resolveSwap(s, "swap", idx)}
-                          className="px-2 py-1 rounded border border-gray-300 text-xs hover:border-amber-500 disabled:opacity-50"
-                        >
-                          Swap with {c.rank}
-                          {SUIT_GLYPH[c.suit]}
-                        </button>
-                      ))}
+      {mySwaps.length > 0 && myHand && (() => {
+        const s = mySwaps[0];
+        const remaining = mySwaps.length - 1;
+        return (
+          <section className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3">
+            <div className="text-sm font-semibold text-amber-900">
+              Pending decision
+              {remaining > 0 && (
+                <span className="ml-2 text-xs font-normal text-amber-700">
+                  ({remaining} more after this)
+                </span>
+              )}
+            </div>
+            <div className="mt-2 rounded-md bg-white border border-amber-200 p-2">
+              {s.incoming_card ? (
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">
+                    New card drawn — keep it and discard one, or skip:
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CardFace card={s.incoming_card} />
+                    <span className="text-xs text-gray-500">incoming</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {myHand.cards.map((c, idx) => (
                       <button
+                        key={idx}
                         type="button"
                         disabled={busy}
-                        onClick={() => resolveSwap(s, "skip", null)}
-                        className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-600 disabled:opacity-50"
+                        onClick={() => resolveSwap(s, "swap", idx)}
+                        className="px-2 py-1 rounded border border-gray-300 text-xs hover:border-amber-500 disabled:opacity-50"
                       >
-                        Skip (discard new)
+                        Swap with {c.rank}
+                        {SUIT_GLYPH[c.suit]}
                       </button>
-                    </div>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => resolveSwap(s, "skip", null)}
+                      className="px-2 py-1 rounded border border-gray-300 text-xs text-gray-600 disabled:opacity-50"
+                    >
+                      Skip (discard new)
+                    </button>
                   </div>
-                ) : (
-                  <div>
-                    <div className="text-xs text-gray-600 mb-2">
-                      A previous score edit means you need to discard a card:
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {myHand.cards.map((c, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => resolveSwap(s, "discard", idx)}
-                          className="px-2 py-1 rounded border border-gray-300 text-xs hover:border-red-500 disabled:opacity-50"
-                        >
-                          Discard {c.rank}
-                          {SUIT_GLYPH[c.suit]}
-                        </button>
-                      ))}
-                    </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-xs text-gray-600 mb-2">
+                    A previous score edit means you need to discard a card:
                   </div>
-                )}
-              </li>
-            ))}
-          </ul>
+                  <div className="flex flex-wrap gap-1">
+                    {myHand.cards.map((c, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => resolveSwap(s, "discard", idx)}
+                        className="px-2 py-1 rounded border border-gray-300 text-xs hover:border-red-500 disabled:opacity-50"
+                      >
+                        Discard {c.rank}
+                        {SUIT_GLYPH[c.suit]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        );
+      })()}
+
+      {data.deck && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">
+            Community wild
+          </h2>
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-center gap-3">
+            {data.deck.wild_card ? (
+              <CardFace card={data.deck.wild_card} />
+            ) : (
+              <span className="inline-flex items-center justify-center w-12 h-16 rounded-md border border-dashed border-amber-400 text-xs text-amber-700">
+                none
+              </span>
+            )}
+            <p className="text-xs text-amber-900 leading-snug">
+              Shared by all players as a 6th card when judging hands. Re-rolls
+              randomly on every birdie or eagle.
+            </p>
+          </div>
         </section>
       )}
 
@@ -279,15 +309,8 @@ export default function PokerPage({
                 );
               })}
             </div>
-            <div className="mt-3 flex gap-3 text-xs text-gray-600">
-              <span>
-                <strong className="text-gray-900">{myHand.wild_count}</strong> wild
-                {myHand.wild_count === 1 ? "" : "s"}
-              </span>
-              <span>·</span>
-              <span>
-                {myHand.bogey_count} bogey{myHand.bogey_count === 1 ? "" : "s"} this event
-              </span>
+            <div className="mt-3 text-xs text-gray-600">
+              {myHand.bogey_count} bogey{myHand.bogey_count === 1 ? "" : "s"} this event
             </div>
           </div>
         </section>
@@ -306,7 +329,7 @@ export default function PokerPage({
                   {h.display_name}
                 </span>
                 <span className="text-xs text-gray-600">
-                  {h.cards.length}/5 cards · {h.wild_count}W
+                  {h.cards.length}/5 cards
                 </span>
                 {pendingForPlayer > 0 && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">

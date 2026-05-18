@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { drawRandomCard } from "@/lib/poker";
 
 async function isOrganizer(eventId: number, userId: string): Promise<boolean> {
   const row = await db
@@ -101,14 +102,24 @@ export async function POST(
       .get<{ ok: number }>(eventId);
 
     if (pokerEnabled) {
+      // Seed initial community wild from the deck. Birdies/eagles re-roll it.
+      const initialWild = drawRandomCard(numDecks, []);
+      const initialDrawn = initialWild ? [initialWild] : [];
       await tx
         .prepare(
-          `INSERT INTO poker_deck_state (event_id, num_decks, drawn)
-           VALUES (?, ?, '[]'::jsonb)
+          `INSERT INTO poker_deck_state (event_id, num_decks, drawn, wild_card)
+           VALUES (?, ?, ?::jsonb, ?::jsonb)
            ON CONFLICT (event_id) DO UPDATE
-             SET num_decks = EXCLUDED.num_decks, drawn = '[]'::jsonb`,
+             SET num_decks = EXCLUDED.num_decks,
+                 drawn = EXCLUDED.drawn,
+                 wild_card = EXCLUDED.wild_card`,
         )
-        .run(eventId, numDecks);
+        .run(
+          eventId,
+          numDecks,
+          JSON.stringify(initialDrawn),
+          initialWild ? JSON.stringify(initialWild) : null,
+        );
 
       for (const p of players) {
         await tx

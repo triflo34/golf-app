@@ -133,6 +133,8 @@ async function bootstrap(): Promise<void> {
   await ensureCourseApiColumns(sql);
   console.log("[db] bootstrap: ensureEventParticipantOrganizerFlag");
   await ensureEventParticipantOrganizerFlag(sql);
+  console.log("[db] bootstrap: ensurePokerWildCardColumn");
+  await ensurePokerWildCardColumn(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -348,7 +350,8 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS poker_deck_state (
     event_id   INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
     num_decks  SMALLINT NOT NULL DEFAULT 1,
-    drawn      JSONB NOT NULL DEFAULT '[]'::jsonb
+    drawn      JSONB NOT NULL DEFAULT '[]'::jsonb,
+    wild_card  JSONB
   );
 
   CREATE TABLE IF NOT EXISTS poker_swap_queue (
@@ -423,6 +426,12 @@ async function ensureEventParticipantOrganizerFlag(sql: postgres.Sql): Promise<v
     UPDATE event_participants
       SET role = 'player'
       WHERE role = 'organizer';
+  `);
+}
+
+async function ensurePokerWildCardColumn(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE poker_deck_state ADD COLUMN IF NOT EXISTS wild_card JSONB;
   `);
 }
 
