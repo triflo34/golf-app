@@ -472,15 +472,17 @@ async function ensureHoleScoreSnapshotColumns(sql: postgres.Sql): Promise<void> 
   `);
   // Backfill snapshot values from current course_holes for any rows that
   // were created before snapshotting existed. Idempotent — only touches NULLs.
+  // Postgres UPDATE…FROM forbids JOIN ON referencing the UPDATE target, so
+  // joins involving hs/ths live in WHERE.
   await sql.unsafe(`
     UPDATE hole_scores hs
       SET par            = ch.par,
           handicap_index = ch.handicap_index,
           yardage        = ch.yardage
-      FROM rounds r
-      JOIN course_holes ch
-        ON ch.course_id = r.course_id AND ch.hole_number = hs.hole_number
+      FROM rounds r, course_holes ch
       WHERE hs.round_id = r.id
+        AND ch.course_id = r.course_id
+        AND ch.hole_number = hs.hole_number
         AND (hs.par IS NULL OR hs.handicap_index IS NULL OR hs.yardage IS NULL);
   `);
   await sql.unsafe(`
@@ -488,11 +490,11 @@ async function ensureHoleScoreSnapshotColumns(sql: postgres.Sql): Promise<void> 
       SET par            = ch.par,
           handicap_index = ch.handicap_index,
           yardage        = ch.yardage
-      FROM scramble_teams st
-      JOIN rounds r ON r.id = st.round_id
-      JOIN course_holes ch
-        ON ch.course_id = r.course_id AND ch.hole_number = ths.hole_number
+      FROM scramble_teams st, rounds r, course_holes ch
       WHERE ths.team_id = st.id
+        AND r.id = st.round_id
+        AND ch.course_id = r.course_id
+        AND ch.hole_number = ths.hole_number
         AND (ths.par IS NULL OR ths.handicap_index IS NULL OR ths.yardage IS NULL);
   `);
 }
