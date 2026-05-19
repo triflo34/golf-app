@@ -6,15 +6,18 @@ import {
   fetchCourseDetailExternal,
 } from "@/lib/golf-course-api";
 
+/**
+ * Re-pulls per-hole pars/yardages from GolfCourseAPI for any course that was
+ * imported with an external_id. Any signed-in user can trigger this — the
+ * external API is read-only and cheap; the worst case is wasted quota on the
+ * free tier, which is acceptable given the app's size.
+ */
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const me = await getCurrentUser();
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!me.is_admin) {
-    return NextResponse.json({ error: "Admin only" }, { status: 403 });
-  }
 
   const { id } = await params;
   const courseId = Number(id);
@@ -73,7 +76,6 @@ export async function POST(
         courseId,
       );
 
-    // Replace per-hole rows in one pass.
     await tx
       .prepare("DELETE FROM course_holes WHERE course_id = ?")
       .run(courseId);

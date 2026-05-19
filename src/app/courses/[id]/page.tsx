@@ -505,7 +505,7 @@ function AdminApiPanel({
     setStatus(null);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/courses/${courseId}/refresh`, {
+      const res = await fetch(`/api/courses/${courseId}/refresh`, {
         method: "POST",
       });
       const body = await res.json().catch(() => ({}));

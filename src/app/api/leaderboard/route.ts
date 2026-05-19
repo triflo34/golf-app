@@ -29,6 +29,15 @@ export type SeriesPoint = {
   weather_code: number | null;
 };
 
+export type HoleStats = {
+  holes_scored: number;
+  eagles: number;
+  birdies: number;
+  pars: number;
+  bogeys: number;
+  doubles_plus: number;
+};
+
 export type LeaderboardRow = {
   key: string;
   name: string;
@@ -48,6 +57,7 @@ export type LeaderboardRow = {
   thirds_tied: number;
   fourths_tied: number;
   series: SeriesPoint[];
+  hole_stats: HoleStats;
 };
 
 export async function GET(request: Request) {
@@ -109,6 +119,14 @@ export async function GET(request: Request) {
             thirds_tied: 0,
             fourths_tied: 0,
             series: [],
+            hole_stats: {
+              holes_scored: 0,
+              eagles: 0,
+              birdies: 0,
+              pars: 0,
+              bogeys: 0,
+              doubles_plus: 0,
+            },
           },
         ],
       });
@@ -144,6 +162,39 @@ export async function GET(request: Request) {
          ${holesFilter}`,
     )
     .all<ScoreJoin>(start, end, ...holesArg);
+
+  // Per-hole stats from hole_scores, scoped to the same season + holes filter.
+  // Rounds without per-hole data simply don't contribute here, which is fine —
+  // they still count toward avg / wins / points via the scores table above.
+  type HoleStatRow = {
+    player_id: string;
+    eagles: number;
+    birdies: number;
+    pars: number;
+    bogeys: number;
+    doubles_plus: number;
+    holes_scored: number;
+  };
+  const holeStatRows = await db
+    .prepare(
+      `SELECT hs.player_id,
+              COUNT(*) FILTER (WHERE hs.strokes - hs.par <= -2)::int AS eagles,
+              COUNT(*) FILTER (WHERE hs.strokes - hs.par = -1)::int AS birdies,
+              COUNT(*) FILTER (WHERE hs.strokes - hs.par = 0)::int  AS pars,
+              COUNT(*) FILTER (WHERE hs.strokes - hs.par = 1)::int  AS bogeys,
+              COUNT(*) FILTER (WHERE hs.strokes - hs.par >= 2)::int AS doubles_plus,
+              COUNT(*)::int                                          AS holes_scored
+       FROM hole_scores hs
+       JOIN rounds r ON r.id = hs.round_id
+       WHERE r.played_at >= ? AND r.played_at <= ?
+         AND hs.par IS NOT NULL
+         ${holesFilter}
+       GROUP BY hs.player_id`,
+    )
+    .all<HoleStatRow>(start, end, ...holesArg);
+  const holeStatsByPlayer = new Map<string, HoleStatRow>(
+    holeStatRows.map((r) => [r.player_id, r]),
+  );
 
   type Bucket = {
     key: string;
@@ -300,10 +351,20 @@ export async function GET(request: Request) {
     }
   }
 
+  const emptyHoleStats: HoleStats = {
+    holes_scored: 0,
+    eagles: 0,
+    birdies: 0,
+    pars: 0,
+    bogeys: 0,
+    doubles_plus: 0,
+  };
+
   const result: LeaderboardRow[] = [];
   for (const b of buckets.values()) {
     if (b.scores.length === 0) continue;
     const sum = b.scores.reduce((a, c) => a + c, 0);
+    const hs = b.user_id ? holeStatsByPlayer.get(b.user_id) : null;
     result.push({
       key: b.key,
       name: b.name,
@@ -323,6 +384,16 @@ export async function GET(request: Request) {
       thirds_tied: b.thirds_tied,
       fourths_tied: b.fourths_tied,
       series: [...b.series].sort((a, c) => a.played_at.localeCompare(c.played_at)),
+      hole_stats: hs
+        ? {
+            holes_scored: hs.holes_scored,
+            eagles: hs.eagles,
+            birdies: hs.birdies,
+            pars: hs.pars,
+            bogeys: hs.bogeys,
+            doubles_plus: hs.doubles_plus,
+          }
+        : emptyHoleStats,
     });
   }
   result.sort((a, b) => {

@@ -15,6 +15,7 @@ export default function HomePage() {
   const [showPointsHelp, setShowPointsHelp] = useState(false);
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [recent, setRecent] = useState<RoundListItem[] | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const loadBoard = useCallback(
     async (s: number, sc: "mine" | "all", h: "18" | "9" | "all") => {
@@ -152,81 +153,148 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {rows.map((row, i) => (
-              <div
-                key={row.key}
-                className={`flex items-center gap-3 p-3 rounded-xl ${
-                  i === 0
-                    ? "bg-yellow-50 border border-yellow-200"
-                    : i === 1
-                      ? "bg-gray-50 border border-gray-200"
-                      : i === 2
-                        ? "bg-orange-50 border border-orange-200"
-                        : "bg-gray-50"
-                }`}
-              >
+            {rows.map((row, i) => {
+              const expanded = expandedKey === row.key;
+              const hs = row.hole_stats;
+              const hasHoleStats = hs && hs.holes_scored > 0;
+              return (
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                  key={row.key}
+                  className={`rounded-xl ${
                     i === 0
-                      ? "bg-yellow-400 text-yellow-900"
+                      ? "bg-yellow-50 border border-yellow-200"
                       : i === 1
-                        ? "bg-gray-300 text-gray-700"
+                        ? "bg-gray-50 border border-gray-200"
                         : i === 2
-                          ? "bg-orange-300 text-orange-800"
-                          : "bg-gray-200 text-gray-600"
+                          ? "bg-orange-50 border border-orange-200"
+                          : "bg-gray-50"
                   }`}
                 >
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-800 truncate flex items-center gap-1.5">
-                    {row.name}
-                    {row.is_guest && (
-                      <span className="text-[10px] font-semibold text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded">
-                        guest
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {row.rounds_played} rounds · {row.wins} wins · best {row.best_score}
-                  </div>
-                  {(row.firsts > 0 ||
-                    row.seconds > 0 ||
-                    row.thirds > 0 ||
-                    row.fourths > 0) && (
-                    <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-semibold">
-                      <span className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
-                        1st {row.firsts}
-                        {row.firsts_tied > 0 && ` (${row.firsts_tied}t)`}
-                      </span>
-                      <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded">
-                        2nd {row.seconds}
-                        {row.seconds_tied > 0 && ` (${row.seconds_tied}t)`}
-                      </span>
-                      <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded">
-                        3rd {row.thirds}
-                        {row.thirds_tied > 0 && ` (${row.thirds_tied}t)`}
-                      </span>
-                      <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">
-                        💩 {row.fourths}
-                        {row.fourths_tied > 0 && ` (${row.fourths_tied}t)`}
-                      </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedKey((k) => (k === row.key ? null : row.key))
+                    }
+                    className="w-full flex items-center gap-3 p-3 text-left"
+                    aria-expanded={expanded}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                        i === 0
+                          ? "bg-yellow-400 text-yellow-900"
+                          : i === 1
+                            ? "bg-gray-300 text-gray-700"
+                            : i === 2
+                              ? "bg-orange-300 text-orange-800"
+                              : "bg-gray-200 text-gray-600"
+                      }`}
+                    >
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-800 truncate flex items-center gap-1.5">
+                        {row.name}
+                        {row.is_guest && (
+                          <span className="text-[10px] font-semibold text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded">
+                            guest
+                          </span>
+                        )}
+                        <span
+                          className={`ml-auto text-gray-400 text-xs transition-transform ${
+                            expanded ? "rotate-180" : ""
+                          }`}
+                          aria-hidden="true"
+                        >
+                          ▾
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {row.rounds_played} rounds · {row.wins} wins · best{" "}
+                        {row.best_score}
+                      </div>
+                      {(row.firsts > 0 ||
+                        row.seconds > 0 ||
+                        row.thirds > 0 ||
+                        row.fourths > 0) && (
+                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-semibold">
+                          <span className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
+                            1st {row.firsts}
+                            {row.firsts_tied > 0 && ` (${row.firsts_tied}t)`}
+                          </span>
+                          <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded">
+                            2nd {row.seconds}
+                            {row.seconds_tied > 0 && ` (${row.seconds_tied}t)`}
+                          </span>
+                          <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded">
+                            3rd {row.thirds}
+                            {row.thirds_tied > 0 && ` (${row.thirds_tied}t)`}
+                          </span>
+                          <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">
+                            💩 {row.fourths}
+                            {row.fourths_tied > 0 && ` (${row.fourths_tied}t)`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-700">
+                        {row.avg_score}
+                      </div>
+                      <div className="text-xs text-gray-500">avg</div>
+                    </div>
+                    <div
+                      className="text-right"
+                      title="Placement points: N pts for 1st in a round of N players, N-1 for 2nd, …, 1 for last. Solo rounds award nothing."
+                    >
+                      <div className="text-sm font-semibold text-gray-600">
+                        {row.points}
+                      </div>
+                      <div className="text-xs text-gray-500">pts</div>
+                    </div>
+                  </button>
+
+                  {expanded && (
+                    <div className="px-3 pb-3 -mt-1">
+                      {hasHoleStats ? (
+                        <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                            Hole stats · {hs.holes_scored} holes
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+                            <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+                              🦅 {hs.eagles}
+                            </span>
+                            <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                              Birdies {hs.birdies}
+                            </span>
+                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                              Pars {hs.pars}
+                            </span>
+                            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                              Bogeys {hs.bogeys}
+                            </span>
+                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                              2+ {hs.doubles_plus}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-white border border-gray-200 px-3 py-2 text-xs text-gray-500">
+                          No hole-by-hole data this season. Use{" "}
+                          <Link
+                            href="/rounds/new"
+                            className="text-green-700 hover:underline"
+                          >
+                            Upload scorecard
+                          </Link>{" "}
+                          to track birdies, pars, and more.
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-                <div className="text-right">
-                  <div className="text-lg font-bold text-green-700">{row.avg_score}</div>
-                  <div className="text-xs text-gray-500">avg</div>
-                </div>
-                <div
-                  className="text-right"
-                  title="Placement points: N pts for 1st in a round of N players, N-1 for 2nd, …, 1 for last. Solo rounds award nothing."
-                >
-                  <div className="text-sm font-semibold text-gray-600">{row.points}</div>
-                  <div className="text-xs text-gray-500">pts</div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
