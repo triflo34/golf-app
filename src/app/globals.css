@@ -5,6 +5,22 @@
   --foreground: #14532d;
 }
 
+/* v2 mode overrides — applied when <html data-ui="v2"> is set.
+   Classic mode is unaffected so the existing UI keeps its look. */
+html[data-ui="v2"] {
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
+  --v2-surface: #1c1c1c;
+  --v2-surface-2: #262626;
+  --v2-border: #2a2a2a;
+  --v2-muted: #9ca3af;
+  --v2-accent: #fbbf24;
+  --v2-accent-soft: #f59e0b;
+  --v2-score: #22c55e;
+  --v2-score-soft: #4ade80;
+  color-scheme: dark;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

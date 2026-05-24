@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 import { BottomNav } from "@/components/nav";
+import { V2BottomNav } from "@/components/v2/bottom-nav";
 import { OfflineBanner } from "@/components/offline-banner";
+import { getUiMode } from "@/lib/ui-mode";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,21 +38,23 @@ export const viewport: Viewport = {
   themeColor: "#15803d",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const uiMode = await getUiMode();
   return (
     <html
       lang="en"
+      data-ui={uiMode}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>
           <main className="flex-1 pb-nav">{children}</main>
           <OfflineBanner />
-          <BottomNav />
+          {uiMode === "v2" ? <V2BottomNav /> : <BottomNav />}
         </AuthProvider>
       </body>
     </html>
