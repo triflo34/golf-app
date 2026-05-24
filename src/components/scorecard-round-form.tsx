@@ -335,7 +335,7 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         )}
       </div>
 
-      <div className="card grid grid-cols-2 gap-3">
+      <div className="card grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="min-w-0">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Date played
