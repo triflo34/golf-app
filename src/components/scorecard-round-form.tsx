@@ -175,22 +175,24 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
   }
 
   // Claude Vision returns strokes already aligned to holes (no entry-mode
-  // conversion needed — it always reports absolute strokes). Assign each
-  // detected player row to a form player row in order.
+  // conversion needed — it always reports absolute strokes). We store the
+  // parsed rows and present a per-row "Apply to..." picker so the user can
+  // confirm or re-route each detected row before it overwrites the grid.
   function applyParse(result: ParseResult) {
     setParse(result);
-    if (result.players.length === 0) return;
+  }
+
+  function applyDetectedRow(rowIdx: number, userId: string) {
+    if (!parse) return;
+    const detected = parse.players[rowIdx];
+    if (!detected) return;
+    const next: (number | null)[] = Array(holeCount).fill(null);
+    for (let i = 0; i < holeCount; i++) {
+      const v = detected.strokes[i];
+      if (typeof v === "number" && v >= 1 && v <= 20) next[i] = v;
+    }
     setPlayers((prev) =>
-      prev.map((p, idx) => {
-        const detected = result.players[idx];
-        if (!detected) return p;
-        const next: (number | null)[] = Array(holeCount).fill(null);
-        for (let i = 0; i < holeCount; i++) {
-          const v = detected.strokes[i];
-          if (typeof v === "number" && v >= 1 && v <= 20) next[i] = v;
-        }
-        return { ...p, strokes: next };
-      }),
+      prev.map((p) => (p.user.id === userId ? { ...p, strokes: next } : p)),
     );
   }
 
@@ -424,33 +426,70 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         </label>
         <ScorecardUploader
           holeCount={holeCount}
+          playerNames={players.map((p) => p.user.display_name)}
           onResult={applyParse}
           disabled={submitting || !courseId}
         />
-        {parse && (() => {
-          const detected = parse.players.length;
-          const filled = Math.min(detected, players.length);
-          return (
-            <div className="mt-3 space-y-2 text-xs">
-              {detected === 0 ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-                  Claude couldn&apos;t find any player rows on this photo.
-                  {parse.rawError && (
-                    <div className="mt-1 text-amber-700 text-[11px] break-all">
-                      {parse.rawError}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-gray-600">
-                  Detected {detected} player row{detected === 1 ? "" : "s"} —
-                  prefilled {filled} of your {players.length} player
-                  {players.length === 1 ? "" : "s"}. Double-check before saving.
-                </div>
-              )}
+        {parse && parse.players.length === 0 && (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Claude couldn&apos;t find any player rows on this photo. Try a
+            clearer photo, or type the scores in manually.
+            {parse.rawError && (
+              <div className="mt-1 text-amber-700 text-[11px] break-all">
+                {parse.rawError}
+              </div>
+            )}
+          </div>
+        )}
+        {parse && parse.players.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <div className="text-xs text-gray-600">
+              Claude detected {parse.players.length} row
+              {parse.players.length === 1 ? "" : "s"}. Tap which player each row
+              belongs to.
             </div>
-          );
-        })()}
+            <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md">
+              {parse.players.map((row, rowIdx) => {
+                const counted = row.strokes.filter(
+                  (s) => typeof s === "number",
+                ).length;
+                const preview = row.strokes
+                  .slice(0, holeCount)
+                  .map((s) => (s == null ? "·" : String(s)))
+                  .join(" ");
+                return (
+                  <li key={rowIdx} className="p-2 text-xs">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="font-medium text-gray-700">
+                        Row {rowIdx + 1}
+                      </span>
+                      <span className="text-gray-400">
+                        {counted}/{holeCount} holes read
+                      </span>
+                    </div>
+                    <div className="font-mono text-gray-700 mb-2 break-all">
+                      {preview}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {players.map((p) => (
+                        <button
+                          key={p.user.id}
+                          type="button"
+                          onClick={() =>
+                            applyDetectedRow(rowIdx, p.user.id)
+                          }
+                          className="px-2 py-1 rounded bg-green-700 text-white font-medium hover:bg-green-800"
+                        >
+                          Use for {p.user.display_name}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="card">

@@ -13,6 +13,8 @@ export type ParseResult = {
 type Props = {
   /** Number of holes on the round being entered — sent to the parser. */
   holeCount: 9 | 18;
+  /** Display names of players already in the form, in the order they were added. */
+  playerNames: string[];
   /** Called whenever the user picks a new photo (before parsing finishes). */
   onPhotoChosen?: (file: File) => void;
   /** Called once Claude finishes parsing the scorecard. */
@@ -28,6 +30,7 @@ type Props = {
  */
 export function ScorecardUploader({
   holeCount,
+  playerNames,
   onPhotoChosen,
   onResult,
   disabled,
@@ -54,6 +57,7 @@ export function ScorecardUploader({
       const form = new FormData();
       form.append("photo", file);
       form.append("hole_count", String(holeCount));
+      form.append("player_names", JSON.stringify(playerNames));
       const res = await fetch("/api/scorecard/parse", {
         method: "POST",
         body: form,
