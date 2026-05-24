@@ -150,42 +150,44 @@ export async function POST(request: Request) {
 function buildPrompt(
   holeCount: 9 | 18,
   playerCount: number,
-  playerNames: string[],
+  _playerNames: string[],
 ): string {
-  const expectedRows = playerCount > 0 ? playerCount : "a few";
-  const namesLine =
-    playerNames.length > 0
-      ? `The user has these players entered (in this order): ${playerNames
-          .map((n, i) => `${i + 1}. ${n}`)
-          .join(", ")}. If the card shows names, match each row to the same person. Otherwise, return rows top-to-bottom as they appear on the card.\n`
-      : `Order rows top-to-bottom as they appear on the card.\n`;
+  const rowHint =
+    playerCount > 0
+      ? `The user expects roughly ${playerCount} player row${playerCount === 1 ? "" : "s"}, ` +
+        `but return however many you actually see on the card.`
+      : `Return however many player rows you can see on the card.`;
 
   const subtotalNote =
     holeCount === 18
-      ? `CRITICAL — subtotal columns:\n` +
-        `Most paper scorecards put a front-9 subtotal column between hole 9 and hole 10, ` +
-        `and a back-9 subtotal column after hole 18, often with an 18-hole total at the end. ` +
-        `These subtotals are usually 2-digit numbers in the 30s-50s (like 42, 38, 45). ` +
-        `DO NOT include subtotal or total values in the strokes array. ` +
-        `If you see something like [5,4,3,4,5,4,5,4,4, 38, 4,5,...] in a row, the 38 is the OUT subtotal — ` +
-        `skip it. The strokes array must contain exactly 18 per-hole values, never 19 or 20.\n`
-      : `If the card shows a 9-hole total at the end of the row (like 42), skip it — ` +
-        `the strokes array must contain exactly 9 per-hole values.\n`;
+      ? `CRITICAL — subtotal/total columns:\n` +
+        `Most paper scorecards put a front-9 subtotal between hole 9 and hole 10 (often labeled OUT), ` +
+        `a back-9 subtotal after hole 18 (often labeled IN), and an 18-hole total at the end. ` +
+        `These are usually 2-digit numbers in the 30s-50s (like 42, 38, 45) or 70s-100s (like 78, 95). ` +
+        `DO NOT put subtotal or total values into the strokes array.\n` +
+        `Example — if you see "5 4 3 4 5 4 5 4 4 [38] 4 5 3 5 4 6 4 5 4 [40] [78]", ` +
+        `return ONLY the 18 per-hole values, skipping the 38, 40, and 78.\n` +
+        `The strokes array must contain EXACTLY 18 values, never 19 or 20.\n`
+      : `If the row ends with a 9-hole total (like 42), skip it — ` +
+        `the strokes array must contain EXACTLY 9 values.\n`;
 
   return (
-    `This scorecard has ${holeCount} holes per player. Expect ${expectedRows} player row(s).\n\n` +
-    namesLine +
-    `\n` +
+    `This scorecard has ${holeCount} holes per player. ${rowHint}\n\n` +
+    `IMPORTANT — always return rows when you can see numbers:\n` +
+    `If you can see ANY player stroke numbers anywhere on the card, return one row per visible player. ` +
+    `Do NOT try to match player names — the user will assign each row to the right person afterward. ` +
+    `List rows in top-to-bottom order as they appear on the card.\n` +
+    `Only return {"players": []} if the photo truly has no player stroke numbers ` +
+    `(e.g. a blank card, par row only, or unreadable blur).\n\n` +
     subtotalNote +
     `\n` +
     `Return JSON with exactly this shape (no other fields):\n` +
     `{ "players": [ { "strokes": [...] } ] }\n\n` +
     `Rules:\n` +
     `- Each "strokes" array must have exactly ${holeCount} entries.\n` +
-    `- Each entry is an integer 1-20, or null if the hole is blank or illegible.\n` +
+    `- Each entry is an integer 1-20, or null if that specific hole is blank/illegible.\n` +
     `- Ignore the par row, handicap row, yardage row, and any subtotal/total columns.\n` +
-    `- If a player only has the front 9 filled in, use null for holes 10-18.\n` +
-    `- If you cannot identify any player rows, return {"players": []}.\n` +
+    `- If a player only has the front 9 filled in, return null for holes 10-18 — but still include the row.\n` +
     `- Output ONLY the JSON object. No explanation, no markdown fences.`
   );
 }
