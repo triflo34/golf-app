@@ -2,33 +2,38 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export type OcrLine = {
-  text: string;
-  numbers: number[];
-};
+export type ParsedPlayer = { strokes: (number | null)[] };
 
-export type OcrResult = {
-  rawText: string;
-  lines: OcrLine[];
+export type ParseResult = {
+  hole_count: 9 | 18;
+  players: ParsedPlayer[];
+  rawError?: string;
 };
 
 type Props = {
-  /** Called whenever the user picks a new photo (before OCR completes). */
+  /** Number of holes on the round being entered — sent to the parser. */
+  holeCount: 9 | 18;
+  /** Called whenever the user picks a new photo (before parsing finishes). */
   onPhotoChosen?: (file: File) => void;
-  /** Called once OCR finishes. */
-  onResult: (result: OcrResult) => void;
+  /** Called once Claude finishes parsing the scorecard. */
+  onResult: (result: ParseResult) => void;
   /** Disabled while parent is submitting, etc. */
   disabled?: boolean;
 };
 
 /**
- * Photo input + Tesseract OCR runner. Loads tesseract.js lazily on the client
- * so we don't ship ~2MB to anyone who doesn't open the scorecard flow.
+ * Sends the picked photo to /api/scorecard/parse, which uses Claude Vision
+ * to extract per-player per-hole stroke counts. Replaces the older
+ * Tesseract.js client-side pipeline.
  */
-export function ScorecardUploader({ onPhotoChosen, onResult, disabled }: Props) {
+export function ScorecardUploader({
+  holeCount,
+  onPhotoChosen,
+  onResult,
+  disabled,
+}: Props) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -45,43 +50,37 @@ export function ScorecardUploader({ onPhotoChosen, onResult, disabled }: Props) 
     setImageUrl(url);
     onPhotoChosen?.(file);
     setRunning(true);
-    setProgress(0);
     try {
-      const tess = await import("tesseract.js");
-      const worker = await tess.createWorker("eng", undefined, {
-        logger: (m: { status: string; progress: number }) => {
-          if (m.status === "recognizing text") {
-            setProgress(Math.round(m.progress * 100));
-          }
-        },
+      const form = new FormData();
+      form.append("photo", file);
+      form.append("hole_count", String(holeCount));
+      const res = await fetch("/api/scorecard/parse", {
+        method: "POST",
+        body: form,
       });
-      // Restrict OCR to digits + spaces — scorecards are grids of numbers and
-      // generic OCR will hallucinate letters from handwritten figures.
-      await worker.setParameters({
-        tessedit_char_whitelist: "0123456789 ",
+      const body = (await res.json().catch(() => ({}))) as {
+        hole_count?: 9 | 18;
+        players?: ParsedPlayer[];
+        error?: string;
+        raw?: string;
+      };
+      if (!res.ok) {
+        setError(body.error ?? `Parse failed (HTTP ${res.status})`);
+        onResult({
+          hole_count: holeCount,
+          players: [],
+          rawError: body.raw ?? body.error,
+        });
+        return;
+      }
+      onResult({
+        hole_count: body.hole_count ?? holeCount,
+        players: body.players ?? [],
       });
-      const { data } = await worker.recognize(url);
-      await worker.terminate();
-
-      // Tesseract.js 7 dropped the structured `lines` field from the default
-      // output. Splitting the text by newline gives us the same row-by-row
-      // breakdown that scorecards happen to be laid out in.
-      const rawText = data.text ?? "";
-      const lines: OcrLine[] = rawText
-        .split(/\r?\n/)
-        .map((text) => {
-          const numbers = text
-            .split(/\s+/)
-            .map((w) => w.trim())
-            .filter((w) => /^\d{1,2}$/.test(w))
-            .map((w) => Number(w))
-            .filter((n) => n >= 1 && n <= 20);
-          return { text: text.trim(), numbers };
-        })
-        .filter((ln) => ln.text.length > 0 || ln.numbers.length > 0);
-      onResult({ rawText, lines });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "OCR failed");
+      const msg = e instanceof Error ? e.message : "Upload failed";
+      setError(msg);
+      onResult({ hole_count: holeCount, players: [], rawError: msg });
     } finally {
       setRunning(false);
     }
@@ -100,7 +99,6 @@ export function ScorecardUploader({ onPhotoChosen, onResult, disabled }: Props) 
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) handleFile(f);
-            // Allow picking the same file again later if needed.
             e.target.value = "";
           }}
         />
@@ -123,10 +121,7 @@ export function ScorecardUploader({ onPhotoChosen, onResult, disabled }: Props) 
 
       {running && (
         <div className="text-xs text-gray-600">
-          Reading scorecard… {progress}%{" "}
-          <span className="text-gray-400">
-            (first run downloads the OCR engine — may take a moment)
-          </span>
+          Reading scorecard with Claude Vision… (typically 5-15 seconds)
         </div>
       )}
 
