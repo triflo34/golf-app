@@ -261,7 +261,11 @@ function parseClaudeJson(raw: string): ClaudeResult | null {
   const candidates = [trimmed];
   // Tolerate accidental markdown fences even though we asked for raw JSON.
   const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (fenceMatch) candidates.unshift(fenceMatch[1]);
+  if (fenceMatch) candidates.push(fenceMatch[1]);
+  // Sonnet sometimes prefaces the JSON with prose ("Looking at the scorecard...")
+  // even when told not to. Pull out the first balanced {...} block as a fallback.
+  const extracted = extractJsonObject(trimmed);
+  if (extracted) candidates.push(extracted);
 
   for (const c of candidates) {
     try {
@@ -269,6 +273,35 @@ function parseClaudeJson(raw: string): ClaudeResult | null {
       if (obj && Array.isArray(obj.players)) return obj as ClaudeResult;
     } catch {
       // try next candidate
+    }
+  }
+  return null;
+}
+
+// Scan for the first balanced JSON object (depth-aware so brace characters
+// inside strings don't confuse the scan).
+function extractJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (c === "\\") escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
     }
   }
   return null;
