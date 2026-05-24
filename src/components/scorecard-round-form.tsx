@@ -429,14 +429,35 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
           onResult={applyOcr}
           disabled={submitting || !courseId}
         />
-        {ocr && (
-          <details className="mt-3 text-xs text-gray-500">
-            <summary className="cursor-pointer">Raw OCR output</summary>
-            <pre className="mt-2 whitespace-pre-wrap break-all bg-gray-50 border border-gray-200 rounded p-2 max-h-40 overflow-y-auto">
-              {ocr.rawText}
-            </pre>
-          </details>
-        )}
+        {ocr && (() => {
+          const matched = ocr.lines.filter(
+            (ln) => ln.numbers.length >= holeCount,
+          ).length;
+          const filled = Math.min(matched, players.length);
+          return (
+            <div className="mt-3 space-y-2 text-xs">
+              {matched === 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  OCR didn&apos;t find a row with {holeCount} numbers in it, so
+                  nothing was filled in. Check the raw output below and type the
+                  scores in manually.
+                </div>
+              ) : (
+                <div className="text-gray-600">
+                  Matched {matched} row{matched === 1 ? "" : "s"} with{" "}
+                  {holeCount}+ numbers — prefilled {filled} player row
+                  {filled === 1 ? "" : "s"}.
+                </div>
+              )}
+              <div>
+                <div className="text-gray-500 mb-1">Raw OCR output</div>
+                <pre className="whitespace-pre-wrap break-all bg-gray-50 border border-gray-200 rounded p-2 max-h-48 overflow-y-auto text-gray-700">
+                  {ocr.rawText || "(empty)"}
+                </pre>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="card">
