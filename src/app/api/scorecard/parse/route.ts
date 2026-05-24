@@ -74,6 +74,27 @@ export async function POST(request: Request) {
   }
   const playerCount = playerNames.length;
 
+  // Per-hole pars from the course. Lets Claude positively identify and skip
+  // the par row (which otherwise reads as a perfectly valid "player").
+  let pars: number[] = [];
+  const parsRaw = form.get("pars");
+  if (typeof parsRaw === "string" && parsRaw.length > 0) {
+    try {
+      const arr = JSON.parse(parsRaw);
+      if (Array.isArray(arr)) {
+        pars = arr
+          .map((n) => (typeof n === "number" ? Math.trunc(n) : NaN))
+          .filter((n) => Number.isInteger(n) && n >= 3 && n <= 6);
+      }
+    } catch {
+      // ignore — pars are a hint, not required
+    }
+  }
+
+  const entryModeRaw = form.get("entry_mode");
+  const entryMode: "strokes" | "to_par" =
+    entryModeRaw === "to_par" ? "to_par" : "strokes";
+
   const base64 = Buffer.from(await photo.arrayBuffer()).toString("base64");
 
   const client = new Anthropic();
@@ -97,7 +118,7 @@ export async function POST(request: Request) {
             },
             {
               type: "text",
-              text: buildPrompt(holeCount, playerCount, playerNames),
+              text: buildPrompt(holeCount, playerCount, pars, entryMode),
             },
           ],
         },
@@ -135,7 +156,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const players = normalizePlayers(parsed.players, holeCount);
+  const players = normalizePlayers(parsed.players, holeCount, pars, entryMode);
 
   return NextResponse.json({
     hole_count: holeCount,
@@ -150,13 +171,32 @@ export async function POST(request: Request) {
 function buildPrompt(
   holeCount: 9 | 18,
   playerCount: number,
-  _playerNames: string[],
+  pars: number[],
+  entryMode: "strokes" | "to_par",
 ): string {
   const rowHint =
     playerCount > 0
       ? `The user expects roughly ${playerCount} player row${playerCount === 1 ? "" : "s"}, ` +
         `but return however many you actually see on the card.`
       : `Return however many player rows you can see on the card.`;
+
+  const parRowGuidance =
+    pars.length >= holeCount
+      ? `KNOWN PAR FOR EACH HOLE: ${pars.slice(0, holeCount).join(", ")} (total par ${pars.slice(0, holeCount).reduce((a, b) => a + b, 0)})\n` +
+        `\n` +
+        `Use this to identify non-player rows that you MUST skip:\n` +
+        `- The PAR row exactly matches the numbers above (or labeled "PAR" / "M.PAR" / "W.PAR"). Skip it.\n` +
+        `- The HANDICAP/HCP row contains a permutation of 1 through ${holeCount} (each used once, labeled "HCP" / "HDCP"). Skip it.\n` +
+        `- TEE YARDAGE rows — there are typically 3 to 5 of these on a card (Blue/White/Red/Gold/Black tees etc.), each with 3-digit numbers like 145, 380, 510 and a 4-digit subtotal like 3297 or 6800. Skip ALL of them.\n` +
+        `- The HOLE NUMBER row is 1, 2, 3, ... ${holeCount}. Skip it.\n`
+      : `Skip any non-player rows: par row, handicap/HCP row, all tee yardage rows, and the hole-number row.\n`;
+
+  const handwrittenHint =
+    `STRONGEST SIGNAL — handwritten vs printed:\n` +
+    `Player scores are almost always HANDWRITTEN in pen or pencil, in the lower portion of the card.\n` +
+    `Tee yardages, par, HCP, and hole numbers are PRINTED (machine-printed text, often colored or boxed).\n` +
+    `Only return rows whose cell values look HANDWRITTEN. If the photo shows only a blank template ` +
+    `(no handwriting anywhere), return {"players": []}.\n`;
 
   const subtotalNote =
     holeCount === 18
@@ -171,22 +211,46 @@ function buildPrompt(
       : `If the row ends with a 9-hole total (like 42), skip it — ` +
         `the strokes array must contain EXACTLY 9 values.\n`;
 
+  const valueGuidance =
+    entryMode === "to_par"
+      ? `VALUES ARE WRITTEN RELATIVE TO PAR (vs-par notation):\n` +
+        `The player wrote scores as differences from par for each hole. Examples:\n` +
+        `- "E" or "0" means even (par)\n` +
+        `- "-1" or a number inside a circle means birdie (1 under par)\n` +
+        `- "+1" or "1" inside a square means bogey (1 over par)\n` +
+        `- "+2" means double bogey, "-2" means eagle, etc.\n` +
+        `Return the RAW DIFF for each hole — integer between -5 and +10. ` +
+        `Treat "E" as 0. Do NOT add par yourself; the server does that conversion.\n`
+      : `VALUES ARE ABSOLUTE STROKE COUNTS:\n` +
+        `Each cell is the literal number of strokes the player took on that hole. ` +
+        `Return integers between 1 and 20.\n`;
+
+  const entryRangeNote =
+    entryMode === "to_par"
+      ? `- Each entry is an integer between -5 and +10 (the diff from par), or null if blank/illegible.`
+      : `- Each entry is an integer between 1 and 20, or null if that specific hole is blank/illegible.`;
+
   return (
     `This scorecard has ${holeCount} holes per player. ${rowHint}\n\n` +
     `IMPORTANT — always return rows when you can see numbers:\n` +
-    `If you can see ANY player stroke numbers anywhere on the card, return one row per visible player. ` +
-    `Do NOT try to match player names — the user will assign each row to the right person afterward. ` +
+    `If you can see ANY player stroke numbers, return one row per visible player. ` +
+    `Do NOT try to match player names — the user assigns each row afterward. ` +
     `List rows in top-to-bottom order as they appear on the card.\n` +
-    `Only return {"players": []} if the photo truly has no player stroke numbers ` +
-    `(e.g. a blank card, par row only, or unreadable blur).\n\n` +
+    `Only return {"players": []} if the photo truly has no player stroke numbers.\n\n` +
+    handwrittenHint +
+    `\n` +
+    parRowGuidance +
+    `\n` +
+    valueGuidance +
+    `\n` +
     subtotalNote +
     `\n` +
     `Return JSON with exactly this shape (no other fields):\n` +
     `{ "players": [ { "strokes": [...] } ] }\n\n` +
     `Rules:\n` +
     `- Each "strokes" array must have exactly ${holeCount} entries.\n` +
-    `- Each entry is an integer 1-20, or null if that specific hole is blank/illegible.\n` +
-    `- Ignore the par row, handicap row, yardage row, and any subtotal/total columns.\n` +
+    entryRangeNote +
+    `\n` +
     `- If a player only has the front 9 filled in, return null for holes 10-18 — but still include the row.\n` +
     `- Output ONLY the JSON object. No explanation, no markdown fences.`
   );
@@ -213,6 +277,8 @@ function parseClaudeJson(raw: string): ClaudeResult | null {
 function normalizePlayers(
   raw: unknown[],
   holeCount: 9 | 18,
+  pars: number[],
+  entryMode: "strokes" | "to_par",
 ): { strokes: (number | null)[] }[] {
   const out: { strokes: (number | null)[] }[] = [];
   for (const p of raw) {
@@ -222,11 +288,15 @@ function normalizePlayers(
     const strokes: (number | null)[] = [];
     for (let i = 0; i < holeCount; i++) {
       const v = strokesRaw[i];
-      if (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 20) {
-        strokes.push(v);
-      } else {
+      if (typeof v !== "number" || !Number.isInteger(v)) {
         strokes.push(null);
+        continue;
       }
+      // In to_par mode Claude returns the diff (e.g. -1 for birdie); convert
+      // to absolute strokes using the known par for the hole. Fall back to
+      // par 4 if we don't have par data for this hole.
+      const abs = entryMode === "to_par" ? (pars[i] ?? 4) + v : v;
+      strokes.push(abs >= 1 && abs <= 20 ? abs : null);
     }
     out.push({ strokes });
   }

@@ -336,7 +336,7 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
       </div>
 
       <div className="card grid grid-cols-2 gap-3">
-        <div>
+        <div className="min-w-0">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Date played
           </label>
@@ -344,10 +344,10 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
             type="date"
             value={playedAt}
             onChange={(e) => setPlayedAt(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="w-full min-w-0 rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Holes
           </label>
@@ -427,6 +427,8 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         <ScorecardUploader
           holeCount={holeCount}
           playerNames={players.map((p) => p.user.display_name)}
+          pars={pars}
+          entryMode={entryMode}
           onResult={applyParse}
           disabled={submitting || !courseId}
         />

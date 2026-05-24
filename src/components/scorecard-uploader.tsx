@@ -15,6 +15,10 @@ type Props = {
   holeCount: 9 | 18;
   /** Display names of players already in the form, in the order they were added. */
   playerNames: string[];
+  /** Per-hole pars from the course; lets Claude identify and skip the par row. */
+  pars: number[];
+  /** Whether the player wrote absolute strokes or values relative to par. */
+  entryMode: "strokes" | "to_par";
   /** Called whenever the user picks a new photo (before parsing finishes). */
   onPhotoChosen?: (file: File) => void;
   /** Called once Claude finishes parsing the scorecard. */
@@ -31,6 +35,8 @@ type Props = {
 export function ScorecardUploader({
   holeCount,
   playerNames,
+  pars,
+  entryMode,
   onPhotoChosen,
   onResult,
   disabled,
@@ -58,6 +64,8 @@ export function ScorecardUploader({
       form.append("photo", file);
       form.append("hole_count", String(holeCount));
       form.append("player_names", JSON.stringify(playerNames));
+      form.append("pars", JSON.stringify(pars));
+      form.append("entry_mode", entryMode);
       const res = await fetch("/api/scorecard/parse", {
         method: "POST",
         body: form,
