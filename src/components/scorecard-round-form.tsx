@@ -517,6 +517,7 @@ export function ScorecardRoundForm({
           entryMode={entryMode}
           onResult={applyParse}
           disabled={submitting || !courseId}
+          variant={variant}
         />
         {parse && parse.players.length === 0 && (
           <div className={cls.parseEmpty}>
@@ -620,6 +621,7 @@ export function ScorecardRoundForm({
             onChange={setPlayers}
             onRemovePlayer={removePlayer}
             entryMode={entryMode}
+            variant={variant}
           />
         )}
       </div>
