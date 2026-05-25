@@ -170,6 +170,29 @@ export function V2Home() {
                       {row.rounds_played} rounds · {row.wins} wins · best{" "}
                       {row.best_score}
                     </div>
+                    {(row.firsts > 0 ||
+                      row.seconds > 0 ||
+                      row.thirds > 0 ||
+                      row.fourths > 0) && (
+                      <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-semibold">
+                        <span className="rounded bg-[var(--v2-accent)]/20 px-1.5 py-0.5 text-[var(--v2-accent)]">
+                          1st {row.firsts}
+                          {row.firsts_tied > 0 && ` (${row.firsts_tied}t)`}
+                        </span>
+                        <span className="rounded bg-gray-500/30 px-1.5 py-0.5 text-gray-200">
+                          2nd {row.seconds}
+                          {row.seconds_tied > 0 && ` (${row.seconds_tied}t)`}
+                        </span>
+                        <span className="rounded bg-orange-500/25 px-1.5 py-0.5 text-orange-300">
+                          3rd {row.thirds}
+                          {row.thirds_tied > 0 && ` (${row.thirds_tied}t)`}
+                        </span>
+                        <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-300">
+                          💩 {row.fourths}
+                          {row.fourths_tied > 0 && ` (${row.fourths_tied}t)`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-[var(--v2-score)]">

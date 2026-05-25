@@ -11,6 +11,14 @@ export type RoundWeatherSummary = {
   weather_code: number | null;
 };
 
+export type RoundHoleStats = {
+  eagles: number;
+  birdies: number;
+  pars: number;
+  bogeys: number;
+  doubles_plus: number;
+};
+
 export type RoundDetail = {
   id: number;
   course_id: number;
@@ -22,6 +30,8 @@ export type RoundDetail = {
   created_by_name: string;
   can_edit: boolean;
   weather: RoundWeatherSummary | null;
+  /** Per-hole pars from the course (length = hole_count). [] if missing. */
+  pars: number[];
   scores: {
     id: number;
     player_id: string | null;
@@ -31,6 +41,14 @@ export type RoundDetail = {
     is_guest: boolean;
     gross_score: number;
     notes: string | null;
+    /**
+     * Per-hole strokes for this player, length = hole_count. null entry =
+     * that hole wasn't recorded. Empty array if no hole-by-hole data was
+     * saved for this round (older rounds, guest-only rounds).
+     */
+    hole_strokes: (number | null)[];
+    /** Eagles/birdies/pars/bogeys/doubles+, summed over recorded holes. */
+    hole_stats: RoundHoleStats | null;
   }[];
 };
 
@@ -104,21 +122,108 @@ async function loadRound(
       username: string | null;
     }>(id);
 
+  // Per-hole pars for the course. May be missing for older / unlinked courses;
+  // in that case we return an empty array and the UI falls back gracefully.
+  const parRows = await db
+    .prepare(
+      `SELECT hole_number, par FROM course_holes
+       WHERE course_id = ? ORDER BY hole_number`,
+    )
+    .all<{ hole_number: number; par: number }>(round.course_id);
+  const pars: number[] = Array<number>(round.hole_count).fill(0);
+  for (const r of parRows) {
+    if (r.hole_number >= 1 && r.hole_number <= round.hole_count) {
+      pars[r.hole_number - 1] = r.par;
+    }
+  }
+  // If we got no par data at all, signal that with an empty array — easier
+  // for the UI to detect than an array of zeros.
+  const parsOut = parRows.length > 0 ? pars : [];
+
+  // Per-hole strokes keyed by player_id. hole_scores only exists for
+  // registered users (it has a NOT NULL FK to users); guests have nothing here.
+  const playerIds = scoreRows
+    .map((s) => s.player_id)
+    .filter((p): p is string => typeof p === "string" && p.length > 0);
+  const holeByPlayer = new Map<string, Map<number, number>>();
+  if (playerIds.length > 0) {
+    const placeholders = playerIds.map(() => "?").join(",");
+    const hsRows = await db
+      .prepare(
+        `SELECT player_id, hole_number, strokes
+         FROM hole_scores
+         WHERE round_id = ? AND player_id IN (${placeholders})`,
+      )
+      .all<{ player_id: string; hole_number: number; strokes: number }>(
+        id,
+        ...playerIds,
+      );
+    for (const r of hsRows) {
+      let m = holeByPlayer.get(r.player_id);
+      if (!m) {
+        m = new Map();
+        holeByPlayer.set(r.player_id, m);
+      }
+      m.set(r.hole_number, r.strokes);
+    }
+  }
+
   return {
     ...round,
     weather,
     can_edit: isAdmin || round.created_by === currentUserId,
-    scores: scoreRows.map((s) => ({
-      id: s.id,
-      player_id: s.player_id,
-      guest_name: s.guest_name,
-      name: s.player_id ? s.display_name ?? "?" : s.guest_name ?? "?",
-      username: s.username,
-      is_guest: !s.player_id,
-      gross_score: s.gross_score,
-      notes: s.notes,
-    })),
+    pars: parsOut,
+    scores: scoreRows.map((s) => {
+      const hs = s.player_id ? holeByPlayer.get(s.player_id) : undefined;
+      const hole_strokes: (number | null)[] = Array<number | null>(
+        round.hole_count,
+      ).fill(null);
+      if (hs) {
+        for (let i = 1; i <= round.hole_count; i++) {
+          const v = hs.get(i);
+          if (typeof v === "number") hole_strokes[i - 1] = v;
+        }
+      }
+      const stats = hs ? summarizeHoleStats(hole_strokes, pars) : null;
+      return {
+        id: s.id,
+        player_id: s.player_id,
+        guest_name: s.guest_name,
+        name: s.player_id ? s.display_name ?? "?" : s.guest_name ?? "?",
+        username: s.username,
+        is_guest: !s.player_id,
+        gross_score: s.gross_score,
+        notes: s.notes,
+        hole_strokes,
+        hole_stats: stats,
+      };
+    }),
   };
+}
+
+function summarizeHoleStats(
+  strokes: (number | null)[],
+  pars: number[],
+): RoundHoleStats {
+  const out: RoundHoleStats = {
+    eagles: 0,
+    birdies: 0,
+    pars: 0,
+    bogeys: 0,
+    doubles_plus: 0,
+  };
+  for (let i = 0; i < strokes.length; i++) {
+    const s = strokes[i];
+    const par = pars[i];
+    if (s == null || !par) continue;
+    const diff = s - par;
+    if (diff <= -2) out.eagles += 1;
+    else if (diff === -1) out.birdies += 1;
+    else if (diff === 0) out.pars += 1;
+    else if (diff === 1) out.bogeys += 1;
+    else out.doubles_plus += 1;
+  }
+  return out;
 }
 
 function validateScores(rawScores: unknown, holeCount: number):
