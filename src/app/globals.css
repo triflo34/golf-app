@@ -5,11 +5,13 @@
   --foreground: #14532d;
 }
 
-/* v2 mode overrides — applied when <html data-ui="v2"> is set.
-   Classic mode is unaffected so the existing UI keeps its look. */
+/* v2 design tokens. Only defined when <html data-ui="v2"> is set, but they do
+   NOT override --background / --foreground — that would dark-out every
+   unported classic page. Instead, v2 components / page wrappers reference
+   --v2-bg / --v2-surface explicitly. Classic pages stay untouched. */
 html[data-ui="v2"] {
-  --background: #0a0a0a;
-  --foreground: #f5f5f5;
+  --v2-bg: #0a0a0a;
+  --v2-fg: #f5f5f5;
   --v2-surface: #1c1c1c;
   --v2-surface-2: #262626;
   --v2-border: #2a2a2a;
@@ -18,7 +20,6 @@ html[data-ui="v2"] {
   --v2-accent-soft: #f59e0b;
   --v2-score: #22c55e;
   --v2-score-soft: #4ade80;
-  color-scheme: dark;
 }
 
 @theme inline {
