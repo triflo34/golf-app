@@ -85,6 +85,7 @@ export function V2NewRound() {
         />
       ) : (
         <ScorecardRoundForm
+          variant="v2"
           me={user}
           onSubmit={async (payload) => {
             const res = await fetch("/api/rounds/scorecard", {

@@ -21,12 +21,116 @@ export type ScorecardPayload = {
   players: { player_id: string; strokes: number[] }[];
 };
 
+type Variant = "classic" | "v2";
+
 type Props = {
   me: User;
   onSubmit: (payload: ScorecardPayload) => Promise<void>;
+  variant?: Variant;
 };
 
-export function ScorecardRoundForm({ me, onSubmit }: Props) {
+// All variant-dependent class strings live here so the JSX stays readable
+// while supporting both the classic light theme and v2 dark theme.
+function styles(variant: Variant) {
+  const v2 = variant === "v2";
+  return {
+    errorBox: v2
+      ? "rounded-md border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-300"
+      : "rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700",
+    card: v2
+      ? "rounded-2xl border border-[var(--v2-border)] bg-[var(--v2-surface)] p-4"
+      : "card",
+    cardGrid: v2
+      ? "rounded-2xl border border-[var(--v2-border)] bg-[var(--v2-surface)] p-4 grid grid-cols-1 sm:grid-cols-2 gap-3"
+      : "card grid grid-cols-1 sm:grid-cols-2 gap-3",
+    label: v2
+      ? "block text-sm font-medium text-[var(--v2-muted)] mb-1"
+      : "block text-sm font-medium text-gray-700 mb-1",
+    input: v2
+      ? "w-full rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-sm text-white placeholder-[var(--v2-muted)] focus:border-[var(--v2-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-accent)]/40"
+      : "w-full rounded-md border border-gray-300 px-3 py-2 text-sm",
+    inputDate: v2
+      ? "w-full min-w-0 rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-sm text-white focus:border-[var(--v2-accent)] focus:outline-none"
+      : "w-full min-w-0 rounded-md border border-gray-300 px-3 py-2 text-sm",
+    selectedCourseBox: v2
+      ? "flex items-center justify-between rounded-lg bg-[var(--v2-surface-2)] px-3 py-2"
+      : "flex items-center justify-between bg-green-50 rounded-lg px-3 py-2",
+    selectedCourseName: v2 ? "font-semibold text-white" : "font-semibold text-gray-800",
+    selectedCourseMeta: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
+    changeBtn: v2
+      ? "text-xs text-[var(--v2-accent)] hover:underline"
+      : "text-xs text-green-700 hover:underline",
+    parWarning: v2
+      ? "mt-2 rounded-md border border-amber-700 bg-amber-950/40 px-3 py-2 text-xs text-amber-200"
+      : "mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900",
+    parWarningBtn: v2
+      ? "rounded-md bg-amber-600 text-black px-2.5 py-1 font-medium disabled:opacity-50"
+      : "rounded-md bg-amber-700 text-white px-2.5 py-1 font-medium disabled:opacity-50",
+    parWarningMsg: v2 ? "text-amber-300" : "text-amber-800",
+    courseList: v2
+      ? "mt-2 max-h-48 overflow-y-auto divide-y divide-[var(--v2-border)] border border-[var(--v2-border)] rounded-md bg-[var(--v2-surface-2)]"
+      : "mt-2 max-h-48 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-md bg-white",
+    courseListRow: v2
+      ? "w-full text-left px-3 py-2 text-sm hover:bg-[var(--v2-surface)]"
+      : "w-full text-left px-3 py-2 text-sm hover:bg-green-50",
+    courseListName: v2 ? "font-medium text-white" : "font-medium text-gray-800",
+    courseListMeta: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
+    courseListEmpty: v2
+      ? "px-3 py-3 text-xs text-[var(--v2-muted)]"
+      : "px-3 py-3 text-xs text-gray-500",
+    holesSegment: v2
+      ? "flex bg-[var(--v2-surface-2)] rounded-md p-0.5 text-xs font-medium"
+      : "flex bg-gray-100 rounded-md p-0.5 text-xs font-medium",
+    holesActive: v2
+      ? "flex-1 px-2 py-1.5 rounded bg-[var(--v2-accent)] text-black"
+      : "flex-1 px-2 py-1.5 rounded bg-white text-green-700 shadow-sm",
+    holesIdle: v2
+      ? "flex-1 px-2 py-1.5 rounded text-[var(--v2-muted)]"
+      : "flex-1 px-2 py-1.5 rounded text-gray-500",
+    helperNote: v2 ? "text-xs text-[var(--v2-muted)] mb-2" : "text-xs text-gray-500 mb-2",
+    playerInput: v2
+      ? "w-full rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-sm text-white placeholder-[var(--v2-muted)] disabled:bg-[var(--v2-surface)] focus:border-[var(--v2-accent)] focus:outline-none"
+      : "w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50",
+    playerDropdown: v2
+      ? "absolute z-10 mt-1 w-full max-h-48 overflow-y-auto divide-y divide-[var(--v2-border)] border border-[var(--v2-border)] rounded-md bg-[var(--v2-surface-2)] shadow-2xl shadow-black/40"
+      : "absolute z-10 mt-1 w-full max-h-48 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-md bg-white shadow-sm",
+    playerDropdownRow: v2
+      ? "w-full text-left px-3 py-2 text-sm hover:bg-[var(--v2-surface)]"
+      : "w-full text-left px-3 py-2 text-sm hover:bg-green-50",
+    playerDropdownName: v2 ? "font-medium text-white" : "font-medium text-gray-800",
+    playerDropdownUsername: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
+    parseEmpty: v2
+      ? "mt-3 rounded-md border border-amber-700 bg-amber-950/40 px-3 py-2 text-xs text-amber-200"
+      : "mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900",
+    parseEmptyDebug: v2 ? "text-amber-300 text-[11px] break-all" : "text-amber-700 text-[11px] break-all",
+    parseHelp: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-600",
+    parseList: v2
+      ? "divide-y divide-[var(--v2-border)] border border-[var(--v2-border)] rounded-md"
+      : "divide-y divide-gray-100 border border-gray-200 rounded-md",
+    parseRowLabel: v2 ? "font-medium text-white" : "font-medium text-gray-700",
+    parseRowMeta: v2 ? "text-[var(--v2-muted)]" : "text-gray-400",
+    parsePreview: v2 ? "font-mono text-[var(--v2-fg)] mb-2 break-all" : "font-mono text-gray-700 mb-2 break-all",
+    parseAssignBtn: v2
+      ? "px-2 py-1 rounded bg-[var(--v2-accent)] text-black font-medium hover:bg-[var(--v2-accent-soft)]"
+      : "px-2 py-1 rounded bg-green-700 text-white font-medium hover:bg-green-800",
+    entryModeActive: v2
+      ? "px-2.5 py-1 rounded transition bg-[var(--v2-accent)] text-black"
+      : "px-2.5 py-1 rounded transition bg-white text-green-700 shadow-sm",
+    entryModeIdle: v2
+      ? "px-2.5 py-1 rounded transition text-[var(--v2-muted)]"
+      : "px-2.5 py-1 rounded transition text-gray-500",
+    submitBtn: v2
+      ? "w-full rounded-lg bg-[var(--v2-accent)] px-4 py-2.5 font-semibold text-black hover:bg-[var(--v2-accent-soft)] disabled:opacity-50"
+      : "w-full rounded-md bg-green-700 px-4 py-2.5 text-white font-semibold disabled:opacity-50",
+  };
+}
+
+export function ScorecardRoundForm({
+  me,
+  onSubmit,
+  variant = "classic",
+}: Props) {
+  const cls = styles(variant);
   const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [courseId, setCourseId] = useState<number | null>(null);
@@ -233,24 +337,18 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <div className={cls.errorBox}>{error}</div>}
 
-      <div className="card">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Course
-        </label>
+      <div className={cls.card}>
+        <label className={cls.label}>Course</label>
         {selectedCourse ? (
           <>
-            <div className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
+            <div className={cls.selectedCourseBox}>
               <div>
-                <div className="font-semibold text-gray-800">
+                <div className={cls.selectedCourseName}>
                   {selectedCourse.name}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className={cls.selectedCourseMeta}>
                   {selectedCourse.city}, {selectedCourse.state} · par{" "}
                   {selectedCourse.par} · {selectedCourse.holes} holes
                 </div>
@@ -258,13 +356,13 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
               <button
                 type="button"
                 onClick={() => setCourseId(null)}
-                className="text-xs text-green-700 hover:underline"
+                className={cls.changeBtn}
               >
                 Change
               </button>
             </div>
             {needsParsRefresh(holeMeta) && (
-              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <div className={cls.parWarning}>
                 {selectedCourse.external_id ? (
                   <>
                     <p>
@@ -276,14 +374,14 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
                         type="button"
                         onClick={refreshCourseFromApi}
                         disabled={refreshingCourse}
-                        className="rounded-md bg-amber-700 text-white px-2.5 py-1 font-medium disabled:opacity-50"
+                        className={cls.parWarningBtn}
                       >
                         {refreshingCourse
                           ? "Refreshing…"
                           : "Refresh pars from API"}
                       </button>
                       {refreshMessage && (
-                        <span className="text-amber-800">{refreshMessage}</span>
+                        <span className={cls.parWarningMsg}>{refreshMessage}</span>
                       )}
                     </div>
                   </>
@@ -305,9 +403,9 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
               value={courseQuery}
               onChange={(e) => setCourseQuery(e.target.value)}
               placeholder="Search course…"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className={cls.input}
             />
-            <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
+            <ul className={cls.courseList}>
               {filteredCourses.map((c) => (
                 <li key={c.id}>
                   <button
@@ -316,17 +414,17 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
                       setCourseId(c.id);
                       setCourseQuery("");
                     }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-green-50"
+                    className={cls.courseListRow}
                   >
-                    <div className="font-medium text-gray-800">{c.name}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className={cls.courseListName}>{c.name}</div>
+                    <div className={cls.courseListMeta}>
                       {c.city}, {c.state} · {c.holes} holes
                     </div>
                   </button>
                 </li>
               ))}
               {filteredCourses.length === 0 && (
-                <li className="px-3 py-3 text-xs text-gray-500">
+                <li className={cls.courseListEmpty}>
                   No courses match — add one from the Courses tab first.
                 </li>
               )}
@@ -335,23 +433,19 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         )}
       </div>
 
-      <div className="card grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className={cls.cardGrid}>
         <div className="min-w-0">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Date played
-          </label>
+          <label className={cls.label}>Date played</label>
           <input
             type="date"
             value={playedAt}
             onChange={(e) => setPlayedAt(e.target.value)}
-            className="w-full min-w-0 rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={cls.inputDate}
           />
         </div>
         <div className="min-w-0">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Holes
-          </label>
-          <div className="flex bg-gray-100 rounded-md p-0.5 text-xs font-medium">
+          <label className={cls.label}>Holes</label>
+          <div className={cls.holesSegment}>
             {([9, 18] as const).map((h) => (
               <button
                 key={h}
@@ -365,11 +459,7 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
                     })),
                   );
                 }}
-                className={`flex-1 px-2 py-1.5 rounded ${
-                  holeCount === h
-                    ? "bg-white text-green-700 shadow-sm"
-                    : "text-gray-500"
-                }`}
+                className={holeCount === h ? cls.holesActive : cls.holesIdle}
               >
                 {h}
               </button>
@@ -378,11 +468,9 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         </div>
       </div>
 
-      <div className="card">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Players ({players.length}/8)
-        </label>
-        <p className="text-xs text-gray-500 mb-2">
+      <div className={cls.card}>
+        <label className={cls.label}>Players ({players.length}/8)</label>
+        <p className={cls.helperNote}>
           Per-hole stats need registered users — guests aren&apos;t supported in
           this flow. Use Type Scores for guest rounds.
         </p>
@@ -397,21 +485,21 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
             onFocus={() => setShowPlayerPicker(true)}
             placeholder="Add a player by name"
             disabled={players.length >= 8}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
+            className={cls.playerInput}
           />
           {showPlayerPicker && filteredUsers.length > 0 && (
-            <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-md bg-white shadow-sm">
+            <ul className={cls.playerDropdown}>
               {filteredUsers.map((u) => (
                 <li key={u.id}>
                   <button
                     type="button"
                     onClick={() => addPlayer(u)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-green-50"
+                    className={cls.playerDropdownRow}
                   >
-                    <div className="font-medium text-gray-800">
+                    <div className={cls.playerDropdownName}>
                       {u.display_name}
                     </div>
-                    <div className="text-xs text-gray-500">@{u.username}</div>
+                    <div className={cls.playerDropdownUsername}>@{u.username}</div>
                   </button>
                 </li>
               ))}
@@ -420,10 +508,8 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         </div>
       </div>
 
-      <div className="card">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Scorecard photo (optional)
-        </label>
+      <div className={cls.card}>
+        <label className={`${cls.label} mb-2`}>Scorecard photo (optional)</label>
         <ScorecardUploader
           holeCount={holeCount}
           playerNames={players.map((p) => p.user.display_name)}
@@ -433,11 +519,11 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
           disabled={submitting || !courseId}
         />
         {parse && parse.players.length === 0 && (
-          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <div className={cls.parseEmpty}>
             Claude couldn&apos;t find any player rows on this photo. Try a
             clearer photo, or type the scores in manually.
             {parse.rawError && (
-              <div className="mt-1 text-amber-700 text-[11px] break-all">
+              <div className={`mt-1 ${cls.parseEmptyDebug}`}>
                 {parse.rawError}
               </div>
             )}
@@ -445,12 +531,12 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         )}
         {parse && parse.players.length > 0 && (
           <div className="mt-3 space-y-2">
-            <div className="text-xs text-gray-600">
+            <div className={cls.parseHelp}>
               Claude detected {parse.players.length} row
               {parse.players.length === 1 ? "" : "s"}. Tap which player each row
               belongs to.
             </div>
-            <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md">
+            <ul className={cls.parseList}>
               {parse.players.map((row, rowIdx) => {
                 const counted = row.strokes.filter(
                   (s) => typeof s === "number",
@@ -462,25 +548,21 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
                 return (
                   <li key={rowIdx} className="p-2 text-xs">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-medium text-gray-700">
+                      <span className={cls.parseRowLabel}>
                         Row {rowIdx + 1}
                       </span>
-                      <span className="text-gray-400">
+                      <span className={cls.parseRowMeta}>
                         {counted}/{holeCount} holes read
                       </span>
                     </div>
-                    <div className="font-mono text-gray-700 mb-2 break-all">
-                      {preview}
-                    </div>
+                    <div className={cls.parsePreview}>{preview}</div>
                     <div className="flex flex-wrap gap-1">
                       {players.map((p) => (
                         <button
                           key={p.user.id}
                           type="button"
-                          onClick={() =>
-                            applyDetectedRow(rowIdx, p.user.id)
-                          }
-                          className="px-2 py-1 rounded bg-green-700 text-white font-medium hover:bg-green-800"
+                          onClick={() => applyDetectedRow(rowIdx, p.user.id)}
+                          className={cls.parseAssignBtn}
                         >
                           Use for {p.user.display_name}
                         </button>
@@ -494,20 +576,16 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         )}
       </div>
 
-      <div className="card">
+      <div className={cls.card}>
         <div className="flex items-center justify-between mb-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Scores
-          </label>
-          <div className="flex bg-gray-100 rounded-md p-0.5 text-xs font-medium">
+          <label className={cls.label}>Scores</label>
+          <div className={cls.holesSegment}>
             <button
               type="button"
               onClick={() => setEntryMode("strokes")}
-              className={`px-2.5 py-1 rounded transition ${
-                entryMode === "strokes"
-                  ? "bg-white text-green-700 shadow-sm"
-                  : "text-gray-500"
-              }`}
+              className={
+                entryMode === "strokes" ? cls.entryModeActive : cls.entryModeIdle
+              }
               title="Type the actual stroke count (4, 5, 6…)"
             >
               Strokes
@@ -515,11 +593,9 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
             <button
               type="button"
               onClick={() => setEntryMode("to_par")}
-              className={`px-2.5 py-1 rounded transition ${
-                entryMode === "to_par"
-                  ? "bg-white text-green-700 shadow-sm"
-                  : "text-gray-500"
-              }`}
+              className={
+                entryMode === "to_par" ? cls.entryModeActive : cls.entryModeIdle
+              }
               title="Type diff vs par: 0 = par, -1 = birdie, 1 = bogey…"
             >
               vs Par
@@ -527,7 +603,7 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
           </div>
         </div>
         {entryMode === "to_par" && (
-          <p className="text-[11px] text-gray-500 mb-2">
+          <p className={`text-[11px] mb-2 ${variant === "v2" ? "text-[var(--v2-muted)]" : "text-gray-500"}`}>
             <span className="font-medium">0</span> = par,{" "}
             <span className="font-medium">-1</span> = birdie,{" "}
             <span className="font-medium">1</span> = bogey. Saved as actual
@@ -535,7 +611,7 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
           </p>
         )}
         {players.length === 0 ? (
-          <p className="text-xs text-gray-500">Add a player above.</p>
+          <p className={cls.helperNote}>Add a player above.</p>
         ) : (
           <ScorecardGrid
             holeCount={holeCount}
@@ -548,15 +624,13 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         )}
       </div>
 
-      <div className="card">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Notes (optional)
-        </label>
+      <div className={cls.card}>
+        <label className={cls.label}>Notes (optional)</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className={cls.input}
         />
       </div>
 
@@ -564,7 +638,7 @@ export function ScorecardRoundForm({ me, onSubmit }: Props) {
         type="button"
         onClick={submit}
         disabled={submitting || !courseId || players.length === 0}
-        className="w-full rounded-md bg-green-700 px-4 py-2.5 text-white font-semibold disabled:opacity-50"
+        className={cls.submitBtn}
       >
         {submitting ? "Saving…" : "Save scorecard"}
       </button>
