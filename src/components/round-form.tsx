@@ -27,13 +27,108 @@ export type RoundFormPayload = {
   >;
 };
 
+type Variant = "classic" | "v2";
+
 type Props = {
   initial: RoundFormInitial;
   submitLabel: string;
   onSubmit: (payload: RoundFormPayload) => Promise<void>;
+  variant?: Variant;
 };
 
-export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
+// All variant-specific class strings collected in one place so the JSX below
+// stays readable while still supporting the classic light theme and the new
+// v2 dark theme via the same component.
+function styles(variant: Variant) {
+  const v2 = variant === "v2";
+  return {
+    errorBox: v2
+      ? "mb-4 rounded-lg bg-red-950/60 p-3 text-sm text-red-300"
+      : "mb-4 bg-red-50 text-red-600 text-sm p-3 rounded-lg",
+    card: v2
+      ? "mb-4 rounded-2xl border border-[var(--v2-border)] bg-[var(--v2-surface)] p-4"
+      : "card mb-4",
+    label: v2
+      ? "block text-sm font-medium text-[var(--v2-muted)] mb-1"
+      : "block text-sm font-medium text-gray-700 mb-1",
+    input: v2
+      ? "w-full rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-white placeholder-[var(--v2-muted)] focus:border-[var(--v2-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-accent)]/40"
+      : "w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900",
+    selectedCourseBox: v2
+      ? "flex items-center justify-between rounded-lg bg-[var(--v2-surface-2)] px-3 py-2"
+      : "flex items-center justify-between bg-green-50 rounded-lg px-3 py-2",
+    selectedCourseTitle: v2 ? "font-semibold text-white" : "font-semibold text-gray-800",
+    selectedCourseMeta: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
+    changeLink: v2
+      ? "text-sm font-medium text-[var(--v2-accent)]"
+      : "text-sm text-green-700 font-medium",
+    pickerWrap: v2
+      ? "mt-2 max-h-72 overflow-y-auto rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)]"
+      : "mt-2 max-h-72 overflow-y-auto border border-gray-200 rounded-lg",
+    pickerEmpty: v2
+      ? "p-3 text-sm text-[var(--v2-muted)]"
+      : "p-3 text-sm text-gray-400",
+    pickerRow: v2
+      ? "w-full px-3 py-2 text-left hover:bg-[var(--v2-surface)] border-b border-[var(--v2-border)] last:border-b-0 disabled:opacity-50"
+      : "w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0 disabled:opacity-50",
+    pickerRowExternal: v2
+      ? "w-full px-3 py-2 text-left hover:bg-[var(--v2-surface)] border-b border-[var(--v2-border)] last:border-b-0 disabled:opacity-50"
+      : "w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 disabled:opacity-50",
+    pickerRowGuest: v2
+      ? "w-full px-3 py-2 text-left hover:bg-[var(--v2-accent)]/10 bg-[var(--v2-accent)]/5"
+      : "w-full text-left px-3 py-2 hover:bg-yellow-50 bg-yellow-50/50",
+    pickerName: v2 ? "text-sm font-semibold text-white" : "text-sm font-semibold text-gray-800",
+    pickerMeta: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
+    badgeSaved: v2
+      ? "text-[10px] px-1.5 py-0.5 rounded bg-[var(--v2-score)]/20 text-[var(--v2-score-soft)] shrink-0"
+      : "text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 shrink-0",
+    badgeImport: v2
+      ? "text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 shrink-0"
+      : "text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 shrink-0",
+    sectionHeader: v2 ? "font-semibold text-white" : "font-semibold text-gray-800",
+    smallMuted: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
+    holeBtnActive: v2
+      ? "px-4 py-1.5 text-sm font-medium bg-[var(--v2-accent)] text-black"
+      : "px-4 py-1.5 text-sm font-medium bg-green-700 text-white",
+    holeBtnIdle: v2
+      ? "px-4 py-1.5 text-sm font-medium bg-[var(--v2-surface-2)] text-[var(--v2-muted)] hover:bg-[var(--v2-border)]"
+      : "px-4 py-1.5 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50",
+    holeWrap: v2
+      ? "inline-flex rounded-lg border border-[var(--v2-border)] overflow-hidden"
+      : "inline-flex rounded-lg border border-gray-300 overflow-hidden",
+    apiSearchingNote: v2
+      ? "px-3 py-2 text-xs text-[var(--v2-muted)]"
+      : "px-3 py-2 text-xs text-gray-500",
+    rateLimited: v2
+      ? "px-3 py-2 text-xs text-orange-300 bg-orange-950/40 border-t border-orange-800"
+      : "px-3 py-2 text-xs text-orange-800 bg-orange-50 border-t border-orange-200",
+    apiError: v2
+      ? "px-3 py-2 text-xs text-amber-300 bg-amber-950/40 border-t border-amber-800"
+      : "px-3 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200",
+    apiHitsHeader: v2
+      ? "px-3 py-1 text-[10px] uppercase tracking-wide text-[var(--v2-muted)] bg-[var(--v2-surface)] border-t border-b border-[var(--v2-border)]"
+      : "px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400 bg-gray-50 border-t border-b border-gray-100",
+    scoreInput: v2
+      ? "w-20 px-2 py-1.5 rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)] text-white text-center"
+      : "w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-gray-900 text-center",
+    playerName: v2 ? "text-sm font-semibold text-white truncate" : "text-sm font-semibold text-gray-800 truncate",
+    playerSub: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
+    removeBtn: v2
+      ? "text-red-400 text-xs font-medium px-2"
+      : "text-red-500 text-xs font-medium px-2",
+    submitBtn: v2
+      ? "w-full py-3 rounded-lg bg-[var(--v2-accent)] font-semibold text-black hover:bg-[var(--v2-accent-soft)] disabled:opacity-50 transition"
+      : "w-full py-3 bg-green-700 text-white font-medium rounded-lg hover:bg-green-800 disabled:opacity-50 transition",
+  };
+}
+
+export function RoundForm({
+  initial,
+  submitLabel,
+  onSubmit,
+  variant = "classic",
+}: Props) {
+  const cls = styles(variant);
   const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
@@ -260,23 +355,17 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
 
   return (
     <>
-      {error && (
-        <div className="mb-4 bg-red-50 text-red-600 text-sm p-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <div className={cls.errorBox}>{error}</div>}
 
-      <div className="card mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Course
-        </label>
+      <div className={cls.card}>
+        <label className={cls.label}>Course</label>
         {selectedCourse ? (
-          <div className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
+          <div className={cls.selectedCourseBox}>
             <div>
-              <div className="font-semibold text-gray-800">
+              <div className={cls.selectedCourseTitle}>
                 {selectedCourse.name}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className={cls.selectedCourseMeta}>
                 {selectedCourse.city} · par {selectedCourse.par} ·{" "}
                 {selectedCourse.holes} holes
               </div>
@@ -287,7 +376,7 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                 setCourseId(null);
                 setShowCoursePicker(true);
               }}
-              className="text-sm text-green-700 font-medium"
+              className={cls.changeLink}
             >
               Change
             </button>
@@ -303,12 +392,14 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                 setShowCoursePicker(true);
               }}
               placeholder="Search by name or city…"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              className={cls.input}
             />
             {showCoursePicker && (
-              <div className="mt-2 max-h-72 overflow-y-auto border border-gray-200 rounded-lg">
-                {filteredCourses.length === 0 && apiHits.length === 0 && !apiSearching ? (
-                  <div className="p-3 text-sm text-gray-400">
+              <div className={cls.pickerWrap}>
+                {filteredCourses.length === 0 &&
+                apiHits.length === 0 &&
+                !apiSearching ? (
+                  <div className={cls.pickerEmpty}>
                     {courseQuery.trim().length < 2
                       ? "Type at least 2 characters to search the GolfCourseAPI."
                       : "No courses match."}
@@ -324,25 +415,21 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                           setCourseQuery("");
                           setShowCoursePicker(false);
                         }}
-                        className="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0"
+                        className={cls.pickerRow}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-gray-800 truncate">
+                          <span className={`${cls.pickerName} truncate`}>
                             {c.name}
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 shrink-0">
-                            saved
-                          </span>
+                          <span className={cls.badgeSaved}>saved</span>
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className={cls.pickerMeta}>
                           {c.city} · par {c.par}
                         </div>
                       </button>
                     ))}
                     {apiHits.length > 0 && filteredCourses.length > 0 && (
-                      <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400 bg-gray-50 border-t border-b border-gray-100">
-                        From GolfCourseAPI
-                      </div>
+                      <div className={cls.apiHitsHeader}>From GolfCourseAPI</div>
                     )}
                     {apiHits.map((r) => {
                       if (r.source !== "external") return null;
@@ -353,21 +440,21 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                           type="button"
                           disabled={Boolean(importingExtId)}
                           onClick={() => importAndSelect(r.external_id)}
-                          className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 disabled:opacity-50"
+                          className={cls.pickerRowExternal}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-semibold text-gray-800 truncate">
+                            <span className={`${cls.pickerName} truncate`}>
                               {r.name}
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 shrink-0">
-                              import
-                            </span>
+                            <span className={cls.badgeImport}>import</span>
                           </div>
-                          <div className="text-xs text-gray-500 truncate">
-                            {[r.city, r.state, r.country].filter(Boolean).join(", ") || "—"}
+                          <div className={`${cls.pickerMeta} truncate`}>
+                            {[r.city, r.state, r.country]
+                              .filter(Boolean)
+                              .join(", ") || "—"}
                           </div>
                           {importing && (
-                            <div className="text-[10px] text-blue-700 mt-0.5">
+                            <div className="mt-0.5 text-[10px] text-blue-300">
                               Importing…
                             </div>
                           )}
@@ -375,41 +462,35 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                       );
                     })}
                     {apiSearching && (
-                      <div className="px-3 py-2 text-xs text-gray-500">
+                      <div className={cls.apiSearchingNote}>
                         Searching GolfCourseAPI…
                       </div>
                     )}
                   </>
                 )}
                 {apiRateLimited ? (
-                  <div className="px-3 py-2 text-xs text-orange-800 bg-orange-50 border-t border-orange-200">
+                  <div className={cls.rateLimited}>
                     ⏱ Daily GolfCourseAPI limit reached. Saved courses still
                     work; new searches resume tomorrow.
                   </div>
                 ) : apiError ? (
-                  <div className="px-3 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200">
-                    {apiError}
-                  </div>
+                  <div className={cls.apiError}>{apiError}</div>
                 ) : null}
               </div>
             )}
           </>
         )}
 
-        <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">
-          Date
-        </label>
+        <label className={`${cls.label} mt-4`}>Date</label>
         <input
           type="date"
           value={playedAt}
           onChange={(e) => setPlayedAt(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+          className={`${cls.input} min-w-0`}
         />
 
-        <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">
-          Holes
-        </label>
-        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+        <label className={`${cls.label} mt-4`}>Holes</label>
+        <div className={cls.holeWrap}>
           {[9, 18].map((n) => (
             <button
               key={n}
@@ -418,11 +499,7 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                 setHoleCount(n as 9 | 18);
                 setHoleCountTouched(true);
               }}
-              className={`px-4 py-1.5 text-sm font-medium ${
-                holeCount === n
-                  ? "bg-green-700 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
+              className={holeCount === n ? cls.holeBtnActive : cls.holeBtnIdle}
             >
               {n}
             </button>
@@ -430,20 +507,20 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
         </div>
       </div>
 
-      <div className="card mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="font-semibold text-gray-800">Players & Scores</h2>
-          <span className="text-xs text-gray-500">{players.length}/8</span>
+      <div className={cls.card}>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className={cls.sectionHeader}>Players &amp; Scores</h2>
+          <span className={cls.smallMuted}>{players.length}/8</span>
         </div>
 
-        <div className="space-y-2 mb-3">
+        <div className="mb-3 space-y-2">
           {players.map((p, i) => (
             <div key={i} className="flex items-center gap-2">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-800 truncate">
+              <div className="min-w-0 flex-1">
+                <div className={cls.playerName}>
                   {p.kind === "user" ? p.user.display_name : p.name}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className={cls.playerSub}>
                   {p.kind === "user" ? `@${p.user.username}` : "guest"}
                 </div>
               </div>
@@ -455,12 +532,12 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                 placeholder="Score"
                 value={p.gross}
                 onChange={(e) => setPlayerScore(i, e.target.value)}
-                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-gray-900 text-center"
+                className={cls.scoreInput}
               />
               <button
                 type="button"
                 onClick={() => removePlayer(i)}
-                className="text-red-500 text-xs font-medium px-2"
+                className={cls.removeBtn}
                 aria-label="Remove player"
               >
                 ✕
@@ -480,33 +557,31 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
                 setShowPlayerPicker(true);
               }}
               placeholder="Add player by name…"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              className={cls.input}
             />
             {showPlayerPicker && (
-              <div className="mt-2 max-h-52 overflow-y-auto border border-gray-200 rounded-lg">
+              <div className={cls.pickerWrap}>
                 {filteredUsers.map((u) => (
                   <button
                     key={u.id}
                     type="button"
                     onClick={() => addUserPlayer(u)}
-                    className="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-b-0"
+                    className={cls.pickerRow}
                   >
-                    <div className="text-sm font-semibold text-gray-800">
-                      {u.display_name}
-                    </div>
-                    <div className="text-xs text-gray-500">@{u.username}</div>
+                    <div className={cls.pickerName}>{u.display_name}</div>
+                    <div className={cls.pickerMeta}>@{u.username}</div>
                   </button>
                 ))}
                 {playerQuery.trim().length > 0 && (
                   <button
                     type="button"
                     onClick={addGuestPlayer}
-                    className="w-full text-left px-3 py-2 hover:bg-yellow-50 bg-yellow-50/50"
+                    className={cls.pickerRowGuest}
                   >
-                    <div className="text-sm font-semibold text-gray-800">
+                    <div className={cls.pickerName}>
                       Add &quot;{playerQuery.trim()}&quot; as guest
                     </div>
-                    <div className="text-xs text-gray-500">no account needed</div>
+                    <div className={cls.pickerMeta}>no account needed</div>
                   </button>
                 )}
               </div>
@@ -515,15 +590,24 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
         )}
       </div>
 
-      <div className="card mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Notes <span className="text-gray-400 font-normal">(optional)</span>
+      <div className={cls.card}>
+        <label className={cls.label}>
+          Notes{" "}
+          <span
+            className={
+              variant === "v2"
+                ? "font-normal text-[var(--v2-muted)]/70"
+                : "font-normal text-gray-400"
+            }
+          >
+            (optional)
+          </span>
         </label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+          className={cls.input}
         />
       </div>
 
@@ -531,7 +615,7 @@ export function RoundForm({ initial, submitLabel, onSubmit }: Props) {
         type="button"
         onClick={submit}
         disabled={submitting}
-        className="w-full py-3 bg-green-700 text-white font-medium rounded-lg hover:bg-green-800 disabled:opacity-50 transition"
+        className={cls.submitBtn}
       >
         {submitting ? "Saving..." : submitLabel}
       </button>

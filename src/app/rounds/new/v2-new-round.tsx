@@ -62,6 +62,7 @@ export function V2NewRound() {
 
       {mode === "type" ? (
         <RoundForm
+          variant="v2"
           submitLabel="Save Round"
           initial={{
             courseId: null,

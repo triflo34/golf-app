@@ -122,6 +122,7 @@ export function V2EditRound() {
         Edit Round
       </h1>
       <RoundForm
+        variant="v2"
         submitLabel="Save Changes"
         initial={initial}
         onSubmit={async (payload) => {
