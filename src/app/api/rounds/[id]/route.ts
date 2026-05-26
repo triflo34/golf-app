@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { populateRoundWeather } from "@/lib/weather";
+import { ensureCourseHoles } from "@/lib/events";
 
 export type RoundWeatherSummary = {
   temp_high_f: number | null;
@@ -57,6 +58,10 @@ type ScoreInput = {
   guest_name?: string | null;
   gross_score: number;
   notes?: string | null;
+  /** Optional per-hole strokes. Only valid for registered players (NOT guests)
+   *  because hole_scores has a NOT NULL FK to users. When present, length must
+   *  equal hole_count and gross_score is derived from the sum. */
+  strokes?: number[] | null;
 };
 
 async function loadRound(
@@ -241,10 +246,6 @@ function validateScores(rawScores: unknown, holeCount: number):
   const seenPlayer = new Set<string>();
   const seenGuest = new Set<string>();
   for (const s of rawScores as Record<string, unknown>[]) {
-    const gross = Number(s.gross_score);
-    if (!Number.isFinite(gross) || gross < minScore || gross > 200) {
-      return { ok: false, error: `Score must be ${minScore}–200` };
-    }
     const pid =
       typeof s.player_id === "string" && s.player_id.length > 0 ? s.player_id : null;
     const guest =
@@ -262,12 +263,49 @@ function validateScores(rawScores: unknown, holeCount: number):
       if (seenGuest.has(k)) return { ok: false, error: "Duplicate guest name in round" };
       seenGuest.add(k);
     }
+
+    // Optional per-hole strokes. Only allowed for registered players because
+    // hole_scores has a NOT NULL FK to users. When provided, gross is derived
+    // from the sum so the two stay in sync.
+    let strokes: number[] | null = null;
+    if (Array.isArray(s.strokes)) {
+      if (!pid) {
+        return { ok: false, error: "Per-hole strokes are only supported for registered players" };
+      }
+      if (s.strokes.length !== holeCount) {
+        return { ok: false, error: `Per-hole strokes must have ${holeCount} entries` };
+      }
+      const parsed: number[] = [];
+      for (let i = 0; i < holeCount; i++) {
+        const v = Number((s.strokes as unknown[])[i]);
+        if (!Number.isInteger(v) || v < 1 || v > 20) {
+          return { ok: false, error: `Hole ${i + 1} stroke must be 1–20` };
+        }
+        parsed.push(v);
+      }
+      strokes = parsed;
+    }
+
+    // If strokes are present, derive gross from the sum. Otherwise validate
+    // the caller-supplied gross_score as before.
+    let gross: number;
+    if (strokes) {
+      gross = strokes.reduce((a, b) => a + b, 0);
+    } else {
+      const g = Number(s.gross_score);
+      if (!Number.isFinite(g) || g < minScore || g > 200) {
+        return { ok: false, error: `Score must be ${minScore}–200` };
+      }
+      gross = Math.round(g);
+    }
+
     out.push({
       player_id: pid,
       guest_name: guest,
-      gross_score: Math.round(gross),
+      gross_score: gross,
       notes:
         typeof s.notes === "string" && s.notes.trim().length > 0 ? s.notes.trim() : null,
+      strokes,
     });
   }
   return { ok: true, scores: out };
@@ -364,6 +402,13 @@ export async function PUT(
   const weatherStale =
     existing.course_id !== courseId || existing.played_at !== playedAt;
 
+  // If ANY score has strokes, this is a "hole-by-hole" save and we need the
+  // course's per-hole pars/handicap/yardage snapshot so hole_scores can record
+  // them at save time (matching the create-via-scorecard flow).
+  const anyStrokes = v.scores.some((s) => s.strokes);
+  const holeMeta = anyStrokes ? await ensureCourseHoles(courseId) : [];
+  const metaByHole = new Map(holeMeta.map((h) => [h.hole_number, h]));
+
   await withTransaction(async (tx) => {
     await tx
       .prepare(
@@ -381,6 +426,11 @@ export async function PUT(
         .run(id);
     }
     await tx.prepare("DELETE FROM scores WHERE round_id = ?").run(id);
+    // Rebuild hole_scores from scratch only for the players whose scores
+    // arrived with strokes. Players without strokes keep gross-only behavior
+    // and their old hole_scores rows are wiped (they no longer have a valid
+    // gross_score row to reference anyway, since scores rows are recreated).
+    await tx.prepare("DELETE FROM hole_scores WHERE round_id = ?").run(id);
     for (const s of v.scores) {
       await tx
         .prepare(
@@ -388,6 +438,27 @@ export async function PUT(
            VALUES (?, ?, ?, ?, ?)`,
         )
         .run(id, s.player_id ?? null, s.guest_name ?? null, s.gross_score, s.notes ?? null);
+      if (s.strokes && s.player_id) {
+        for (let i = 0; i < s.strokes.length; i++) {
+          const meta = metaByHole.get(i + 1);
+          await tx
+            .prepare(
+              `INSERT INTO hole_scores
+                 (round_id, player_id, hole_number, strokes, par, handicap_index, yardage, updated_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              id,
+              s.player_id,
+              i + 1,
+              s.strokes[i],
+              meta?.par ?? 4,
+              meta?.handicap_index ?? null,
+              meta?.yardage ?? null,
+              me.id,
+            );
+        }
+      }
     }
   });
 

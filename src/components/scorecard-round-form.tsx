@@ -23,10 +23,23 @@ export type ScorecardPayload = {
 
 type Variant = "classic" | "v2";
 
+export type ScorecardFormInitial = {
+  courseId: number | null;
+  playedAt: string;
+  holeCount: 9 | 18;
+  notes: string;
+  /** Existing per-player strokes. null in a slot = blank hole. */
+  players: { user: User; strokes: (number | null)[] }[];
+};
+
 type Props = {
   me: User;
   onSubmit: (payload: ScorecardPayload) => Promise<void>;
   variant?: Variant;
+  /** When provided, hydrate the form for editing an existing round. */
+  initial?: ScorecardFormInitial;
+  /** Override the submit button label. Defaults to "Save scorecard". */
+  submitLabel?: string;
 };
 
 // All variant-dependent class strings live here so the JSX stays readable
@@ -129,21 +142,29 @@ export function ScorecardRoundForm({
   me,
   onSubmit,
   variant = "classic",
+  initial,
+  submitLabel = "Save scorecard",
 }: Props) {
   const cls = styles(variant);
   const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [courseId, setCourseId] = useState<number | null>(null);
+  const [courseId, setCourseId] = useState<number | null>(
+    initial?.courseId ?? null,
+  );
   const [courseQuery, setCourseQuery] = useState("");
   const [holeMeta, setHoleMeta] = useState<CourseHoleDetail[]>([]);
-  const [holeCount, setHoleCount] = useState<9 | 18>(18);
-  const [playedAt, setPlayedAt] = useState(
-    new Date().toISOString().slice(0, 10),
+  const [holeCount, setHoleCount] = useState<9 | 18>(
+    initial?.holeCount ?? 18,
   );
-  const [notes, setNotes] = useState("");
-  const [players, setPlayers] = useState<GridPlayer[]>(() => [
-    { user: me, strokes: Array.from({ length: 18 }, () => null) },
-  ]);
+  const [playedAt, setPlayedAt] = useState(
+    initial?.playedAt ?? new Date().toISOString().slice(0, 10),
+  );
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [players, setPlayers] = useState<GridPlayer[]>(() =>
+    initial && initial.players.length > 0
+      ? initial.players.map((p) => ({ user: p.user, strokes: p.strokes.slice() }))
+      : [{ user: me, strokes: Array.from({ length: 18 }, () => null) }],
+  );
   const [playerQuery, setPlayerQuery] = useState("");
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [error, setError] = useState("");
@@ -642,7 +663,7 @@ export function ScorecardRoundForm({
         disabled={submitting || !courseId || players.length === 0}
         className={cls.submitBtn}
       >
-        {submitting ? "Saving…" : "Save scorecard"}
+        {submitting ? "Saving…" : submitLabel}
       </button>
     </div>
   );
