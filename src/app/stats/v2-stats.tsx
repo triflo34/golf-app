@@ -260,12 +260,14 @@ function H2HTab({ season }: { season: number | "all" }) {
     <>
       <V2Card className="mb-4 space-y-3">
         <PlayerPicker
+          variant="v2"
           label="Player A"
           value={aKey}
           excludeKey={bKey}
           onChange={(k) => setAKey(k)}
         />
         <PlayerPicker
+          variant="v2"
           label="Player B"
           value={bKey}
           excludeKey={aKey}
@@ -395,6 +397,7 @@ function PlayerTab({ season }: { season: number | "all" }) {
     <>
       <V2Card className="mb-4">
         <PlayerPicker
+          variant="v2"
           label="Player"
           value={key}
           onChange={(k) => setKey(k)}
