@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import {
   calculateCourseHandicap,
-  calculateDifferential,
+  calculateDifferentialWithMeta,
   calculateHandicapIndex,
   type HandicapIndexResult,
   type RoundForHandicap,
@@ -16,6 +16,8 @@ export type HandicapRoundDetail = {
   gross_score: number;
   /** Differential used in the index (null if the round was skipped). */
   differential: number | null;
+  /** True when 9-hole rating was missing and we derived it from the 18-hole. */
+  estimated: boolean;
   skip_reason: "missing_18_rating" | "missing_9_rating" | null;
   /** True when this round's differential is in the best-N average. */
   used_in_index: boolean;
@@ -129,9 +131,9 @@ export async function getPlayerHandicapDetails(
   // best-N diffs got averaged. We rebuild the same sort as the index calc.
   const enriched = recent.map((r) => {
     const round = toRoundForHandicap(r);
-    const diff = calculateDifferential(round);
+    const { differential, estimated } = calculateDifferentialWithMeta(round);
     let skipReason: HandicapRoundDetail["skip_reason"] = null;
-    if (diff == null) {
+    if (differential == null) {
       skipReason = round.hole_count === 18 ? "missing_18_rating" : "missing_9_rating";
     }
     return {
@@ -141,7 +143,8 @@ export async function getPlayerHandicapDetails(
       hole_count: round.hole_count,
       nine_played: round.nine_played,
       gross_score: r.gross_score,
-      differential: diff,
+      differential,
+      estimated,
       skip_reason: skipReason,
     };
   });
@@ -163,6 +166,7 @@ export async function getPlayerHandicapDetails(
     gross_score: e.gross_score,
     differential:
       e.differential == null ? null : Math.round(e.differential * 10) / 10,
+    estimated: e.estimated,
     skip_reason: e.skip_reason,
     used_in_index: usedSet.has(e.round_id),
   }));

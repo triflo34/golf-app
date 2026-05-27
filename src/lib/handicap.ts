@@ -66,19 +66,56 @@ function bestNAndAdjustment(totalRounds: number): {
 /**
  * Returns the 18-hole-equivalent differential for a round, or null if the
  * round is missing the rating/slope it needs.
+ *
+ * 9-hole fallback: when a course has no front-/back-9 rating but does have
+ * an 18-hole rating, we approximate the 9-hole rating as `course_rating / 2`
+ * and reuse the 18-hole slope. Slope is roughly constant across nines on
+ * most courses, and the rating is by definition cumulative, so half the
+ * 18-hole rating is a reasonable proxy. The round still gets a `*2`
+ * 18-hole-equivalent differential. Callers can detect a fallback was used
+ * via `calculateDifferentialWithMeta`.
  */
 export function calculateDifferential(round: RoundForHandicap): number | null {
+  return calculateDifferentialWithMeta(round).differential;
+}
+
+export type DifferentialMeta = {
+  differential: number | null;
+  /** True when a 9-hole rating was missing and we derived it from the 18-hole. */
+  estimated: boolean;
+};
+
+export function calculateDifferentialWithMeta(
+  round: RoundForHandicap,
+): DifferentialMeta {
   if (round.hole_count === 18) {
-    if (round.course_rating == null || round.slope_rating == null) return null;
-    return ((round.gross_score - round.course_rating) * 113) / round.slope_rating;
+    if (round.course_rating == null || round.slope_rating == null) {
+      return { differential: null, estimated: false };
+    }
+    return {
+      differential:
+        ((round.gross_score - round.course_rating) * 113) / round.slope_rating,
+      estimated: false,
+    };
   }
   // 9-hole
   const nine = round.nine_played ?? "front";
-  const rating = nine === "front" ? round.front_9_rating : round.back_9_rating;
-  const slope = nine === "front" ? round.front_9_slope : round.back_9_slope;
-  if (rating == null || slope == null) return null;
+  let rating = nine === "front" ? round.front_9_rating : round.back_9_rating;
+  let slope = nine === "front" ? round.front_9_slope : round.back_9_slope;
+  let estimated = false;
+  if (rating == null && round.course_rating != null) {
+    rating = round.course_rating / 2;
+    estimated = true;
+  }
+  if (slope == null && round.slope_rating != null) {
+    slope = round.slope_rating;
+    estimated = true;
+  }
+  if (rating == null || slope == null) {
+    return { differential: null, estimated: false };
+  }
   const half = ((round.gross_score - rating) * 113) / slope;
-  return half * 2;
+  return { differential: half * 2, estimated };
 }
 
 export type HandicapIndexResult = {

@@ -236,6 +236,7 @@ export function V2Profile() {
                               }
                             >
                               {r.differential.toFixed(1)}
+                              {r.estimated ? "*" : ""}
                               {r.used_in_index ? " ★" : ""}
                             </span>
                           )}
@@ -243,7 +244,8 @@ export function V2Profile() {
                       </div>
                     ))}
                     <div className="pt-2 text-[10px] text-[var(--v2-muted)]">
-                      ★ = used in best-{stats.handicap_best_n} average
+                      ★ = used in best-{stats.handicap_best_n} average ·{" "}
+                      * = estimated from 18-hole rating
                     </div>
                   </div>
                 )}
