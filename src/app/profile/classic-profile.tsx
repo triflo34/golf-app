@@ -26,9 +26,11 @@ export function ClassicProfile() {
   const [pwdSuccess, setPwdSuccess] = useState(false);
   const [pwdSubmitting, setPwdSubmitting] = useState(false);
 
+  const [showHcDetails, setShowHcDetails] = useState(false);
+
   useEffect(() => {
     if (!user) return;
-    fetch(`/api/player?key=u:${encodeURIComponent(user.id)}`, {
+    fetch(`/api/player?key=u:${encodeURIComponent(user.id)}&details=1`, {
       cache: "no-store",
     })
       .then((r) => r.json())
@@ -232,20 +234,88 @@ export function ClassicProfile() {
           </div>
         ) : (
           <>
-            <div className="mb-3 flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-green-700">
-                  Handicap index
+            <div className="mb-3 rounded-lg bg-green-50 px-3 py-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-green-700">
+                    Handicap index
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {stats.handicap_index == null
+                      ? `Need ${Math.max(0, 3 - stats.handicap_rounds_used)} more eligible round${stats.handicap_rounds_used === 2 ? "" : "s"}`
+                      : `Avg lowest ${stats.handicap_best_n} of ${stats.handicap_rounds_used} round${stats.handicap_rounds_used === 1 ? "" : "s"}${stats.handicap_adjustment < 0 ? ` − ${Math.abs(stats.handicap_adjustment).toFixed(1)}` : ""}`}
+                  </div>
+                  {stats.handicap_rounds_skipped > 0 && (
+                    <div className="mt-1 text-xs text-orange-600">
+                      {stats.handicap_rounds_skipped} round
+                      {stats.handicap_rounds_skipped === 1 ? "" : "s"} skipped — missing rating
+                    </div>
+                  )}
                 </div>
-                <div className="text-xs text-gray-500">
-                  {stats.handicap_index == null
-                    ? `Need ${Math.max(0, 3 - stats.handicap_rounds_used)} more eligible round${stats.handicap_rounds_used === 2 ? "" : "s"}`
-                    : `Based on best of last ${stats.handicap_rounds_used} round${stats.handicap_rounds_used === 1 ? "" : "s"}`}
+                <div className="text-2xl font-bold text-green-700">
+                  {stats.handicap_index ?? "—"}
                 </div>
               </div>
-              <div className="text-2xl font-bold text-green-700">
-                {stats.handicap_index ?? "—"}
-              </div>
+              {(stats.handicap_rounds?.length ?? 0) > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowHcDetails((v) => !v)}
+                    className="mt-2 text-xs font-medium text-green-700"
+                  >
+                    {showHcDetails ? "Hide details" : "Show per-round details"}
+                  </button>
+                  {showHcDetails && (
+                    <div className="mt-2 space-y-1 border-t border-green-200 pt-2">
+                      {stats.handicap_rounds!.map((r) => (
+                        <div
+                          key={r.round_id}
+                          className="flex items-center justify-between text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="text-gray-800">{r.course_name}</span>
+                            <span className="ml-1 text-gray-500">
+                              {r.hole_count === 9
+                                ? `· 9 (${r.nine_played ?? "front"})`
+                                : ""}
+                            </span>
+                            <span className="ml-1 text-gray-500">
+                              · {r.gross_score}
+                            </span>
+                          </div>
+                          <div className="ml-2 shrink-0 tabular-nums">
+                            {r.differential == null ? (
+                              <span className="text-orange-600">
+                                skipped (
+                                {r.skip_reason === "missing_18_rating"
+                                  ? "no 18-hole rating"
+                                  : "no 9-hole rating"}
+                                )
+                              </span>
+                            ) : (
+                              <span
+                                className={
+                                  r.used_in_index
+                                    ? "font-bold text-green-700"
+                                    : "text-gray-500"
+                                }
+                              >
+                                {r.differential.toFixed(1)}
+                                {r.estimated ? "*" : ""}
+                                {r.used_in_index ? " ★" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="pt-1 text-[10px] text-gray-500">
+                        ★ = used in best-{stats.handicap_best_n} average ·{" "}
+                        * = estimated from 18-hole rating
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2 text-center mb-2">
               <Stat label="total rounds" value={stats.rounds_played} />
