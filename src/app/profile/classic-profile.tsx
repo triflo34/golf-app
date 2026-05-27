@@ -247,12 +247,34 @@ export function ClassicProfile() {
                 {stats.handicap_index ?? "—"}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <Stat label="rounds" value={stats.rounds_played} />
+            <div className="grid grid-cols-2 gap-2 text-center mb-2">
+              <Stat label="total rounds" value={stats.rounds_played} />
               <Stat label="wins" value={stats.total_wins} />
-              <Stat label="avg" value={stats.avg_score ?? "—"} />
-              <Stat label="best" value={stats.best_score ?? "—"} />
             </div>
+            {stats.rounds_played_18 > 0 && (
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                  18 holes
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <Stat label="rounds" value={stats.rounds_played_18} />
+                  <Stat label="avg" value={stats.avg_score_18 ?? "—"} />
+                  <Stat label="best" value={stats.best_score_18 ?? "—"} />
+                </div>
+              </div>
+            )}
+            {stats.rounds_played_9 > 0 && (
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                  9 holes
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <Stat label="rounds" value={stats.rounds_played_9} />
+                  <Stat label="avg" value={stats.avg_score_9 ?? "—"} />
+                  <Stat label="best" value={stats.best_score_9 ?? "—"} />
+                </div>
+              </div>
+            )}
             {stats.by_course.length > 0 && (
               <div className="mt-4">
                 <div className="text-xs text-gray-500 mb-1.5">Best courses</div>

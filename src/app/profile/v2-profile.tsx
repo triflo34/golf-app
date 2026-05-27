@@ -183,26 +183,65 @@ export function V2Profile() {
             </div>
           </div>
         </V2Card>
-        <V2Card>
-          <div className="grid grid-cols-3 gap-2">
-            <V2StatTile
-              label="Rounds"
-              value={stats?.rounds_played ?? "—"}
-              tone="white"
-            />
-            <V2StatTile
-              label="Avg"
-              value={stats?.avg_score ?? "—"}
-              trend="up"
-              tone="green"
-            />
-            <V2StatTile
-              label="Best"
-              value={stats?.best_score ?? "—"}
-              tone="gold"
-            />
-          </div>
-        </V2Card>
+        {(stats?.rounds_played_18 ?? 0) > 0 && (
+          <V2Card>
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-muted)]">
+              18 holes
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <V2StatTile
+                label="Rounds"
+                value={stats?.rounds_played_18 ?? "—"}
+                tone="white"
+              />
+              <V2StatTile
+                label="Avg"
+                value={stats?.avg_score_18 ?? "—"}
+                trend="up"
+                tone="green"
+              />
+              <V2StatTile
+                label="Best"
+                value={stats?.best_score_18 ?? "—"}
+                tone="gold"
+              />
+            </div>
+          </V2Card>
+        )}
+        {(stats?.rounds_played_9 ?? 0) > 0 && (
+          <V2Card>
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-muted)]">
+              9 holes
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <V2StatTile
+                label="Rounds"
+                value={stats?.rounds_played_9 ?? "—"}
+                tone="white"
+              />
+              <V2StatTile
+                label="Avg"
+                value={stats?.avg_score_9 ?? "—"}
+                trend="up"
+                tone="green"
+              />
+              <V2StatTile
+                label="Best"
+                value={stats?.best_score_9 ?? "—"}
+                tone="gold"
+              />
+            </div>
+          </V2Card>
+        )}
+        {stats && stats.rounds_played === 0 && (
+          <V2Card>
+            <div className="grid grid-cols-3 gap-2">
+              <V2StatTile label="Rounds" value="—" tone="white" />
+              <V2StatTile label="Avg" value="—" tone="green" />
+              <V2StatTile label="Best" value="—" tone="gold" />
+            </div>
+          </V2Card>
+        )}
       </div>
 
       {/* Edit profile (display name + username) */}

@@ -21,6 +21,12 @@ export type PlayerStats = {
   avg_score: number | null;
   best_score: number | null;
   worst_score: number | null;
+  rounds_played_18: number;
+  avg_score_18: number | null;
+  best_score_18: number | null;
+  rounds_played_9: number;
+  avg_score_9: number | null;
+  best_score_9: number | null;
   handicap_index: number | null;
   handicap_rounds_used: number;
   by_course: CourseAgg[];
@@ -59,13 +65,14 @@ export async function GET(request: Request) {
     played_at: string;
     course_id: number;
     course_name: string;
+    hole_count: number;
   };
 
   const scoreRows =
     ref.kind === "user"
       ? await db
           .prepare(
-            `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name
+            `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name, r.hole_count
              FROM scores s
              JOIN rounds r ON r.id = s.round_id
              JOIN courses c ON c.id = r.course_id
@@ -75,7 +82,7 @@ export async function GET(request: Request) {
           .all<ScoreRow>(ref.id, ...seasonArgs)
       : await db
           .prepare(
-            `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name
+            `SELECT s.round_id, s.gross_score, r.played_at, r.course_id, c.name as course_name, r.hole_count
              FROM scores s
              JOIN rounds r ON r.id = s.round_id
              JOIN courses c ON c.id = r.course_id
@@ -107,6 +114,12 @@ export async function GET(request: Request) {
       avg_score: null,
       best_score: null,
       worst_score: null,
+      rounds_played_18: 0,
+      avg_score_18: null,
+      best_score_18: null,
+      rounds_played_9: 0,
+      avg_score_9: null,
+      best_score_9: null,
       handicap_index: null,
       handicap_rounds_used: 0,
       by_course: [],
@@ -117,6 +130,16 @@ export async function GET(request: Request) {
 
   const scores = scoreRows.map((r) => r.gross_score);
   const total = scores.reduce((a, c) => a + c, 0);
+
+  const scores18 = scoreRows
+    .filter((r) => r.hole_count === 18)
+    .map((r) => r.gross_score);
+  const scores9 = scoreRows
+    .filter((r) => r.hole_count === 9)
+    .map((r) => r.gross_score);
+  const avgOrNull = (arr: number[]) =>
+    arr.length === 0 ? null : Math.round((arr.reduce((a, x) => a + x, 0) / arr.length) * 10) / 10;
+  const minOrNull = (arr: number[]) => (arr.length === 0 ? null : Math.min(...arr));
 
   const roundIds = scoreRows.map((r) => r.round_id);
   const placeholders = roundIds.map(() => "?").join(",");
@@ -208,6 +231,12 @@ export async function GET(request: Request) {
     avg_score: Math.round((total / scores.length) * 10) / 10,
     best_score: Math.min(...scores),
     worst_score: Math.max(...scores),
+    rounds_played_18: scores18.length,
+    avg_score_18: avgOrNull(scores18),
+    best_score_18: minOrNull(scores18),
+    rounds_played_9: scores9.length,
+    avg_score_9: avgOrNull(scores9),
+    best_score_9: minOrNull(scores9),
     handicap_index: hc.index,
     handicap_rounds_used: hc.rounds_used,
     by_course,
