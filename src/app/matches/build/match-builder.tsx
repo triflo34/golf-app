@@ -316,52 +316,31 @@ export function MatchBuilder({ variant }: Props) {
         {showHelp && (
           <div className="mt-3 space-y-3 border-t border-[var(--v2-border)] pt-3">
             <div>
-              <div className={cls.teamLabel}>1. Pick a course + holes</div>
-              <div className={cls.rowMeta}>
-                Course handicaps depend on the course&apos;s rating and slope,
-                so we have to know where you&apos;re playing. Front/Back matters
-                for 9-hole matches.
-              </div>
-            </div>
-            <div>
-              <div className={cls.teamLabel}>2. Add players</div>
-              <div className={cls.rowMeta}>
-                Pick registered players from the search, or add a guest with
-                an estimated course HC (their stroke count at this course).
-                You&apos;re added by default; tap × to remove anyone.
-              </div>
-            </div>
-            <div>
-              <div className={cls.teamLabel}>3. Pick a format</div>
+              <div className={cls.teamLabel}>Format</div>
               <div className={cls.rowMeta}>
                 <strong>Scramble:</strong> team HC uses USGA-recommended
-                weights: 2-player 35/15, 3-player 30/20/10, 4-player 25/20/15/10
-                (lowest HC gets the biggest share).{" "}
+                weights — 2-player 35/15, 3-player 30/20/10, 4-player
+                25/20/15/10 (lowest HC gets the biggest share).{" "}
                 <strong>Best ball / Individual:</strong> team HC is the simple
                 average of player HCs.
               </div>
             </div>
             <div>
-              <div className={cls.teamLabel}>4. Pick team sizes</div>
+              <div className={cls.teamLabel}>Reading suggestions</div>
               <div className={cls.rowMeta}>
-                &ldquo;3 v 2&rdquo; means one team has 3 players, the other 2.
-                Defaults to the most balanced split.
-              </div>
-            </div>
-            <div>
-              <div className={cls.teamLabel}>5. Read the suggestions</div>
-              <div className={cls.rowMeta}>
-                Each card shows two teams with their team HC underneath the
-                label. The{" "}
-                <span className={cls.fairBadge}>Δ</span> badge is the
-                fairness gap (team HC difference) — lower is closer to a fair
-                fight. Player chips show each person&apos;s course HC in
-                parentheses. We sort top 5 by lowest Δ.
+                Each card shows two teams with their team HC beneath the
+                label. The <span className={cls.fairBadge}>Δ</span> badge is
+                the difference between team HCs — lower means a more even
+                match. Below the teams we name the stronger side and how
+                many strokes they should give the other team to even out a
+                gross match. (Skip the strokes line if you&apos;re scoring
+                net.) Player chips show each person&apos;s course HC in
+                parens.
               </div>
             </div>
             <div className={cls.rowMeta}>
-              No handicap? You need 3+ eligible rounds first. If a player has
-              no index, no suggestions will render.
+              No handicap? You need 3+ eligible rounds first. Add the player
+              as a guest with an estimated HC instead.
             </div>
           </div>
         )}
@@ -675,14 +654,19 @@ export function MatchBuilder({ variant }: Props) {
         <div className="mt-6">
           <V2SectionTitle>Top suggestions</V2SectionTitle>
           <div className="mt-2 space-y-3">
-            {arrangements.map((arr, i) => (
+            {arrangements.map((arr, i) => {
+              const [hcA, hcB] = arr.team_handicaps;
+              const delta = arr.fairness_delta;
+              const stronger = hcA < hcB ? "A" : hcB < hcA ? "B" : null;
+              const weaker = stronger === "A" ? "B" : "A";
+              return (
               <V2Card key={i}>
                 <div className="mb-2 flex items-center justify-between">
                   <span className={cls.rowMeta}>
                     Option {i + 1}
                   </span>
                   <span className={cls.fairBadge}>
-                    Δ {arr.fairness_delta}
+                    Δ {delta}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -715,8 +699,26 @@ export function MatchBuilder({ variant }: Props) {
                     </div>
                   ))}
                 </div>
+                {stronger != null && delta > 0 && (
+                  <div className={`mt-3 border-t ${v2 ? "border-[var(--v2-border)]" : "border-gray-200"} pt-2 text-xs`}>
+                    <span className={cls.rowName}>Team {stronger}</span>
+                    <span className={cls.rowMeta}>
+                      {" "}gives Team {weaker}{" "}
+                    </span>
+                    <span className={cls.rowName}>{delta} stroke{delta === 1 ? "" : "s"}</span>
+                    <span className={cls.rowMeta}>
+                      {" "}to even out a gross match
+                    </span>
+                  </div>
+                )}
+                {delta === 0 && (
+                  <div className={`mt-3 border-t ${v2 ? "border-[var(--v2-border)]" : "border-gray-200"} pt-2 text-xs ${cls.rowMeta}`}>
+                    Even match — no strokes given.
+                  </div>
+                )}
               </V2Card>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
