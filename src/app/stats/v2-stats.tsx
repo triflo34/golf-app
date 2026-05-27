@@ -429,6 +429,23 @@ function PlayerTab({ season }: { season: number | "all" }) {
             <div className="mb-3 flex items-center gap-2 text-lg font-bold text-white">
               {data.name}
             </div>
+            {!data.is_guest && (
+              <div className="mb-3 flex items-center justify-between rounded-lg bg-[var(--v2-surface-2)] px-3 py-2">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-accent)]">
+                    Handicap index
+                  </div>
+                  <div className="text-xs text-[var(--v2-muted)]">
+                    {data.handicap_index == null
+                      ? `Need ${Math.max(0, 3 - data.handicap_rounds_used)} more eligible round${data.handicap_rounds_used === 2 ? "" : "s"}`
+                      : `Best of last ${data.handicap_rounds_used} round${data.handicap_rounds_used === 1 ? "" : "s"}`}
+                  </div>
+                </div>
+                <div className="text-2xl font-bold text-[var(--v2-accent)]">
+                  {data.handicap_index ?? "—"}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-4 gap-2">
               <V2StatTile
                 label="Rounds"
