@@ -38,6 +38,19 @@ export function MatchBuilder({ variant }: Props) {
   const [ninePlayed, setNinePlayed] = useState<"front" | "back">("front");
   const [format, setFormat] = useState<MatchFormat>("scramble");
 
+  // USGA handicap allowance % applied to the HC difference when computing
+  // strokes given. 100% = casual / singles match play. 95% / 90% / 85% are
+  // USGA-recommended for individual stroke play / four-ball / formal stroke
+  // play respectively. Defaults shift with the format below.
+  const [allowance, setAllowance] = useState<number>(1.0);
+  const [allowanceTouched, setAllowanceTouched] = useState(false);
+  useEffect(() => {
+    if (allowanceTouched) return;
+    if (format === "scramble") setAllowance(1.0);
+    else if (format === "best_ball") setAllowance(0.85);
+    else setAllowance(0.95);
+  }, [format, allowanceTouched]);
+
   const [users, setUsers] = useState<User[]>([]);
   type Entry =
     | { kind: "user"; userId: string }
@@ -549,28 +562,28 @@ export function MatchBuilder({ variant }: Props) {
               <div className={`${cls.label} !mb-2`}>
                 Or add a guest with an estimated HC
               </div>
+              <input
+                type="text"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                placeholder="Guest name"
+                className={`${cls.input} mb-2`}
+              />
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  placeholder="Guest name"
-                  className={`${cls.input} flex-1`}
-                />
                 <input
                   type="number"
                   value={guestHc}
                   onChange={(e) => setGuestHc(e.target.value)}
-                  placeholder="HC"
+                  placeholder="Course HC"
                   inputMode="numeric"
-                  className={`${cls.input} w-20`}
+                  className={`${cls.input} flex-1`}
                 />
                 <button
                   type="button"
                   onClick={addGuest}
                   className={cls.chipActive}
                 >
-                  Add
+                  Add guest
                 </button>
               </div>
               {guestError && (
@@ -626,6 +639,39 @@ export function MatchBuilder({ variant }: Props) {
         </div>
       )}
 
+      {/* Handicap allowance */}
+      <div className={cls.card}>
+        <label className={cls.label}>Handicap allowance</label>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { v: 1.0, label: "100%", hint: "Casual / match play" },
+            { v: 0.95, label: "95%", hint: "Individual stroke play" },
+            { v: 0.9, label: "90%", hint: "Four-ball match play" },
+            { v: 0.85, label: "85%", hint: "Four-ball stroke play" },
+          ].map((opt) => (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => {
+                setAllowance(opt.v);
+                setAllowanceTouched(true);
+              }}
+              className={allowance === opt.v ? cls.chipActive : cls.chipIdle}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className={`${cls.rowMeta} mt-2`}>
+          {{
+            "1": "100% — full HC difference is given as strokes. Standard for casual + singles match play.",
+            "0.95": "95% — USGA recommendation for individual stroke play.",
+            "0.9": "90% — USGA recommendation for four-ball match play.",
+            "0.85": "85% — USGA recommendation for four-ball / best-ball stroke play.",
+          }[String(allowance)] ?? ""}
+        </div>
+      </div>
+
       {error && <div className={`${cls.errorBox} mb-4`}>{error}</div>}
 
       <button
@@ -657,6 +703,7 @@ export function MatchBuilder({ variant }: Props) {
             {arrangements.map((arr, i) => {
               const [hcA, hcB] = arr.team_handicaps;
               const delta = arr.fairness_delta;
+              const strokes = Math.round(delta * allowance);
               const stronger = hcA < hcB ? "A" : hcB < hcA ? "B" : null;
               const weaker = stronger === "A" ? "B" : "A";
               return (
@@ -673,7 +720,7 @@ export function MatchBuilder({ variant }: Props) {
                   <div className={`text-[10px] font-semibold uppercase tracking-wide ${v2 ? "text-[var(--v2-accent)]" : "text-green-700"}`}>
                     Match
                   </div>
-                  {delta === 0 ? (
+                  {strokes === 0 ? (
                     <div className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}>
                       Straight up — no strokes given
                     </div>
@@ -681,14 +728,21 @@ export function MatchBuilder({ variant }: Props) {
                     <div className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}>
                       Team {weaker} gets{" "}
                       <span className={v2 ? "text-[var(--v2-accent)]" : "text-green-700"}>
-                        {delta} stroke{delta === 1 ? "" : "s"}
+                        {strokes} stroke{strokes === 1 ? "" : "s"}
                       </span>
+                      {allowance < 1 && (
+                        <span className={`ml-2 text-xs font-normal ${cls.rowMeta}`}>
+                          (Δ {delta} × {Math.round(allowance * 100)}%)
+                        </span>
+                      )}
                     </div>
                   )}
                   <div className={`mt-0.5 ${cls.rowMeta}`}>
-                    {delta === 0
-                      ? "Teams are evenly handicapped."
-                      : `Team ${stronger} is ${delta} HC lower — spot Team ${weaker} ${delta} stroke${delta === 1 ? "" : "s"} on the hardest hole${delta === 1 ? "" : "s"} (per the course's stroke index) to play gross fair.`}
+                    {strokes === 0
+                      ? delta === 0
+                        ? "Teams are evenly handicapped."
+                        : `Δ ${delta}, but ${Math.round(allowance * 100)}% allowance rounds to 0 strokes.`
+                      : `Team ${stronger} is ${delta} HC lower — spot Team ${weaker} ${strokes} stroke${strokes === 1 ? "" : "s"} on the hardest hole${strokes === 1 ? "" : "s"} (per the course's stroke index) to play gross fair.`}
                   </div>
                 </div>
 
