@@ -339,16 +339,41 @@ export function MatchBuilder({ variant }: Props) {
               </div>
             </div>
             <div>
+              <div className={cls.teamLabel}>Handicap allowance</div>
+              <div className={cls.rowMeta}>
+                Strokes given = Δ × allowance. Defaults to a reasonable value
+                for the format you picked, but you can override:
+                <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                  <li>
+                    <strong>100%</strong> — casual rounds and singles match
+                    play. Full HC difference is given.
+                  </li>
+                  <li>
+                    <strong>95%</strong> — USGA recommendation for individual
+                    stroke play.
+                  </li>
+                  <li>
+                    <strong>90%</strong> — USGA recommendation for four-ball
+                    (best-ball) match play.
+                  </li>
+                  <li>
+                    <strong>85%</strong> — USGA recommendation for four-ball
+                    stroke play. The tightest allowance — favors lower HCs.
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div>
               <div className={cls.teamLabel}>Reading suggestions</div>
               <div className={cls.rowMeta}>
                 Each card shows two teams with their team HC beneath the
                 label. The <span className={cls.fairBadge}>Δ</span> badge is
                 the difference between team HCs — lower means a more even
-                match. Below the teams we name the stronger side and how
-                many strokes they should give the other team to even out a
-                gross match. (Skip the strokes line if you&apos;re scoring
-                net.) Player chips show each person&apos;s course HC in
-                parens.
+                match. The Match box up top names the stronger side and how
+                many strokes they should give to even out a gross match (the
+                allowance is applied here, so it may be less than Δ). Skip
+                the strokes line if you&apos;re scoring net. Player chips
+                show each person&apos;s course HC in parens.
               </div>
             </div>
             <div className={cls.rowMeta}>
