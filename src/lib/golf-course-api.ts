@@ -51,6 +51,14 @@ export type ExternalCourseDetail = {
   longitude: number | null;
   hole_count: number;
   total_par: number | null;
+  // From the chosen tee — see parseCourseDetail comment.
+  course_rating: number | null;
+  slope_rating: number | null;
+  front_9_rating: number | null;
+  front_9_slope: number | null;
+  back_9_rating: number | null;
+  back_9_slope: number | null;
+  tee_name: string | null;
   holes: ExternalCourseHole[];
   raw: unknown; // kept for debugging if parser shape needs adjusting
 };
@@ -204,6 +212,10 @@ function parseCourseDetail(raw: unknown, fallbackId: string): ExternalCourseDeta
   //   1. r.holes = [ { par, ... }, ... ]                        (top-level)
   //   2. r.tees = [ { holes: [...] }, ... ]                     (array of tees)
   //   3. r.tees = { male: [ { holes: [...] }, ... ], female: [...] }   (GolfCourseAPI)
+  //
+  // For shape 3, GolfCourseAPI returns one tee object per played set
+  // (e.g. WHITE, BLUE, RED) with course_rating + slope_rating, plus
+  // front_/back_ variants for 9-hole differentials.
   let rawHoles: unknown[] = Array.isArray(r.holes) ? (r.holes as unknown[]) : [];
   let chosenTee: Record<string, unknown> | null = null;
 
@@ -237,6 +249,17 @@ function parseCourseDetail(raw: unknown, fallbackId: string): ExternalCourseDeta
       rawHoles = chosenTee.holes as unknown[];
     }
   }
+
+  // Pull rating + slope from the chosen tee (if any). Field names follow
+  // GolfCourseAPI's spec; see probe output 2026-05-26.
+  const tee = chosenTee ?? {};
+  const course_rating = asNumber(tee.course_rating);
+  const slope_rating = asNumber(tee.slope_rating);
+  const front_9_rating = asNumber(tee.front_course_rating);
+  const front_9_slope = asNumber(tee.front_slope_rating);
+  const back_9_rating = asNumber(tee.back_course_rating);
+  const back_9_slope = asNumber(tee.back_slope_rating);
+  const tee_name = asString(tee.tee_name);
 
   // If we still couldn't find holes, dump the response so we can iterate.
   if (rawHoles.length === 0) {
@@ -285,6 +308,13 @@ function parseCourseDetail(raw: unknown, fallbackId: string): ExternalCourseDeta
     longitude: asNumber(r.longitude) ?? asNumber(loc.longitude),
     hole_count: holes.length || (asNumber(r.holes_count) ?? 18),
     total_par: totalPar,
+    course_rating,
+    slope_rating,
+    front_9_rating,
+    front_9_slope,
+    back_9_rating,
+    back_9_slope,
+    tee_name,
     holes,
     raw,
   };

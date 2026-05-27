@@ -137,6 +137,10 @@ async function bootstrap(): Promise<void> {
   await ensurePokerWildCardColumn(sql);
   console.log("[db] bootstrap: ensureHoleScoreSnapshotColumns");
   await ensureHoleScoreSnapshotColumns(sql);
+  console.log("[db] bootstrap: ensureCourseNineHoleRatingColumns");
+  await ensureCourseNineHoleRatingColumns(sql);
+  console.log("[db] bootstrap: ensureRoundsNinePlayedColumn");
+  await ensureRoundsNinePlayedColumn(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -192,28 +196,33 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
   CREATE TABLE IF NOT EXISTS courses (
-    id            SERIAL PRIMARY KEY,
-    name          TEXT NOT NULL,
-    address       TEXT,
-    city          TEXT NOT NULL,
-    state         TEXT NOT NULL DEFAULT 'MI',
-    holes         INTEGER NOT NULL DEFAULT 18,
-    par           INTEGER NOT NULL,
-    slope_rating  REAL,
-    course_rating REAL,
-    website       TEXT,
-    phone         TEXT,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    address         TEXT,
+    city            TEXT NOT NULL,
+    state           TEXT NOT NULL DEFAULT 'MI',
+    holes           INTEGER NOT NULL DEFAULT 18,
+    par             INTEGER NOT NULL,
+    slope_rating    REAL,
+    course_rating   REAL,
+    front_9_rating  REAL,
+    front_9_slope   REAL,
+    back_9_rating   REAL,
+    back_9_slope    REAL,
+    website         TEXT,
+    phone           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 
   CREATE TABLE IF NOT EXISTS rounds (
-    id          SERIAL PRIMARY KEY,
-    course_id   INTEGER NOT NULL REFERENCES courses(id),
-    played_at   TEXT NOT NULL,
-    created_by  TEXT NOT NULL REFERENCES users(id),
-    notes       TEXT,
-    hole_count  SMALLINT NOT NULL DEFAULT 18 CHECK (hole_count IN (9, 18)),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id           SERIAL PRIMARY KEY,
+    course_id    INTEGER NOT NULL REFERENCES courses(id),
+    played_at    TEXT NOT NULL,
+    created_by   TEXT NOT NULL REFERENCES users(id),
+    notes        TEXT,
+    hole_count   SMALLINT NOT NULL DEFAULT 18 CHECK (hole_count IN (9, 18)),
+    nine_played  TEXT CHECK (nine_played IN ('front','back')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS idx_rounds_played_at ON rounds(played_at);
 
@@ -496,6 +505,33 @@ async function ensureHoleScoreSnapshotColumns(sql: postgres.Sql): Promise<void> 
         AND ch.course_id = r.course_id
         AND ch.hole_number = ths.hole_number
         AND (ths.par IS NULL OR ths.handicap_index IS NULL OR ths.yardage IS NULL);
+  `);
+}
+
+async function ensureCourseNineHoleRatingColumns(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS front_9_rating REAL;
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS front_9_slope  REAL;
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS back_9_rating  REAL;
+    ALTER TABLE courses ADD COLUMN IF NOT EXISTS back_9_slope   REAL;
+  `);
+}
+
+async function ensureRoundsNinePlayedColumn(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(
+    `ALTER TABLE rounds ADD COLUMN IF NOT EXISTS nine_played TEXT`,
+  );
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'rounds_nine_played_check'
+      ) THEN
+        ALTER TABLE rounds
+          ADD CONSTRAINT rounds_nine_played_check
+          CHECK (nine_played IS NULL OR nine_played IN ('front','back'));
+      END IF;
+    END$$;
   `);
 }
 

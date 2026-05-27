@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseKey } from "@/lib/players";
+import { getPlayerHandicapIndex } from "@/lib/player-handicap";
 
 export type CourseAgg = {
   course_id: number;
@@ -20,6 +21,8 @@ export type PlayerStats = {
   avg_score: number | null;
   best_score: number | null;
   worst_score: number | null;
+  handicap_index: number | null;
+  handicap_rounds_used: number;
   by_course: CourseAgg[];
   recent: {
     round_id: number;
@@ -104,6 +107,8 @@ export async function GET(request: Request) {
       avg_score: null,
       best_score: null,
       worst_score: null,
+      handicap_index: null,
+      handicap_rounds_used: 0,
       by_course: [],
       recent: [],
     };
@@ -187,6 +192,13 @@ export async function GET(request: Request) {
   }
   by_course.sort((a, b) => a.avg_score - b.avg_score);
 
+  // Guests don't get an aggregated handicap — they may appear under
+  // different guest_name values across rounds and have no stable identity.
+  const hc =
+    ref.kind === "user"
+      ? await getPlayerHandicapIndex(ref.id)
+      : { index: null, rounds_used: 0, rounds_skipped: 0 };
+
   const result: PlayerStats = {
     key: myKey,
     name,
@@ -196,6 +208,8 @@ export async function GET(request: Request) {
     avg_score: Math.round((total / scores.length) * 10) / 10,
     best_score: Math.min(...scores),
     worst_score: Math.max(...scores),
+    handicap_index: hc.index,
+    handicap_rounds_used: hc.rounds_used,
     by_course,
     recent,
   };

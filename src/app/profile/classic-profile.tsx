@@ -232,6 +232,21 @@ export function ClassicProfile() {
           </div>
         ) : (
           <>
+            <div className="mb-3 flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-green-700">
+                  Handicap index
+                </div>
+                <div className="text-xs text-gray-500">
+                  {stats.handicap_index == null
+                    ? `Need ${Math.max(0, 3 - stats.handicap_rounds_used)} more eligible round${stats.handicap_rounds_used === 2 ? "" : "s"}`
+                    : `Based on best of last ${stats.handicap_rounds_used} round${stats.handicap_rounds_used === 1 ? "" : "s"}`}
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-green-700">
+                {stats.handicap_index ?? "—"}
+              </div>
+            </div>
             <div className="grid grid-cols-4 gap-2 text-center">
               <Stat label="rounds" value={stats.rounds_played} />
               <Stat label="wins" value={stats.total_wins} />

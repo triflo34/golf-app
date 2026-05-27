@@ -13,6 +13,7 @@ export type RoundFormInitial = {
   playedAt: string;
   notes: string;
   holeCount: 9 | 18;
+  ninePlayed?: "front" | "back" | null;
   players: PlayerEntry[];
 };
 
@@ -21,6 +22,7 @@ export type RoundFormPayload = {
   played_at: string;
   notes: string | null;
   hole_count: 9 | 18;
+  nine_played: "front" | "back" | null;
   scores: Array<
     | { player_id: string; gross_score: number }
     | { guest_name: string; gross_score: number }
@@ -145,9 +147,15 @@ export function RoundForm({
   const [playedAt, setPlayedAt] = useState(initial.playedAt);
   const [holeCount, setHoleCount] = useState<9 | 18>(initial.holeCount);
   const [holeCountTouched, setHoleCountTouched] = useState(false);
+  const [ninePlayed, setNinePlayed] = useState<"front" | "back">(
+    initial.ninePlayed === "back" ? "back" : "front",
+  );
   const [players, setPlayers] = useState<PlayerEntry[]>(initial.players);
   const [playerQuery, setPlayerQuery] = useState("");
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
+  const [handicaps, setHandicaps] = useState<
+    Record<string, { handicap_index: number | null; course_handicap: number | null }>
+  >({});
 
   const [notes, setNotes] = useState(initial.notes);
   const [error, setError] = useState("");
@@ -174,6 +182,41 @@ export function RoundForm({
     const courseHoles = selectedCourse.holes === 9 ? 9 : 18;
     setHoleCount(courseHoles);
   }, [selectedCourse, holeCountTouched]);
+
+  // Fetch per-player handicap + course handicap whenever the inputs change.
+  // Guests have no aggregated index — they're skipped server-side.
+  const userPlayerIds = useMemo(
+    () =>
+      players
+        .filter((p) => p.kind === "user")
+        .map((p) => (p as { user: User }).user.id),
+    [players],
+  );
+  const userPlayerIdsKey = userPlayerIds.join(",");
+  useEffect(() => {
+    if (!courseId || userPlayerIds.length === 0) {
+      setHandicaps({});
+      return;
+    }
+    const ninePart =
+      holeCount === 9 ? `&nine_played=${ninePlayed}` : "";
+    const url = `/api/courses/${courseId}/handicaps?user_ids=${encodeURIComponent(
+      userPlayerIdsKey,
+    )}&hole_count=${holeCount}${ninePart}`;
+    let aborted = false;
+    fetch(url, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (aborted || !data?.by_user_id) return;
+        setHandicaps(data.by_user_id);
+      })
+      .catch(() => {
+        /* non-fatal: form still saves without showing handicaps */
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [courseId, userPlayerIdsKey, holeCount, ninePlayed, userPlayerIds.length]);
 
   const filteredCourses = useMemo(() => {
     const q = courseQuery.trim().toLowerCase();
@@ -345,6 +388,7 @@ export function RoundForm({
         played_at: playedAt,
         notes: notes.trim() || null,
         hole_count: holeCount,
+        nine_played: holeCount === 9 ? ninePlayed : null,
         scores,
       });
     } catch (e) {
@@ -505,6 +549,26 @@ export function RoundForm({
             </button>
           ))}
         </div>
+
+        {holeCount === 9 && (
+          <>
+            <label className={`${cls.label} mt-4`}>Which nine</label>
+            <div className={cls.holeWrap}>
+              {(["front", "back"] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setNinePlayed(n)}
+                  className={
+                    ninePlayed === n ? cls.holeBtnActive : cls.holeBtnIdle
+                  }
+                >
+                  {n === "front" ? "Front 9" : "Back 9"}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <div className={cls.card}>
@@ -514,36 +578,48 @@ export function RoundForm({
         </div>
 
         <div className="mb-3 space-y-2">
-          {players.map((p, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <div className={cls.playerName}>
-                  {p.kind === "user" ? p.user.display_name : p.name}
+          {players.map((p, i) => {
+            const hc = p.kind === "user" ? handicaps[p.user.id] : undefined;
+            const subParts = [p.kind === "user" ? `@${p.user.username}` : "guest"];
+            if (hc) {
+              if (hc.handicap_index != null) {
+                subParts.push(`HC ${hc.handicap_index}`);
+              }
+              if (courseId && hc.course_handicap != null) {
+                subParts.push(`course ${hc.course_handicap}`);
+              } else if (courseId && hc.handicap_index != null) {
+                subParts.push("course —");
+              }
+            }
+            return (
+              <div key={i} className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className={cls.playerName}>
+                    {p.kind === "user" ? p.user.display_name : p.name}
+                  </div>
+                  <div className={cls.playerSub}>{subParts.join(" · ")}</div>
                 </div>
-                <div className={cls.playerSub}>
-                  {p.kind === "user" ? `@${p.user.username}` : "guest"}
-                </div>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={holeCount === 9 ? 9 : 18}
+                  max={200}
+                  placeholder="Score"
+                  value={p.gross}
+                  onChange={(e) => setPlayerScore(i, e.target.value)}
+                  className={cls.scoreInput}
+                />
+                <button
+                  type="button"
+                  onClick={() => removePlayer(i)}
+                  className={cls.removeBtn}
+                  aria-label="Remove player"
+                >
+                  ✕
+                </button>
               </div>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={holeCount === 9 ? 9 : 18}
-                max={200}
-                placeholder="Score"
-                value={p.gross}
-                onChange={(e) => setPlayerScore(i, e.target.value)}
-                className={cls.scoreInput}
-              />
-              <button
-                type="button"
-                onClick={() => removePlayer(i)}
-                className={cls.removeBtn}
-                aria-label="Remove player"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {players.length < 8 && (

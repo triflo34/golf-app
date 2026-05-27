@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     played_at?: unknown;
     notes?: unknown;
     hole_count?: unknown;
+    nine_played?: unknown;
     scores?: unknown;
   };
   try {
@@ -35,6 +36,10 @@ export async function POST(request: Request) {
       : null;
   const holeCount = Number(body.hole_count);
   const rawScores = Array.isArray(body.scores) ? body.scores : [];
+  const ninePlayed: "front" | "back" | null =
+    body.nine_played === "front" || body.nine_played === "back"
+      ? body.nine_played
+      : null;
 
   if (!Number.isInteger(courseId) || courseId <= 0) {
     return NextResponse.json({ error: "Course is required" }, { status: 400 });
@@ -45,6 +50,8 @@ export async function POST(request: Request) {
   if (holeCount !== 9 && holeCount !== 18) {
     return NextResponse.json({ error: "hole_count must be 9 or 18" }, { status: 400 });
   }
+  // Stored value: only meaningful on 9-hole rounds. Strip otherwise.
+  const ninePlayedToStore = holeCount === 9 ? ninePlayed : null;
   if (rawScores.length === 0) {
     return NextResponse.json({ error: "At least one player is required" }, { status: 400 });
   }
@@ -118,11 +125,18 @@ export async function POST(request: Request) {
   const roundId = await withTransaction(async (tx) => {
     const inserted = await tx
       .prepare(
-        `INSERT INTO rounds (course_id, played_at, created_by, notes, hole_count)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO rounds (course_id, played_at, created_by, notes, hole_count, nine_played)
+         VALUES (?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
-      .get<{ id: number }>(courseId, playedAt, me.id, notes, holeCount);
+      .get<{ id: number }>(
+        courseId,
+        playedAt,
+        me.id,
+        notes,
+        holeCount,
+        ninePlayedToStore,
+      );
     const rid = inserted!.id;
     for (const s of scores) {
       await tx

@@ -55,8 +55,11 @@ export async function POST(request: Request) {
       .prepare(
         `INSERT INTO courses
            (name, address, city, state, holes, par, latitude, longitude,
+            course_rating, slope_rating,
+            front_9_rating, front_9_slope,
+            back_9_rating,  back_9_slope,
             external_id, last_fetched_at)
-         VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, now())
+         VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
          RETURNING id`,
       )
       .get<{ id: number }>(
@@ -67,6 +70,12 @@ export async function POST(request: Request) {
         totalPar,
         detail.latitude,
         detail.longitude,
+        detail.course_rating,
+        detail.slope_rating,
+        detail.front_9_rating,
+        detail.front_9_slope,
+        detail.back_9_rating,
+        detail.back_9_slope,
         detail.external_id,
       );
     const courseId = inserted!.id;

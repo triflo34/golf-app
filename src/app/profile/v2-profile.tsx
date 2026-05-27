@@ -162,8 +162,27 @@ export function V2Profile() {
         </div>
       </div>
 
-      {/* Stats row */}
-      <div className="-mt-4 px-4">
+      {/* Handicap headline + stats row */}
+      <div className="-mt-4 space-y-2 px-4">
+        <V2Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-accent)]">
+                Handicap index
+              </div>
+              <div className="text-xs text-[var(--v2-muted)]">
+                {stats == null
+                  ? "Loading…"
+                  : stats.handicap_index == null
+                    ? `Need ${Math.max(0, 3 - stats.handicap_rounds_used)} more eligible round${stats.handicap_rounds_used === 2 ? "" : "s"}`
+                    : `Best of last ${stats.handicap_rounds_used} round${stats.handicap_rounds_used === 1 ? "" : "s"}`}
+              </div>
+            </div>
+            <div className="text-3xl font-bold text-[var(--v2-accent)]">
+              {stats?.handicap_index ?? "—"}
+            </div>
+          </div>
+        </V2Card>
         <V2Card>
           <div className="grid grid-cols-3 gap-2">
             <V2StatTile

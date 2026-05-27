@@ -22,13 +22,45 @@ function toDraft(h: CourseHoleDetail): Draft {
   };
 }
 
+type RatingField =
+  | "course_rating"
+  | "slope_rating"
+  | "front_9_rating"
+  | "front_9_slope"
+  | "back_9_rating"
+  | "back_9_slope";
+
+type RatingDraft = Record<RatingField, string>;
+
+function toRatingDraft(c: {
+  course_rating: number | null;
+  slope_rating: number | null;
+  front_9_rating: number | null;
+  front_9_slope: number | null;
+  back_9_rating: number | null;
+  back_9_slope: number | null;
+}): RatingDraft {
+  return {
+    course_rating: c.course_rating == null ? "" : String(c.course_rating),
+    slope_rating: c.slope_rating == null ? "" : String(c.slope_rating),
+    front_9_rating: c.front_9_rating == null ? "" : String(c.front_9_rating),
+    front_9_slope: c.front_9_slope == null ? "" : String(c.front_9_slope),
+    back_9_rating: c.back_9_rating == null ? "" : String(c.back_9_rating),
+    back_9_slope: c.back_9_slope == null ? "" : String(c.back_9_slope),
+  };
+}
+
 export default function EditHolesPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<CourseDetail | null>(null);
   const [drafts, setDrafts] = useState<Map<number, Draft>>(new Map());
+  const [ratingDraft, setRatingDraft] = useState<RatingDraft | null>(null);
   const [savingHole, setSavingHole] = useState<number | null>(null);
+  const [savingRatings, setSavingRatings] = useState(false);
+  const [pullingRatings, setPullingRatings] = useState(false);
+  const [pullNote, setPullNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -43,6 +75,7 @@ export default function EditHolesPage() {
     const next = new Map<number, Draft>();
     for (const h of d.holes ?? []) next.set(h.hole_number, toDraft(h));
     setDrafts(next);
+    setRatingDraft(toRatingDraft(d.course));
   }, [params?.id]);
 
   useEffect(() => {
@@ -82,6 +115,73 @@ export default function EditHolesPage() {
       next.set(holeNumber, { ...cur, [key]: value });
       return next;
     });
+  }
+
+  async function pullRatingsFromApi() {
+    if (!data) return;
+    setError(null);
+    setPullNote(null);
+    setPullingRatings(true);
+    try {
+      const res = await fetch(
+        `/api/admin/courses/${data.course.id}/external-ratings`,
+        { cache: "no-store" },
+      );
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? "Pull failed");
+      setRatingDraft((d) =>
+        d
+          ? {
+              course_rating:
+                j.course_rating == null ? d.course_rating : String(j.course_rating),
+              slope_rating:
+                j.slope_rating == null ? d.slope_rating : String(j.slope_rating),
+              front_9_rating:
+                j.front_9_rating == null ? d.front_9_rating : String(j.front_9_rating),
+              front_9_slope:
+                j.front_9_slope == null ? d.front_9_slope : String(j.front_9_slope),
+              back_9_rating:
+                j.back_9_rating == null ? d.back_9_rating : String(j.back_9_rating),
+              back_9_slope:
+                j.back_9_slope == null ? d.back_9_slope : String(j.back_9_slope),
+            }
+          : d,
+      );
+      setPullNote(
+        j.tee_name
+          ? `Filled from "${j.tee_name}" tee — review then Save.`
+          : "Filled from API — review then Save.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pull failed");
+    } finally {
+      setPullingRatings(false);
+    }
+  }
+
+  async function saveRatings() {
+    if (!data || !ratingDraft) return;
+    setError(null);
+    setSavingRatings(true);
+    try {
+      const body: Record<string, number | null> = {};
+      for (const k of Object.keys(ratingDraft) as RatingField[]) {
+        const v = ratingDraft[k].trim();
+        body[k] = v === "" ? null : Number(v);
+      }
+      const res = await fetch(`/api/admin/courses/${data.course.id}/ratings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? "Save failed");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingRatings(false);
+    }
   }
 
   async function saveHole(holeNumber: number) {
@@ -148,6 +248,65 @@ export default function EditHolesPage() {
       {error && (
         <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {ratingDraft && (
+        <div className="card mb-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-gray-800">
+              Course ratings
+            </h2>
+            {data.course.external_id && (
+              <button
+                type="button"
+                onClick={pullRatingsFromApi}
+                disabled={pullingRatings}
+                className="text-xs font-medium text-blue-700 hover:text-blue-800 disabled:opacity-50"
+              >
+                {pullingRatings ? "Pulling…" : "Pull from API"}
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Used to compute handicap differentials. Leave blank for unknown.
+          </p>
+          {pullNote && (
+            <div className="mb-3 rounded-md bg-blue-50 border border-blue-200 px-2 py-1.5 text-xs text-blue-800">
+              {pullNote}
+            </div>
+          )}
+          <div className="space-y-3">
+            <RatingRow
+              label="18-hole"
+              ratingField="course_rating"
+              slopeField="slope_rating"
+              draft={ratingDraft}
+              setDraft={setRatingDraft}
+            />
+            <RatingRow
+              label="Front 9"
+              ratingField="front_9_rating"
+              slopeField="front_9_slope"
+              draft={ratingDraft}
+              setDraft={setRatingDraft}
+            />
+            <RatingRow
+              label="Back 9"
+              ratingField="back_9_rating"
+              slopeField="back_9_slope"
+              draft={ratingDraft}
+              setDraft={setRatingDraft}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={saveRatings}
+            disabled={savingRatings}
+            className="mt-3 w-full py-2 bg-green-700 text-white text-sm font-medium rounded-lg hover:bg-green-800 disabled:opacity-50"
+          >
+            {savingRatings ? "Saving…" : "Save ratings"}
+          </button>
         </div>
       )}
 
@@ -242,6 +401,55 @@ export default function EditHolesPage() {
       >
         Done
       </button>
+    </div>
+  );
+}
+
+function RatingRow({
+  label,
+  ratingField,
+  slopeField,
+  draft,
+  setDraft,
+}: {
+  label: string;
+  ratingField: RatingField;
+  slopeField: RatingField;
+  draft: RatingDraft;
+  setDraft: (updater: (d: RatingDraft | null) => RatingDraft | null) => void;
+}) {
+  const update = (key: RatingField, value: string) =>
+    setDraft((d) => (d ? { ...d, [key]: value } : d));
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-20 text-xs font-medium text-gray-600">{label}</div>
+      <div className="flex-1">
+        <label className="block text-[10px] uppercase tracking-wide text-gray-400">
+          Rating
+        </label>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          value={draft[ratingField]}
+          onChange={(e) => update(ratingField, e.target.value)}
+          placeholder="—"
+          className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900 text-sm"
+        />
+      </div>
+      <div className="flex-1">
+        <label className="block text-[10px] uppercase tracking-wide text-gray-400">
+          Slope
+        </label>
+        <input
+          type="number"
+          inputMode="numeric"
+          value={draft[slopeField]}
+          onChange={(e) => update(slopeField, e.target.value)}
+          placeholder="—"
+          className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900 text-sm"
+        />
+      </div>
     </div>
   );
 }

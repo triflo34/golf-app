@@ -17,6 +17,10 @@ export type Course = {
   par: number;
   slope_rating: number | null;
   course_rating: number | null;
+  front_9_rating: number | null;
+  front_9_slope: number | null;
+  back_9_rating: number | null;
+  back_9_slope: number | null;
   website: string | null;
   phone: string | null;
   created_at: string;

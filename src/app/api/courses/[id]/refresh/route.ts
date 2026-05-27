@@ -62,6 +62,12 @@ export async function POST(
            par = COALESCE(?, par),
            latitude = COALESCE(?, latitude),
            longitude = COALESCE(?, longitude),
+           course_rating  = COALESCE(?, course_rating),
+           slope_rating   = COALESCE(?, slope_rating),
+           front_9_rating = COALESCE(?, front_9_rating),
+           front_9_slope  = COALESCE(?, front_9_slope),
+           back_9_rating  = COALESCE(?, back_9_rating),
+           back_9_slope   = COALESCE(?, back_9_slope),
            last_fetched_at = now()
          WHERE id = ?`,
       )
@@ -73,6 +79,12 @@ export async function POST(
         totalPar,
         detail.latitude,
         detail.longitude,
+        detail.course_rating,
+        detail.slope_rating,
+        detail.front_9_rating,
+        detail.front_9_slope,
+        detail.back_9_rating,
+        detail.back_9_slope,
         courseId,
       );
 
