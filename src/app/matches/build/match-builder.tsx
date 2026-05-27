@@ -661,14 +661,37 @@ export function MatchBuilder({ variant }: Props) {
               const weaker = stronger === "A" ? "B" : "A";
               return (
               <V2Card key={i}>
-                <div className="mb-2 flex items-center justify-between">
-                  <span className={cls.rowMeta}>
-                    Option {i + 1}
-                  </span>
-                  <span className={cls.fairBadge}>
-                    Δ {delta}
-                  </span>
+                <div className="mb-3 flex items-center justify-between">
+                  <span className={cls.rowMeta}>Option {i + 1}</span>
+                  <span className={cls.fairBadge}>Δ {delta}</span>
                 </div>
+
+                {/* Match recommendation — the actionable headline */}
+                <div
+                  className={`mb-3 rounded-lg ${v2 ? "bg-[var(--v2-accent)]/10" : "bg-green-50"} px-3 py-2`}
+                >
+                  <div className={`text-[10px] font-semibold uppercase tracking-wide ${v2 ? "text-[var(--v2-accent)]" : "text-green-700"}`}>
+                    Match
+                  </div>
+                  {delta === 0 ? (
+                    <div className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}>
+                      Straight up — no strokes given
+                    </div>
+                  ) : (
+                    <div className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}>
+                      Team {weaker} gets{" "}
+                      <span className={v2 ? "text-[var(--v2-accent)]" : "text-green-700"}>
+                        {delta} stroke{delta === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  )}
+                  <div className={`mt-0.5 ${cls.rowMeta}`}>
+                    {delta === 0
+                      ? "Teams are evenly handicapped."
+                      : `Team ${stronger} is ${delta} HC lower — spot Team ${weaker} ${delta} stroke${delta === 1 ? "" : "s"} on the hardest hole${delta === 1 ? "" : "s"} (per the course's stroke index) to play gross fair.`}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   {arr.teams.map((team, ti) => (
                     <div key={ti}>
@@ -699,23 +722,6 @@ export function MatchBuilder({ variant }: Props) {
                     </div>
                   ))}
                 </div>
-                {stronger != null && delta > 0 && (
-                  <div className={`mt-3 border-t ${v2 ? "border-[var(--v2-border)]" : "border-gray-200"} pt-2 text-xs`}>
-                    <span className={cls.rowName}>Team {stronger}</span>
-                    <span className={cls.rowMeta}>
-                      {" "}gives Team {weaker}{" "}
-                    </span>
-                    <span className={cls.rowName}>{delta} stroke{delta === 1 ? "" : "s"}</span>
-                    <span className={cls.rowMeta}>
-                      {" "}to even out a gross match
-                    </span>
-                  </div>
-                )}
-                {delta === 0 && (
-                  <div className={`mt-3 border-t ${v2 ? "border-[var(--v2-border)]" : "border-gray-200"} pt-2 text-xs ${cls.rowMeta}`}>
-                    Even match — no strokes given.
-                  </div>
-                )}
               </V2Card>
               );
             })}
