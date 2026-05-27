@@ -29,9 +29,11 @@ export function V2Profile() {
   const [pwdSuccess, setPwdSuccess] = useState(false);
   const [pwdSubmitting, setPwdSubmitting] = useState(false);
 
+  const [showHcDetails, setShowHcDetails] = useState(false);
+
   useEffect(() => {
     if (!user) return;
-    fetch(`/api/player?key=u:${encodeURIComponent(user.id)}`, {
+    fetch(`/api/player?key=u:${encodeURIComponent(user.id)}&details=1`, {
       cache: "no-store",
     })
       .then((r) => r.json())
@@ -175,13 +177,78 @@ export function V2Profile() {
                   ? "Loading…"
                   : stats.handicap_index == null
                     ? `Need ${Math.max(0, 3 - stats.handicap_rounds_used)} more eligible round${stats.handicap_rounds_used === 2 ? "" : "s"}`
-                    : `Best of last ${stats.handicap_rounds_used} round${stats.handicap_rounds_used === 1 ? "" : "s"}`}
+                    : `Avg lowest ${stats.handicap_best_n} of ${stats.handicap_rounds_used} round${stats.handicap_rounds_used === 1 ? "" : "s"}${stats.handicap_adjustment < 0 ? ` − ${Math.abs(stats.handicap_adjustment).toFixed(1)}` : ""}`}
               </div>
+              {stats != null && stats.handicap_rounds_skipped > 0 && (
+                <div className="mt-1 text-xs text-orange-300">
+                  {stats.handicap_rounds_skipped} round
+                  {stats.handicap_rounds_skipped === 1 ? "" : "s"} skipped — missing rating
+                </div>
+              )}
             </div>
             <div className="text-3xl font-bold text-[var(--v2-accent)]">
               {stats?.handicap_index ?? "—"}
             </div>
           </div>
+          {stats != null &&
+            (stats.handicap_rounds?.length ?? 0) > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowHcDetails((v) => !v)}
+                  className="mt-3 text-xs font-medium text-[var(--v2-accent)]"
+                >
+                  {showHcDetails ? "Hide details" : "Show per-round details"}
+                </button>
+                {showHcDetails && (
+                  <div className="mt-3 space-y-1 border-t border-[var(--v2-border)] pt-3">
+                    {stats.handicap_rounds!.map((r) => (
+                      <div
+                        key={r.round_id}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="text-white">{r.course_name}</span>
+                          <span className="ml-1 text-[var(--v2-muted)]">
+                            {r.hole_count === 9
+                              ? `· 9 (${r.nine_played ?? "front"})`
+                              : ""}
+                          </span>
+                          <span className="ml-1 text-[var(--v2-muted)]">
+                            · {r.gross_score}
+                          </span>
+                        </div>
+                        <div className="ml-2 shrink-0 tabular-nums">
+                          {r.differential == null ? (
+                            <span className="text-orange-300">
+                              skipped (
+                              {r.skip_reason === "missing_18_rating"
+                                ? "no 18-hole rating"
+                                : "no 9-hole rating"}
+                              )
+                            </span>
+                          ) : (
+                            <span
+                              className={
+                                r.used_in_index
+                                  ? "font-bold text-[var(--v2-accent)]"
+                                  : "text-[var(--v2-muted)]"
+                              }
+                            >
+                              {r.differential.toFixed(1)}
+                              {r.used_in_index ? " ★" : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="pt-2 text-[10px] text-[var(--v2-muted)]">
+                      ★ = used in best-{stats.handicap_best_n} average
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
         </V2Card>
         {(stats?.rounds_played_18 ?? 0) > 0 && (
           <V2Card>

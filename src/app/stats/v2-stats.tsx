@@ -446,7 +446,7 @@ function PlayerTab({ season }: { season: number | "all" }) {
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <V2StatTile
                 label="Rounds"
                 value={data.rounds_played}
@@ -457,17 +457,55 @@ function PlayerTab({ season }: { season: number | "all" }) {
                 value={data.total_wins}
                 tone="green"
               />
-              <V2StatTile
-                label="Avg"
-                value={data.avg_score ?? "—"}
-                tone="gold"
-              />
-              <V2StatTile
-                label="Best"
-                value={data.best_score ?? "—"}
-                tone="green"
-              />
             </div>
+            {data.rounds_played_18 > 0 && (
+              <div className="mt-3 border-t border-[var(--v2-border)] pt-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-muted)]">
+                  18 holes
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <V2StatTile
+                    label="Rounds"
+                    value={data.rounds_played_18}
+                    tone="white"
+                  />
+                  <V2StatTile
+                    label="Avg"
+                    value={data.avg_score_18 ?? "—"}
+                    tone="gold"
+                  />
+                  <V2StatTile
+                    label="Best"
+                    value={data.best_score_18 ?? "—"}
+                    tone="green"
+                  />
+                </div>
+              </div>
+            )}
+            {data.rounds_played_9 > 0 && (
+              <div className="mt-3 border-t border-[var(--v2-border)] pt-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-muted)]">
+                  9 holes
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <V2StatTile
+                    label="Rounds"
+                    value={data.rounds_played_9}
+                    tone="white"
+                  />
+                  <V2StatTile
+                    label="Avg"
+                    value={data.avg_score_9 ?? "—"}
+                    tone="gold"
+                  />
+                  <V2StatTile
+                    label="Best"
+                    value={data.best_score_9 ?? "—"}
+                    tone="green"
+                  />
+                </div>
+              </div>
+            )}
           </V2Card>
 
           {data.recent.length > 0 && (

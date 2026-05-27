@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseKey } from "@/lib/players";
-import { getPlayerHandicapIndex } from "@/lib/player-handicap";
+import {
+  getPlayerHandicapDetails,
+  getPlayerHandicapIndex,
+  type HandicapRoundDetail,
+} from "@/lib/player-handicap";
 
 export type CourseAgg = {
   course_id: number;
@@ -29,6 +33,14 @@ export type PlayerStats = {
   best_score_9: number | null;
   handicap_index: number | null;
   handicap_rounds_used: number;
+  /** Number of recent rounds (of 20) skipped because rating/slope was missing. */
+  handicap_rounds_skipped: number;
+  /** Lowest-N count used for the average. */
+  handicap_best_n: number;
+  /** WHS adjustment applied to the average (≤ 0). */
+  handicap_adjustment: number;
+  /** Per-round breakdown, newest first. Only present when ?details=1. */
+  handicap_rounds: HandicapRoundDetail[] | null;
   by_course: CourseAgg[];
   recent: {
     round_id: number;
@@ -48,6 +60,7 @@ export async function GET(request: Request) {
   const key = url.searchParams.get("key") ?? "";
   const seasonParam = url.searchParams.get("season");
   const season = seasonParam ? Number(seasonParam) : null;
+  const wantDetails = url.searchParams.get("details") === "1";
   const ref = parseKey(key);
   if (!ref) return NextResponse.json({ error: "Bad key" }, { status: 400 });
   if (season != null && (!Number.isInteger(season) || season < 2000 || season > 2100)) {
@@ -122,6 +135,10 @@ export async function GET(request: Request) {
       best_score_9: null,
       handicap_index: null,
       handicap_rounds_used: 0,
+      handicap_rounds_skipped: 0,
+      handicap_best_n: 0,
+      handicap_adjustment: 0,
+      handicap_rounds: null,
       by_course: [],
       recent: [],
     };
@@ -217,10 +234,16 @@ export async function GET(request: Request) {
 
   // Guests don't get an aggregated handicap — they may appear under
   // different guest_name values across rounds and have no stable identity.
+  let hcRounds: HandicapRoundDetail[] | null = null;
   const hc =
     ref.kind === "user"
-      ? await getPlayerHandicapIndex(ref.id)
-      : { index: null, rounds_used: 0, rounds_skipped: 0 };
+      ? wantDetails
+        ? await getPlayerHandicapDetails(ref.id).then((d) => {
+            hcRounds = d.rounds;
+            return d.summary;
+          })
+        : await getPlayerHandicapIndex(ref.id)
+      : { index: null, rounds_used: 0, rounds_skipped: 0, best_n: 0, adjustment: 0 };
 
   const result: PlayerStats = {
     key: myKey,
@@ -239,6 +262,10 @@ export async function GET(request: Request) {
     best_score_9: minOrNull(scores9),
     handicap_index: hc.index,
     handicap_rounds_used: hc.rounds_used,
+    handicap_rounds_skipped: hc.rounds_skipped,
+    handicap_best_n: hc.best_n,
+    handicap_adjustment: hc.adjustment,
+    handicap_rounds: hcRounds,
     by_course,
     recent,
   };

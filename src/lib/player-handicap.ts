@@ -1,10 +1,30 @@
 import { db } from "@/lib/db";
 import {
   calculateCourseHandicap,
+  calculateDifferential,
   calculateHandicapIndex,
   type HandicapIndexResult,
   type RoundForHandicap,
 } from "@/lib/handicap";
+
+export type HandicapRoundDetail = {
+  round_id: number;
+  played_at: string;
+  course_name: string;
+  hole_count: 9 | 18;
+  nine_played: "front" | "back" | null;
+  gross_score: number;
+  /** Differential used in the index (null if the round was skipped). */
+  differential: number | null;
+  skip_reason: "missing_18_rating" | "missing_9_rating" | null;
+  /** True when this round's differential is in the best-N average. */
+  used_in_index: boolean;
+};
+
+export type HandicapDetails = {
+  summary: HandicapIndexResult;
+  rounds: HandicapRoundDetail[];
+};
 
 type RoundRow = {
   gross_score: number;
@@ -63,6 +83,94 @@ export async function getPlayerHandicapIndex(
     .all<RoundRow>(userId);
 
   return calculateHandicapIndex(rows.map(toRoundForHandicap));
+}
+
+/**
+ * Same as `getPlayerHandicapIndex` but also returns a per-round breakdown:
+ * each of the last 20 rounds, its differential (or null + skip reason), and
+ * whether it landed in the best-N average. Used for diagnostic UI so a player
+ * can see why their index is what it is.
+ */
+export async function getPlayerHandicapDetails(
+  userId: string,
+): Promise<HandicapDetails> {
+  const rows = await db
+    .prepare(
+      `SELECT r.id           AS round_id,
+              r.played_at,
+              c.name         AS course_name,
+              s.gross_score,
+              r.hole_count,
+              r.nine_played,
+              c.course_rating,
+              c.slope_rating,
+              c.front_9_rating,
+              c.front_9_slope,
+              c.back_9_rating,
+              c.back_9_slope
+       FROM scores s
+       JOIN rounds r  ON r.id = s.round_id
+       JOIN courses c ON c.id = r.course_id
+       WHERE s.player_id = ?
+       ORDER BY r.played_at ASC, r.id ASC`,
+    )
+    .all<
+      RoundRow & {
+        round_id: number;
+        played_at: string;
+        course_name: string;
+      }
+    >(userId);
+
+  const recent = rows.slice(-20);
+  const summary = calculateHandicapIndex(recent.map(toRoundForHandicap));
+
+  // Collect each round's differential (or skip reason) and figure out which
+  // best-N diffs got averaged. We rebuild the same sort as the index calc.
+  const enriched = recent.map((r) => {
+    const round = toRoundForHandicap(r);
+    const diff = calculateDifferential(round);
+    let skipReason: HandicapRoundDetail["skip_reason"] = null;
+    if (diff == null) {
+      skipReason = round.hole_count === 18 ? "missing_18_rating" : "missing_9_rating";
+    }
+    return {
+      round_id: r.round_id,
+      played_at: r.played_at,
+      course_name: r.course_name,
+      hole_count: round.hole_count,
+      nine_played: round.nine_played,
+      gross_score: r.gross_score,
+      differential: diff,
+      skip_reason: skipReason,
+    };
+  });
+
+  const usedDiffs = enriched
+    .filter((e) => e.differential != null)
+    .map((e) => ({ id: e.round_id, diff: e.differential as number }))
+    .sort((a, b) => a.diff - b.diff)
+    .slice(0, summary.best_n)
+    .map((e) => e.id);
+  const usedSet = new Set(usedDiffs);
+
+  const rounds: HandicapRoundDetail[] = enriched.map((e) => ({
+    round_id: e.round_id,
+    played_at: e.played_at,
+    course_name: e.course_name,
+    hole_count: e.hole_count,
+    nine_played: e.nine_played,
+    gross_score: e.gross_score,
+    differential:
+      e.differential == null ? null : Math.round(e.differential * 10) / 10,
+    skip_reason: e.skip_reason,
+    used_in_index: usedSet.has(e.round_id),
+  }));
+
+  // Newest first for display.
+  rounds.reverse();
+
+  return { summary, rounds };
 }
 
 /**

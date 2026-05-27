@@ -551,6 +551,10 @@ async function ensureRoundsNinePlayedColumn(sql: postgres.Sql): Promise<void> {
       END IF;
     END$$;
   `);
+  await sql.unsafe(
+    `UPDATE rounds SET nine_played = 'front'
+     WHERE hole_count = 9 AND nine_played IS NULL`,
+  );
 }
 
 async function ensureCourseApiColumns(sql: postgres.Sql): Promise<void> {

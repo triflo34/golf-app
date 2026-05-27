@@ -412,12 +412,34 @@ function PlayerTab({ season }: { season: number | "all" }) {
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-4 text-center gap-2">
+            <div className="grid grid-cols-2 text-center gap-2">
               <Stat label="rounds" value={data.rounds_played} />
               <Stat label="wins" value={data.total_wins} />
-              <Stat label="avg" value={data.avg_score ?? "—"} />
-              <Stat label="best" value={data.best_score ?? "—"} />
             </div>
+            {data.rounds_played_18 > 0 && (
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                  18 holes
+                </div>
+                <div className="grid grid-cols-3 text-center gap-2">
+                  <Stat label="rounds" value={data.rounds_played_18} />
+                  <Stat label="avg" value={data.avg_score_18 ?? "—"} />
+                  <Stat label="best" value={data.best_score_18 ?? "—"} />
+                </div>
+              </div>
+            )}
+            {data.rounds_played_9 > 0 && (
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                  9 holes
+                </div>
+                <div className="grid grid-cols-3 text-center gap-2">
+                  <Stat label="rounds" value={data.rounds_played_9} />
+                  <Stat label="avg" value={data.avg_score_9 ?? "—"} />
+                  <Stat label="best" value={data.best_score_9 ?? "—"} />
+                </div>
+              </div>
+            )}
           </div>
 
           {data.recent.length > 0 && (

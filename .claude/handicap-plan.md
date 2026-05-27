@@ -6,9 +6,15 @@ Phase 1 first slice (per user decision):
 - Show each player's course handicap on the new-round flow once a course is chosen.
 - 9-hole rounds: store per-course 9-hole rating/slope + per-round nine-played, compute proper 9-hole differentials.
 
+Phase 2 first slice (per user decision, 2026-05-27):
+- Fair Match Builder full stack: pick players + course + format + team sizes, get top 5 balanced team suggestions ranked by fairness.
+- Scramble weighted handicap for 2/3/4-player teams (35/15, 30/20/10, 25/20/15/10).
+- New page `/matches/build`, linked from rounds/new on both classic + v2.
+- Backfill legacy 9-hole rounds' `nine_played` to 'front' (matches the implicit math default).
+
 ## Progress
 
-Last updated: 2026-05-26
+Last updated: 2026-05-27
 
 **Done:**
 - Plan written
@@ -24,12 +30,21 @@ Last updated: 2026-05-26
 - Course edit page (`/courses/[id]/edit-holes`) gained a "Course ratings" card above the per-hole table with 18-hole + Front 9 + Back 9 rating/slope inputs, saving via the new admin ratings endpoint.
 - Type check: `npx tsc --noEmit` clean. Build: `next build` registers `/api/courses/[id]/handicaps` and `/api/admin/courses/[id]/ratings`.
 
-**In progress:** _none — Phase 1 first slice complete._
+**Phase 2 done (2026-05-27):**
+- `src/lib/handicap.ts`: added `calculateScrambleHandicap` (weights 35/15, 30/20/10, 25/20/15/10), `calculateTeamHandicap(courseHandicaps, format)`, `calculateFairnessDelta(teamHandicaps)`, plus `MatchFormat` union (`scramble | best_ball | individual`). Scramble rounds to integer; non-scramble keeps one decimal of precision so fairness ranking is stable.
+- `src/lib/match-builder.ts` (new): `buildTwoTeamArrangements(players, format, aSize, topN)` enumerates C(n, aSize) partitions, dedupes mirrors for equal splits, returns top-N by fairness delta. Combinatorial generator is iterative — no recursion.
+- New page `/matches/build` (`src/app/matches/build/page.tsx` + `match-builder.tsx`): course picker (local DB), 18/9 + Front/Back toggle, player multi-select (registered users only — guests have no index), format pills, team-size pills (1 v N-1 ... N-1 v 1), and a results section rendering top 5 arrangements with team HCs + fairness delta + per-player course HC chips. Uses `GET /api/courses/[id]/handicaps` to resolve course handicaps client-side; pure compute runs in `useMemo`.
+- Builder linked from both classic + v2 `rounds/new` pages as a card above the type/scorecard toggle.
+- DB backfill: `ensureRoundsNinePlayedColumn` now also runs `UPDATE rounds SET nine_played='front' WHERE hole_count=9 AND nine_played IS NULL`. Mirror migration in `supabase/migrations/2026-05-27-backfill-nine-played.sql` (prod runs `SKIP_DB_BOOTSTRAP=1`, so apply manually in Supabase SQL editor).
+- Type check: `npx tsc --noEmit` clean.
+
+**In progress:** _none — Phase 2 first slice complete._
 
 **Pending (deferred):**
-- Round edit path (`/rounds/[id]/edit`) doesn't yet round-trip `nine_played`; legacy 9-hole rounds default to front-9 in the math
+- Round edit path (`/rounds/[id]/edit`) doesn't yet round-trip `nine_played`
 - Scorecard upload form doesn't yet capture `nine_played`
-- See "Deferred to Phase 2+" below for the bigger items.
+- Phase 2 leftovers: stroke allocation visualization on the scorecard (per-hole strokes-received indicator). Tracked separately — math already exists (course HC + `course_holes.handicap_index`), needs a UI pass.
+- 3+ team partitioning in the Match Builder (currently 2 teams only — covers 1v1, 2v2, 3v3, 4v4, and asymmetric N-of-N).
 
 ## Phase 1 checklist
 
@@ -69,10 +84,38 @@ Last updated: 2026-05-26
 7. **UI: course edit**
    - [x] "Course ratings" card on `/courses/[id]/edit-holes` with 18-hole + Front 9 + Back 9 inputs
 
-## Deferred to Phase 2+
+## Phase 2 checklist
+
+1. **Scramble + fairness math (`src/lib/handicap.ts`)**
+   - [x] `calculateScrambleHandicap(courseHandicaps[])` — USGA weights for team sizes 1–4
+   - [x] `calculateTeamHandicap(courseHandicaps[], format)` — scramble weighted, others averaged
+   - [x] `calculateFairnessDelta(teamHandicaps[])` — max − min
+   - [x] `MatchFormat` union exported
+
+2. **Team-balancer engine (`src/lib/match-builder.ts`)**
+   - [x] Iterative C(n,k) combination generator
+   - [x] `buildTwoTeamArrangements(players, format, aSize, topN)` — equal-split mirror dedup
+   - [x] Returns `{ teams, team_handicaps, fairness_delta }` sorted ascending by delta
+
+3. **UI: Match Builder page**
+   - [x] `/matches/build` page, mode-aware (classic + v2)
+   - [x] Course picker, hole-count + nine-played toggle
+   - [x] Multi-select for registered users (max 8), guest exclusion
+   - [x] Format pills (scramble / best ball / individual)
+   - [x] Team-size pills (1 v N-1 ... balanced default)
+   - [x] Fetches `/api/courses/[id]/handicaps`, computes arrangements client-side
+   - [x] Renders top 5 with team HC, fairness delta, per-player chips
+   - [x] Surfaces players missing a handicap (3-round threshold)
+
+4. **Discoverability**
+   - [x] Card on classic + v2 `rounds/new` linking to `/matches/build`
+
+5. **Data backfill**
+   - [x] `ensureRoundsNinePlayedColumn` sets legacy 9-hole rounds' `nine_played` to 'front'
+   - [x] Mirror migration `2026-05-27-backfill-nine-played.sql` for prod
+
+## Deferred to Phase 3+
 
 - Stroke allocation visualization on the scorecard (per-hole strokes-received indicator)
-- Team-balancing engine / Fair Match Builder
-- Scramble weighted handicap (25/20/15/10)
-- Fairness score + match recommendations
-- Backfill of historical 9-hole rounds' `nine_played` (leave NULL → treat as front-9 by default)
+- 3+ team partitioning in the Match Builder (currently 2 teams only)
+- Round edit path round-tripping `nine_played`; scorecard upload capturing `nine_played`

@@ -39,15 +39,28 @@ export type RoundForHandicap = {
   back_9_slope: number | null;
 };
 
-function bestNCount(totalRounds: number): number {
-  if (totalRounds <= 5) return 1;
-  if (totalRounds <= 8) return 2;
-  if (totalRounds <= 10) return 3;
-  if (totalRounds <= 12) return 4;
-  if (totalRounds <= 14) return 5;
-  if (totalRounds <= 16) return 6;
-  if (totalRounds === 17) return 7;
-  return 8; // 18-20
+/**
+ * USGA WHS table for selecting the lowest N differentials AND the adjustment
+ * (in strokes) applied after averaging. The adjustment compensates for the
+ * statistical noise of a small dataset — a single low diff at 3 rounds gets
+ * -2.0, etc. Without these, a player with 5 valid rounds and one outlier good
+ * round gets a much lower index than a player with 6 rounds and similar play.
+ */
+function bestNAndAdjustment(totalRounds: number): {
+  bestN: number;
+  adjustment: number;
+} {
+  if (totalRounds === 3) return { bestN: 1, adjustment: -2.0 };
+  if (totalRounds === 4) return { bestN: 1, adjustment: -1.0 };
+  if (totalRounds === 5) return { bestN: 1, adjustment: 0 };
+  if (totalRounds === 6) return { bestN: 2, adjustment: -1.0 };
+  if (totalRounds <= 8) return { bestN: 2, adjustment: 0 };
+  if (totalRounds <= 11) return { bestN: 3, adjustment: 0 };
+  if (totalRounds <= 14) return { bestN: 4, adjustment: 0 };
+  if (totalRounds <= 16) return { bestN: 5, adjustment: 0 };
+  if (totalRounds === 17) return { bestN: 6, adjustment: 0 };
+  if (totalRounds === 18) return { bestN: 7, adjustment: 0 };
+  return { bestN: 8, adjustment: 0 }; // 19-20
 }
 
 /**
@@ -72,6 +85,10 @@ export type HandicapIndexResult = {
   index: number | null;
   rounds_used: number;
   rounds_skipped: number;
+  /** Number of lowest diffs averaged. 0 when index is null. */
+  best_n: number;
+  /** WHS stroke adjustment applied to the average (negative or zero). */
+  adjustment: number;
 };
 
 export function calculateHandicapIndex(
@@ -88,16 +105,28 @@ export function calculateHandicapIndex(
   }
 
   if (diffs.length < 3) {
-    return { index: null, rounds_used: diffs.length, rounds_skipped: skipped };
+    return {
+      index: null,
+      rounds_used: diffs.length,
+      rounds_skipped: skipped,
+      best_n: 0,
+      adjustment: 0,
+    };
   }
 
   diffs.sort((a, b) => a - b);
-  const bestN = bestNCount(diffs.length);
+  const { bestN, adjustment } = bestNAndAdjustment(diffs.length);
   const bestDiffs = diffs.slice(0, bestN);
   const avg = bestDiffs.reduce((sum, d) => sum + d, 0) / bestDiffs.length;
-  const index = Math.round(avg * 10) / 10;
+  const index = Math.round((avg + adjustment) * 10) / 10;
 
-  return { index, rounds_used: diffs.length, rounds_skipped: skipped };
+  return {
+    index,
+    rounds_used: diffs.length,
+    rounds_skipped: skipped,
+    best_n: bestN,
+    adjustment,
+  };
 }
 
 /**
@@ -154,4 +183,65 @@ export function calculateNetScore(
   const ch = calculateCourseHandicap(handicapIndex, course, holeCount, ninePlayed);
   if (ch == null) return grossScore;
   return grossScore - ch;
+}
+
+/**
+ * Scramble team handicap (USGA-recommended weighting). Each player's course
+ * handicap is weighted by their position when the team is sorted from low to
+ * high index; the weighted sum is rounded to the nearest integer.
+ *
+ *   2 players: 35% low + 15% high
+ *   3 players: 30% low + 20% middle + 10% high
+ *   4 players: 25% / 20% / 15% / 10%
+ *
+ * For 1 player, the team handicap is just that player's course handicap.
+ * Anything beyond 4 falls back to the simple average — we don't expect teams
+ * larger than 4 in this app's match builder.
+ */
+const SCRAMBLE_WEIGHTS: Record<number, number[]> = {
+  1: [1.0],
+  2: [0.35, 0.15],
+  3: [0.3, 0.2, 0.1],
+  4: [0.25, 0.2, 0.15, 0.1],
+};
+
+export function calculateScrambleHandicap(courseHandicaps: number[]): number {
+  if (courseHandicaps.length === 0) return 0;
+  const sorted = [...courseHandicaps].sort((a, b) => a - b);
+  const weights = SCRAMBLE_WEIGHTS[sorted.length];
+  if (weights) {
+    const weighted = sorted.reduce((sum, h, i) => sum + h * weights[i], 0);
+    return Math.round(weighted);
+  }
+  const avg = sorted.reduce((s, h) => s + h, 0) / sorted.length;
+  return Math.round(avg);
+}
+
+/**
+ * Match-format-aware team handicap. For non-scramble formats, the team is just
+ * a roster of individual players — we report the simple average so the builder
+ * can rank fairness consistently across formats. For best-ball and individual
+ * formats, the player handicaps still drive per-hole strokes; the team-level
+ * number is only used to compare teams against each other.
+ */
+export type MatchFormat = "scramble" | "best_ball" | "individual";
+
+export function calculateTeamHandicap(
+  courseHandicaps: number[],
+  format: MatchFormat,
+): number {
+  if (courseHandicaps.length === 0) return 0;
+  if (format === "scramble") return calculateScrambleHandicap(courseHandicaps);
+  const avg =
+    courseHandicaps.reduce((s, h) => s + h, 0) / courseHandicaps.length;
+  return Math.round(avg * 10) / 10;
+}
+
+/**
+ * Fairness delta = max team handicap - min team handicap. Lower is fairer.
+ * Returns 0 for a single team (degenerate case).
+ */
+export function calculateFairnessDelta(teamHandicaps: number[]): number {
+  if (teamHandicaps.length < 2) return 0;
+  return Math.max(...teamHandicaps) - Math.min(...teamHandicaps);
 }

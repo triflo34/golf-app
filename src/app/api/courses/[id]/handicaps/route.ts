@@ -83,6 +83,8 @@ export async function GET(
       index: null,
       rounds_used: 0,
       rounds_skipped: 0,
+      best_n: 0,
+      adjustment: 0,
     };
     const courseHandicap =
       hc.index == null

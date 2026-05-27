@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { RoundForm } from "@/components/round-form";
@@ -24,6 +25,21 @@ export function ClassicNewRound() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-green-800 mb-4">Log a Round</h1>
+
+      <Link
+        href="/matches/build"
+        className="mb-4 block bg-white border border-gray-200 rounded-lg px-4 py-3 hover:bg-gray-50"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-gray-800 text-sm">Build a fair match</div>
+            <div className="text-xs text-gray-500">
+              Pick players + a course, get balanced team suggestions
+            </div>
+          </div>
+          <span className="text-green-700">→</span>
+        </div>
+      </Link>
 
       <div className="mb-4 flex bg-gray-100 rounded-lg p-0.5 text-sm font-medium">
         <button
