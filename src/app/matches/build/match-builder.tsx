@@ -6,7 +6,6 @@ import { useAuth } from "@/components/auth-provider";
 import { V2PageShell } from "@/components/v2/page-shell";
 import { V2Card } from "@/components/v2/card";
 import { V2SectionTitle } from "@/components/v2/section-title";
-import { V2Pill } from "@/components/v2/pill";
 import type { Course, User } from "@/lib/types";
 import {
   buildTwoTeamArrangements,
@@ -50,6 +49,7 @@ export function MatchBuilder({ variant }: Props) {
   >(null);
   const [loadingHc, setLoadingHc] = useState(false);
   const [error, setError] = useState("");
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     fetch("/api/courses")
@@ -223,6 +223,69 @@ export function MatchBuilder({ variant }: Props) {
   const inner = (
     <>
       <h1 className={cls.title}>Build a Fair Match</h1>
+
+      {/* Help / key */}
+      <div className={cls.card}>
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          className={`flex w-full items-center justify-between ${cls.rowName}`}
+        >
+          <span>How to read this page</span>
+          <span className={cls.rowMeta}>{showHelp ? "−" : "+"}</span>
+        </button>
+        {showHelp && (
+          <div className="mt-3 space-y-3 border-t border-[var(--v2-border)] pt-3">
+            <div>
+              <div className={cls.teamLabel}>1. Pick a course + holes</div>
+              <div className={cls.rowMeta}>
+                Course handicaps depend on the course&apos;s rating and slope,
+                so we have to know where you&apos;re playing. Front/Back matters
+                for 9-hole matches.
+              </div>
+            </div>
+            <div>
+              <div className={cls.teamLabel}>2. Add players</div>
+              <div className={cls.rowMeta}>
+                Registered users only — guests don&apos;t have a handicap on
+                file. You&apos;re added by default; tap a name to remove.
+              </div>
+            </div>
+            <div>
+              <div className={cls.teamLabel}>3. Pick a format</div>
+              <div className={cls.rowMeta}>
+                <strong>Scramble:</strong> team HC uses USGA-recommended
+                weights: 2-player 35/15, 3-player 30/20/10, 4-player 25/20/15/10
+                (lowest HC gets the biggest share).{" "}
+                <strong>Best ball / Individual:</strong> team HC is the simple
+                average of player HCs.
+              </div>
+            </div>
+            <div>
+              <div className={cls.teamLabel}>4. Pick team sizes</div>
+              <div className={cls.rowMeta}>
+                &ldquo;3 v 2&rdquo; means one team has 3 players, the other 2.
+                Defaults to the most balanced split.
+              </div>
+            </div>
+            <div>
+              <div className={cls.teamLabel}>5. Read the suggestions</div>
+              <div className={cls.rowMeta}>
+                Each card shows two teams with their team HC underneath the
+                label. The{" "}
+                <span className={cls.fairBadge}>Δ</span> badge is the
+                fairness gap (team HC difference) — lower is closer to a fair
+                fight. Player chips show each person&apos;s course HC in
+                parentheses. We sort top 5 by lowest Δ.
+              </div>
+            </div>
+            <div className={cls.rowMeta}>
+              No handicap? You need 3+ eligible rounds first. If a player has
+              no index, no suggestions will render.
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Course */}
       <div className={cls.card}>
