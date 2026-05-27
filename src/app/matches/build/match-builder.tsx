@@ -39,9 +39,15 @@ export function MatchBuilder({ variant }: Props) {
   const [format, setFormat] = useState<MatchFormat>("scramble");
 
   const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  type Entry =
+    | { kind: "user"; userId: string }
+    | { kind: "guest"; name: string; courseHandicap: number };
+  const [entries, setEntries] = useState<Entry[]>([]);
   const [playerQuery, setPlayerQuery] = useState("");
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestHc, setGuestHc] = useState("");
+  const [guestError, setGuestError] = useState("");
 
   const [aSize, setASize] = useState<number | null>(null);
   const [handicaps, setHandicaps] = useState<
@@ -61,10 +67,13 @@ export function MatchBuilder({ variant }: Props) {
   }, []);
 
   useEffect(() => {
-    if (user && !selectedUserIds.includes(user.id)) {
-      setSelectedUserIds([user.id]);
-    }
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!user) return;
+    setEntries((arr) =>
+      arr.some((e) => e.kind === "user" && e.userId === user.id)
+        ? arr
+        : [{ kind: "user", userId: user.id }, ...arr],
+    );
+  }, [user]);
 
   const selectedCourse = useMemo(
     () => courses.find((c) => c.id === courseId) ?? null,
@@ -82,18 +91,27 @@ export function MatchBuilder({ variant }: Props) {
       .slice(0, 30);
   }, [courses, courseQuery]);
 
-  const selectedUsers = useMemo(
+  const takenUserIds = useMemo(
     () =>
-      selectedUserIds
-        .map((id) => users.find((u) => u.id === id))
-        .filter((u): u is User => !!u),
-    [users, selectedUserIds],
+      new Set(
+        entries.filter((e) => e.kind === "user").map((e) => (e as { userId: string }).userId),
+      ),
+    [entries],
+  );
+  const takenGuestNames = useMemo(
+    () =>
+      new Set(
+        entries
+          .filter((e) => e.kind === "guest")
+          .map((e) => (e as { name: string }).name.toLowerCase()),
+      ),
+    [entries],
   );
 
   const filteredUsers = useMemo(() => {
     const q = playerQuery.trim().toLowerCase();
     return users
-      .filter((u) => !selectedUserIds.includes(u.id))
+      .filter((u) => !takenUserIds.has(u.id))
       .filter(
         (u) =>
           !q ||
@@ -101,9 +119,9 @@ export function MatchBuilder({ variant }: Props) {
           u.username.toLowerCase().includes(q),
       )
       .slice(0, 20);
-  }, [users, playerQuery, selectedUserIds]);
+  }, [users, playerQuery, takenUserIds]);
 
-  const n = selectedUserIds.length;
+  const n = entries.length;
 
   useEffect(() => {
     if (n < 2) {
@@ -112,6 +130,32 @@ export function MatchBuilder({ variant }: Props) {
       setASize(Math.floor(n / 2));
     }
   }, [n, aSize]);
+
+  function addGuest() {
+    setGuestError("");
+    const name = guestName.trim();
+    const hc = Number(guestHc);
+    if (!name) {
+      setGuestError("Name required");
+      return;
+    }
+    if (takenGuestNames.has(name.toLowerCase())) {
+      setGuestError("Guest already added");
+      return;
+    }
+    if (!Number.isFinite(hc) || hc < -10 || hc > 54) {
+      setGuestError("Course HC must be between −10 and 54");
+      return;
+    }
+    if (n >= 8) {
+      setGuestError("Max 8 players");
+      return;
+    }
+    setEntries((arr) => [...arr, { kind: "guest", name, courseHandicap: hc }]);
+    setHandicaps(null);
+    setGuestName("");
+    setGuestHc("");
+  }
 
   async function loadHandicaps() {
     setError("");
@@ -124,10 +168,18 @@ export function MatchBuilder({ variant }: Props) {
       setError("Add at least 2 players");
       return;
     }
+    const userIds = entries
+      .filter((e) => e.kind === "user")
+      .map((e) => (e as { userId: string }).userId);
+    if (userIds.length === 0) {
+      // No registered users — guests only, no API call needed.
+      setHandicaps({});
+      return;
+    }
     setLoadingHc(true);
     const ninePart = holeCount === 9 ? `&nine_played=${ninePlayed}` : "";
     const url = `/api/courses/${courseId}/handicaps?user_ids=${encodeURIComponent(
-      selectedUserIds.join(","),
+      userIds.join(","),
     )}&hole_count=${holeCount}${ninePart}`;
     try {
       const res = await fetch(url, { cache: "no-store" });
@@ -141,20 +193,47 @@ export function MatchBuilder({ variant }: Props) {
     }
   }
 
-  const arrangements: TeamArrangement[] = useMemo(() => {
-    if (!handicaps || aSize == null) return [];
-    const players: BuilderPlayer[] = [];
-    for (const u of selectedUsers) {
-      const hc = handicaps[u.id]?.course_handicap;
-      if (hc == null) return [];
-      players.push({ key: `u:${u.id}`, name: u.display_name, course_handicap: hc });
+  type ResolvedPlayer = BuilderPlayer & { is_guest: boolean };
+
+  const resolvedPlayers: ResolvedPlayer[] | null = useMemo(() => {
+    if (!handicaps) return null;
+    const out: ResolvedPlayer[] = [];
+    for (const e of entries) {
+      if (e.kind === "user") {
+        const u = users.find((x) => x.id === e.userId);
+        if (!u) return null;
+        const hc = handicaps[e.userId]?.course_handicap;
+        if (hc == null) return null;
+        out.push({
+          key: `u:${e.userId}`,
+          name: u.display_name,
+          course_handicap: hc,
+          is_guest: false,
+        });
+      } else {
+        out.push({
+          key: `g:${e.name.toLowerCase()}`,
+          name: e.name,
+          course_handicap: e.courseHandicap,
+          is_guest: true,
+        });
+      }
     }
-    return buildTwoTeamArrangements(players, format, aSize, 5);
-  }, [handicaps, selectedUsers, aSize, format]);
+    return out;
+  }, [handicaps, entries, users]);
+
+  const arrangements: TeamArrangement[] = useMemo(() => {
+    if (!resolvedPlayers || aSize == null) return [];
+    return buildTwoTeamArrangements(resolvedPlayers, format, aSize, 5);
+  }, [resolvedPlayers, aSize, format]);
 
   const missingHc =
     handicaps &&
-    selectedUsers.filter((u) => handicaps[u.id]?.course_handicap == null);
+    entries
+      .filter((e) => e.kind === "user")
+      .map((e) => users.find((u) => u.id === (e as { userId: string }).userId))
+      .filter((u): u is User => !!u)
+      .filter((u) => handicaps[u.id]?.course_handicap == null);
 
   const cls = {
     title: v2
@@ -247,8 +326,9 @@ export function MatchBuilder({ variant }: Props) {
             <div>
               <div className={cls.teamLabel}>2. Add players</div>
               <div className={cls.rowMeta}>
-                Registered users only — guests don&apos;t have a handicap on
-                file. You&apos;re added by default; tap a name to remove.
+                Pick registered players from the search, or add a guest with
+                an estimated course HC (their stroke count at this course).
+                You&apos;re added by default; tap × to remove anyone.
               </div>
             </div>
             <div>
@@ -405,25 +485,43 @@ export function MatchBuilder({ variant }: Props) {
       <div className={cls.card}>
         <label className={cls.label}>Players ({n}/8)</label>
         <div className="mb-2 flex flex-wrap gap-2">
-          {selectedUsers.map((u) => (
-            <span
-              key={u.id}
-              className={`${cls.selectedBox} !inline-flex !gap-2 !py-1`}
-            >
-              <span className={cls.selectedName}>{u.display_name}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedUserIds((arr) => arr.filter((x) => x !== u.id));
-                  setHandicaps(null);
-                }}
-                className={cls.changeBtn}
-                aria-label={`Remove ${u.display_name}`}
+          {entries.map((e, idx) => {
+            const name =
+              e.kind === "user"
+                ? users.find((u) => u.id === e.userId)?.display_name ?? "…"
+                : e.name;
+            const guestHcLabel =
+              e.kind === "guest" ? ` · HC ${e.courseHandicap}` : "";
+            return (
+              <span
+                key={e.kind === "user" ? `u:${e.userId}` : `g:${e.name}:${idx}`}
+                className={`${cls.selectedBox} !inline-flex !gap-2 !py-1`}
               >
-                ×
-              </button>
-            </span>
-          ))}
+                <span className={cls.selectedName}>
+                  {name}
+                  {e.kind === "guest" && (
+                    <span className={`ml-1 ${cls.fairBadge}`}>guest</span>
+                  )}
+                  {guestHcLabel && (
+                    <span className={`ml-1 ${cls.rowMeta}`}>
+                      {guestHcLabel}
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEntries((arr) => arr.filter((_, i) => i !== idx));
+                    setHandicaps(null);
+                  }}
+                  className={cls.changeBtn}
+                  aria-label={`Remove ${name}`}
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
         </div>
         {n < 8 && (
           <>
@@ -435,7 +533,7 @@ export function MatchBuilder({ variant }: Props) {
                 setPlayerQuery(e.target.value);
                 setShowPlayerPicker(true);
               }}
-              placeholder="Add a player…"
+              placeholder="Add a registered player…"
               className={cls.input}
             />
             {showPlayerPicker && (
@@ -450,7 +548,10 @@ export function MatchBuilder({ variant }: Props) {
                       key={u.id}
                       type="button"
                       onClick={() => {
-                        setSelectedUserIds((arr) => [...arr, u.id]);
+                        setEntries((arr) => [
+                          ...arr,
+                          { kind: "user", userId: u.id },
+                        ]);
                         setPlayerQuery("");
                         setShowPlayerPicker(false);
                         setHandicaps(null);
@@ -464,11 +565,47 @@ export function MatchBuilder({ variant }: Props) {
                 )}
               </div>
             )}
+
+            <div className={`mt-3 border-t ${v2 ? "border-[var(--v2-border)]" : "border-gray-200"} pt-3`}>
+              <div className={`${cls.label} !mb-2`}>
+                Or add a guest with an estimated HC
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  placeholder="Guest name"
+                  className={`${cls.input} flex-1`}
+                />
+                <input
+                  type="number"
+                  value={guestHc}
+                  onChange={(e) => setGuestHc(e.target.value)}
+                  placeholder="HC"
+                  inputMode="numeric"
+                  className={`${cls.input} w-20`}
+                />
+                <button
+                  type="button"
+                  onClick={addGuest}
+                  className={cls.chipActive}
+                >
+                  Add
+                </button>
+              </div>
+              {guestError && (
+                <div className={`${cls.rowMeta} mt-1 text-orange-500`}>
+                  {guestError}
+                </div>
+              )}
+              <div className={`${cls.rowMeta} mt-1`}>
+                Estimate the guest&apos;s course handicap (their strokes
+                received at this course). Used directly in team math.
+              </div>
+            </div>
           </>
         )}
-        <div className={`${cls.rowMeta} mt-2`}>
-          Only registered users — guests don&apos;t have a handicap.
-        </div>
       </div>
 
       {/* Format */}
@@ -559,15 +696,18 @@ export function MatchBuilder({ variant }: Props) {
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1">
                         {team.map((p) => {
-                          const hc = handicaps?.[p.key.slice(2)]?.course_handicap;
+                          const isGuest = p.key.startsWith("g:");
                           return (
                             <span key={p.key} className={cls.playerChip}>
                               {p.name}
-                              {hc != null && (
-                                <span className="ml-1 opacity-60">
-                                  ({hc})
+                              {isGuest && (
+                                <span className="ml-1 text-[10px] opacity-70">
+                                  guest
                                 </span>
                               )}
+                              <span className="ml-1 opacity-60">
+                                ({p.course_handicap})
+                              </span>
                             </span>
                           );
                         })}
