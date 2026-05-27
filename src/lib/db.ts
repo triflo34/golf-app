@@ -150,9 +150,27 @@ async function bootstrap(): Promise<void> {
 
 const BOOTSTRAP_TIMEOUT_MS = 8000;
 
+async function ensureCriticalColumns(): Promise<void> {
+  const sql = getSql();
+  // These migrations must run even with SKIP_DB_BOOTSTRAP=1, as queries depend on them
+  console.log("[db] ensureCriticalColumns: nine_played");
+  await ensureRoundsNinePlayedColumn(sql);
+  console.log("[db] ensureCriticalColumns: nine_hole_ratings");
+  await ensureCourseNineHoleRatingColumns(sql);
+}
+
 function ensureInit(): Promise<void> {
   if (process.env.SKIP_DB_BOOTSTRAP === "1") {
-    return Promise.resolve();
+    // Even with SKIP_DB_BOOTSTRAP, we must ensure critical columns exist
+    if (!globalForDb.__initPromise) {
+      globalForDb.__initPromise = ensureCriticalColumns()
+        .catch((err) => {
+          console.error("[db] ensureCriticalColumns failed:", err);
+          delete globalForDb.__initPromise;
+          throw err;
+        });
+    }
+    return globalForDb.__initPromise;
   }
   if (!globalForDb.__initPromise) {
     let timer: ReturnType<typeof setTimeout> | undefined;
