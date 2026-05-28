@@ -8,6 +8,8 @@ import { V2Card } from "@/components/v2/card";
 import { V2SectionTitle } from "@/components/v2/section-title";
 import type { Course, User } from "@/lib/types";
 import {
+  balancedTeamSizes,
+  buildMultiTeamArrangements,
   buildTwoTeamArrangements,
   type BuilderPlayer,
   type TeamArrangement,
@@ -62,7 +64,8 @@ export function MatchBuilder({ variant }: Props) {
   const [guestHc, setGuestHc] = useState("");
   const [guestError, setGuestError] = useState("");
 
-  const [aSize, setASize] = useState<number | null>(null);
+  const [teamCount, setTeamCount] = useState<number>(2);
+  const [aSize, setASize] = useState<number | null>(null); // used only when teamCount === 2
   const [handicaps, setHandicaps] = useState<
     CourseHandicapsResponse["by_user_id"] | null
   >(null);
@@ -143,6 +146,22 @@ export function MatchBuilder({ variant }: Props) {
       setASize(Math.floor(n / 2));
     }
   }, [n, aSize]);
+
+  // Clamp team count to a valid value as players come/go (need ≥ teamCount
+  // players, with at least 2 teams).
+  useEffect(() => {
+    if (n < 2) return;
+    const maxTeams = Math.min(4, n);
+    if (teamCount > maxTeams) setTeamCount(maxTeams);
+    if (teamCount < 2) setTeamCount(2);
+  }, [n, teamCount]);
+
+  const teamSizes = useMemo(
+    () => (teamCount === 2 && aSize != null
+      ? [aSize, n - aSize]
+      : balancedTeamSizes(n, teamCount)),
+    [teamCount, aSize, n],
+  );
 
   function addGuest() {
     setGuestError("");
@@ -236,9 +255,13 @@ export function MatchBuilder({ variant }: Props) {
   }, [handicaps, entries, users]);
 
   const arrangements: TeamArrangement[] = useMemo(() => {
-    if (!resolvedPlayers || aSize == null) return [];
-    return buildTwoTeamArrangements(resolvedPlayers, format, aSize, 5);
-  }, [resolvedPlayers, aSize, format]);
+    if (!resolvedPlayers) return [];
+    if (teamCount === 2) {
+      if (aSize == null) return [];
+      return buildTwoTeamArrangements(resolvedPlayers, format, aSize, 5);
+    }
+    return buildMultiTeamArrangements(resolvedPlayers, format, teamSizes, 5);
+  }, [resolvedPlayers, teamCount, aSize, teamSizes, format]);
 
   const missingHc =
     handicaps &&
@@ -364,16 +387,25 @@ export function MatchBuilder({ variant }: Props) {
               </div>
             </div>
             <div>
+              <div className={cls.teamLabel}>Number of teams</div>
+              <div className={cls.rowMeta}>
+                Pick 2, 3, or 4 teams (up to the number of players). For 2
+                teams you can choose asymmetric sizes (e.g. 3 v 2); for 3+
+                teams the split is auto-balanced (e.g. 7 players in 3 teams
+                → 3-2-2).
+              </div>
+            </div>
+            <div>
               <div className={cls.teamLabel}>Reading suggestions</div>
               <div className={cls.rowMeta}>
-                Each card shows two teams with their team HC beneath the
-                label. The <span className={cls.fairBadge}>Δ</span> badge is
-                the difference between team HCs — lower means a more even
-                match. The Match box up top names the stronger side and how
-                many strokes they should give to even out a gross match (the
-                allowance is applied here, so it may be less than Δ). Skip
-                the strokes line if you&apos;re scoring net. Player chips
-                show each person&apos;s course HC in parens.
+                Each card shows each team&apos;s HC beneath its label and a{" "}
+                <span className={cls.fairBadge}>Δ</span> badge for the spread
+                (max − min). The Match box up top names the &ldquo;scratch&rdquo;
+                team (lowest HC, gives no strokes) and how many strokes each
+                other team gets. The allowance is applied here, so the
+                strokes may be less than Δ. Skip the strokes line if
+                you&apos;re scoring net. Player chips show each
+                person&apos;s course HC in parens.
               </div>
             </div>
             <div className={cls.rowMeta}>
@@ -645,8 +677,35 @@ export function MatchBuilder({ variant }: Props) {
         </div>
       </div>
 
-      {/* Team A size */}
+      {/* Number of teams */}
       {n >= 2 && (
+        <div className={cls.card}>
+          <label className={cls.label}>Number of teams</label>
+          <div className="flex flex-wrap gap-2">
+            {Array.from({ length: Math.min(4, n) - 1 }, (_, i) => i + 2).map(
+              (k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setTeamCount(k)}
+                  className={teamCount === k ? cls.chipActive : cls.chipIdle}
+                >
+                  {k} teams
+                </button>
+              ),
+            )}
+          </div>
+          {teamCount > 2 && (
+            <div className={`${cls.rowMeta} mt-2`}>
+              Auto-balanced split: {balancedTeamSizes(n, teamCount).join("-")}
+              {" "}players per team.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Team A size (only meaningful for 2-team mode) */}
+      {n >= 2 && teamCount === 2 && (
         <div className={cls.card}>
           <label className={cls.label}>Team sizes</label>
           <div className="flex flex-wrap gap-2">
@@ -726,82 +785,140 @@ export function MatchBuilder({ variant }: Props) {
           <V2SectionTitle>Top suggestions</V2SectionTitle>
           <div className="mt-2 space-y-3">
             {arrangements.map((arr, i) => {
-              const [hcA, hcB] = arr.team_handicaps;
+              const k = arr.teams.length;
               const delta = arr.fairness_delta;
-              const strokes = Math.round(delta * allowance);
-              const stronger = hcA < hcB ? "A" : hcB < hcA ? "B" : null;
-              const weaker = stronger === "A" ? "B" : "A";
+              const minHc = Math.min(...arr.team_handicaps);
+              const scratchIdx = arr.team_handicaps.indexOf(minHc);
+              const labels = ["A", "B", "C", "D"];
+              // Per-team strokes given relative to the scratch team, with
+              // allowance applied and integer rounding.
+              const strokesPerTeam = arr.team_handicaps.map((hc) =>
+                Math.round((hc - minHc) * allowance),
+              );
+              const anyStrokes = strokesPerTeam.some((s) => s > 0);
               return (
-              <V2Card key={i}>
-                <div className="mb-3 flex items-center justify-between">
-                  <span className={cls.rowMeta}>Option {i + 1}</span>
-                  <span className={cls.fairBadge}>Δ {delta}</span>
-                </div>
-
-                {/* Match recommendation — the actionable headline */}
-                <div
-                  className={`mb-3 rounded-lg ${v2 ? "bg-[var(--v2-accent)]/10" : "bg-green-50"} px-3 py-2`}
-                >
-                  <div className={`text-[10px] font-semibold uppercase tracking-wide ${v2 ? "text-[var(--v2-accent)]" : "text-green-700"}`}>
-                    Match
+                <V2Card key={i}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className={cls.rowMeta}>Option {i + 1}</span>
+                    <span className={cls.fairBadge}>Δ {delta}</span>
                   </div>
-                  {strokes === 0 ? (
-                    <div className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}>
-                      Straight up — no strokes given
+
+                  {/* Match recommendation — the actionable headline */}
+                  <div
+                    className={`mb-3 rounded-lg ${v2 ? "bg-[var(--v2-accent)]/10" : "bg-green-50"} px-3 py-2`}
+                  >
+                    <div
+                      className={`text-[10px] font-semibold uppercase tracking-wide ${v2 ? "text-[var(--v2-accent)]" : "text-green-700"}`}
+                    >
+                      Match
                     </div>
-                  ) : (
-                    <div className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}>
-                      Team {weaker} gets{" "}
-                      <span className={v2 ? "text-[var(--v2-accent)]" : "text-green-700"}>
-                        {strokes} stroke{strokes === 1 ? "" : "s"}
-                      </span>
-                      {allowance < 1 && (
-                        <span className={`ml-2 text-xs font-normal ${cls.rowMeta}`}>
-                          (Δ {delta} × {Math.round(allowance * 100)}%)
+                    {!anyStrokes ? (
+                      <div
+                        className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}
+                      >
+                        Straight up — no strokes given
+                      </div>
+                    ) : k === 2 ? (
+                      <div
+                        className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}
+                      >
+                        Team {labels[1 - scratchIdx]} gets{" "}
+                        <span
+                          className={
+                            v2 ? "text-[var(--v2-accent)]" : "text-green-700"
+                          }
+                        >
+                          {strokesPerTeam[1 - scratchIdx]} stroke
+                          {strokesPerTeam[1 - scratchIdx] === 1 ? "" : "s"}
                         </span>
-                      )}
-                    </div>
-                  )}
-                  <div className={`mt-0.5 ${cls.rowMeta}`}>
-                    {strokes === 0
-                      ? delta === 0
-                        ? "Teams are evenly handicapped."
-                        : `Δ ${delta}, but ${Math.round(allowance * 100)}% allowance rounds to 0 strokes.`
-                      : `Team ${stronger} is ${delta} HC lower — spot Team ${weaker} ${strokes} stroke${strokes === 1 ? "" : "s"} on the hardest hole${strokes === 1 ? "" : "s"} (per the course's stroke index) to play gross fair.`}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {arr.teams.map((team, ti) => (
-                    <div key={ti}>
-                      <div className={cls.teamLabel}>
-                        Team {ti === 0 ? "A" : "B"}
+                        {allowance < 1 && (
+                          <span
+                            className={`ml-2 text-xs font-normal ${cls.rowMeta}`}
+                          >
+                            (Δ {delta} × {Math.round(allowance * 100)}%)
+                          </span>
+                        )}
                       </div>
-                      <div className={cls.teamHc}>
-                        {arr.team_handicaps[ti]}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {team.map((p) => {
-                          const isGuest = p.key.startsWith("g:");
+                    ) : (
+                      <div className="space-y-0.5">
+                        <div
+                          className={`text-base font-bold ${v2 ? "text-white" : "text-gray-800"}`}
+                        >
+                          Team {labels[scratchIdx]} plays scratch
+                        </div>
+                        {arr.team_handicaps.map((_, ti) => {
+                          if (ti === scratchIdx) return null;
+                          const s = strokesPerTeam[ti];
+                          if (s === 0) return null;
                           return (
-                            <span key={p.key} className={cls.playerChip}>
-                              {p.name}
-                              {isGuest && (
-                                <span className="ml-1 text-[10px] opacity-70">
-                                  guest
-                                </span>
-                              )}
-                              <span className="ml-1 opacity-60">
-                                ({p.course_handicap})
+                            <div
+                              key={ti}
+                              className={`text-sm ${v2 ? "text-white" : "text-gray-800"}`}
+                            >
+                              Team {labels[ti]} gets{" "}
+                              <span
+                                className={`font-bold ${v2 ? "text-[var(--v2-accent)]" : "text-green-700"}`}
+                              >
+                                {s} stroke{s === 1 ? "" : "s"}
                               </span>
-                            </span>
+                            </div>
                           );
                         })}
                       </div>
+                    )}
+                    <div className={`mt-0.5 ${cls.rowMeta}`}>
+                      {!anyStrokes
+                        ? delta === 0
+                          ? "Teams are evenly handicapped."
+                          : `Δ ${delta}, but ${Math.round(allowance * 100)}% allowance rounds to 0 strokes.`
+                        : `Strokes fall on the hardest holes (per the course's stroke index) to play gross fair. Skip for net play.`}
                     </div>
-                  ))}
-                </div>
-              </V2Card>
+                  </div>
+
+                  <div
+                    className={`grid gap-3 ${
+                      k <= 2
+                        ? "grid-cols-2"
+                        : k === 3
+                          ? "grid-cols-3"
+                          : "grid-cols-2"
+                    }`}
+                  >
+                    {arr.teams.map((team, ti) => (
+                      <div key={ti}>
+                        <div className={cls.teamLabel}>
+                          Team {labels[ti]}
+                          {ti === scratchIdx && anyStrokes && (
+                            <span className="ml-1 text-[9px] opacity-70">
+                              · scratch
+                            </span>
+                          )}
+                        </div>
+                        <div className={cls.teamHc}>
+                          {arr.team_handicaps[ti]}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {team.map((p) => {
+                            const isGuest = p.key.startsWith("g:");
+                            return (
+                              <span key={p.key} className={cls.playerChip}>
+                                {p.name}
+                                {isGuest && (
+                                  <span className="ml-1 text-[10px] opacity-70">
+                                    guest
+                                  </span>
+                                )}
+                                <span className="ml-1 opacity-60">
+                                  ({p.course_handicap})
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </V2Card>
               );
             })}
           </div>
