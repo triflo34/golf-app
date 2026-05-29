@@ -510,7 +510,7 @@ function PlayerTab({ season }: { season: number | "all" }) {
 
           {data.recent.length > 0 && (
             <>
-              <V2SectionTitle>Recent rounds</V2SectionTitle>
+              <V2SectionTitle>All rounds</V2SectionTitle>
               <div className="mb-4 space-y-2">
                 {data.recent.map((r) => (
                   <Link

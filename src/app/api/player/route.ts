@@ -185,7 +185,7 @@ export async function GET(request: Request) {
       : (r.guest_name ?? "").toLowerCase() === ref.name;
 
   const recent: PlayerStats["recent"] = [];
-  for (const sr of scoreRows.slice(0, 10)) {
+  for (const sr of scoreRows) {
     const field = byRound.get(sr.round_id) ?? [];
     const sortedAsc = [...field].sort((a, b) => a.gross_score - b.gross_score);
     const placement = sortedAsc.findIndex(matchesMe) + 1;

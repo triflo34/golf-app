@@ -445,7 +445,7 @@ function PlayerTab({ season }: { season: number | "all" }) {
           {data.recent.length > 0 && (
             <div className="card mb-4">
               <h3 className="font-semibold text-gray-800 mb-2 text-sm">
-                Recent rounds
+                All rounds
               </h3>
               <div className="space-y-2">
                 {data.recent.map((r) => (
