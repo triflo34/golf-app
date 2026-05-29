@@ -40,7 +40,8 @@ function styles(variant: Variant) {
     page: v2
       ? "min-h-screen bg-[var(--v2-bg)] text-white"
       : "min-h-screen bg-gray-50 text-gray-900",
-    container: "max-w-lg mx-auto px-4 py-4 pb-32",
+    // Big bottom padding leaves room for the sticky entry dock.
+    container: "max-w-lg mx-auto px-4 py-4 pb-[60vh]",
     backLink: v2
       ? "text-sm text-[var(--v2-accent)] font-medium"
       : "text-sm text-green-700 font-medium",
@@ -82,15 +83,27 @@ function styles(variant: Variant) {
       : "rounded-xl border border-gray-200 bg-white px-3 py-3",
     playerName: v2 ? "text-sm font-semibold text-white" : "text-sm font-semibold text-gray-900",
     playerSub: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
-    stickyBar: v2
-      ? "fixed bottom-0 left-0 right-0 border-t border-[var(--v2-border)] bg-[var(--v2-surface)]/95 backdrop-blur px-4 py-3"
-      : "fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/95 backdrop-blur px-4 py-3",
+    dock: v2
+      ? "fixed bottom-0 left-0 right-0 border-t border-[var(--v2-border)] bg-[var(--v2-surface)]/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.4)]"
+      : "fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.08)]",
+    dockNavRow: v2
+      ? "flex items-center gap-2 px-4 py-2 border-b border-[var(--v2-border)] bg-[var(--v2-surface-2)]/60"
+      : "flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50",
+    dockHoleBadge: v2
+      ? "flex-1 text-center text-sm font-bold text-[var(--v2-accent)]"
+      : "flex-1 text-center text-sm font-bold text-green-800",
+    dockHoleSub: v2 ? "text-[10px] text-[var(--v2-muted)]" : "text-[10px] text-gray-500",
+    dockRowList:
+      "max-h-[40vh] overflow-y-auto px-3 py-2 space-y-2 max-w-lg mx-auto",
+    dockFinishRow: v2
+      ? "flex items-center gap-2 px-4 py-3 border-t border-[var(--v2-border)] bg-[var(--v2-surface)]"
+      : "flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white",
     finishBtn: v2
-      ? "px-4 py-2 rounded-lg bg-[var(--v2-accent)] text-black text-sm font-semibold disabled:opacity-50"
-      : "px-4 py-2 rounded-lg bg-green-700 text-white text-sm font-semibold disabled:opacity-50",
+      ? "flex-1 px-4 py-3 rounded-lg bg-[var(--v2-accent)] text-black text-sm font-bold disabled:opacity-50"
+      : "flex-1 px-4 py-3 rounded-lg bg-green-700 text-white text-sm font-bold disabled:opacity-50",
     navBtn: v2
-      ? "px-3 py-2 rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface-2)] text-white disabled:opacity-30"
-      : "px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-800 disabled:opacity-30",
+      ? "w-11 h-11 rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface-2)] text-white text-lg leading-none disabled:opacity-30"
+      : "w-11 h-11 rounded-md border border-gray-300 bg-white text-gray-800 text-lg leading-none disabled:opacity-30",
     error: v2
       ? "rounded-md bg-red-950/60 border border-red-800 px-3 py-2 text-sm text-red-300"
       : "rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700",
@@ -142,7 +155,31 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
     setError(null);
     const next = (await res.json()) as LiveRoundLoad;
     setData(next);
-    setPending(new Map());
+    // Only drop pending entries whose server-side state now matches — don't
+    // wipe in-flight or queued writes the user just made. A pending value
+    // that differs from the server is still "the user's intent" until the
+    // mutation succeeds (or the catch handler reverts it).
+    setPending((prev) => {
+      if (prev.size === 0) return prev;
+      const keyOf = (pid: string | null, gn: string | null) =>
+        pid ? `u:${pid}` : `g:${(gn ?? "").toLowerCase()}`;
+      const serverStrokes = new Map<string, number>();
+      for (const s of next.scores) {
+        serverStrokes.set(
+          `${keyOf(s.player_id, s.guest_name)}:${s.hole_number}`,
+          s.strokes,
+        );
+      }
+      const out = new Map(prev);
+      for (const [k, v] of prev) {
+        if (v === null) {
+          if (!serverStrokes.has(k)) out.delete(k); // cleared and confirmed
+        } else if (serverStrokes.get(k) === v) {
+          out.delete(k); // server caught up
+        }
+      }
+      return out;
+    });
   }, [roundId]);
 
   useEffect(() => {
@@ -382,16 +419,7 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
         method: "POST",
       });
       const body = await res.json();
-      if (!res.ok) {
-        if (body.missing && Array.isArray(body.missing)) {
-          setError(
-            `Some players are missing scores: ${(body.missing as string[]).join(", ")}`,
-          );
-        } else {
-          throw new Error(body.error ?? "Finish failed");
-        }
-        return;
-      }
+      if (!res.ok) throw new Error(body.error ?? "Finish failed");
       router.push(`/rounds/${roundId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Finish failed");
@@ -522,21 +550,50 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
 
         {error && <div className={`${cls.error} mt-3`}>{error}</div>}
 
-        <div className="mt-3 text-center">
-          <div className={v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500"}>
-            Hole
+        <p
+          className={
+            v2
+              ? "mt-3 text-[11px] text-[var(--v2-muted)]"
+              : "mt-3 text-[11px] text-gray-400"
+          }
+        >
+          Anyone with the link can score this round. Edits are logged.
+        </p>
+      </div>
+
+      <div className={cls.dock}>
+        <div className={cls.dockNavRow}>
+          <button
+            type="button"
+            onClick={() => setHole((h) => Math.max(minHole, h - 1))}
+            disabled={hole <= minHole}
+            className={cls.navBtn}
+          >
+            ←
+          </button>
+          <div className={cls.dockHoleBadge}>
+            Hole {hole} · Par {currentPar}
+            <div className={cls.dockHoleSub}>
+              {currentHole?.yardage != null && <>{currentHole.yardage} yds</>}
+              {currentHole?.yardage != null && currentHole?.handicap_index != null && <> · </>}
+              {currentHole?.handicap_index != null && <>HCP {currentHole.handicap_index}</>}
+              {(currentHole?.yardage != null || currentHole?.handicap_index != null) && (
+                <> · </>
+              )}
+              {filledCells}/{totalCells} entered
+            </div>
           </div>
-          <div className={v2 ? "text-3xl font-bold text-[var(--v2-accent)] leading-none" : "text-3xl font-bold text-green-800 leading-none"}>
-            {hole}
-          </div>
-          <div className={v2 ? "text-xs text-[var(--v2-muted)] mt-0.5" : "text-xs text-gray-500 mt-0.5"}>
-            Par {currentPar}
-            {currentHole?.yardage != null && <> · {currentHole.yardage} yds</>}
-            {currentHole?.handicap_index != null && <> · HCP {currentHole.handicap_index}</>}
-          </div>
+          <button
+            type="button"
+            onClick={() => setHole((h) => Math.min(maxHole, h + 1))}
+            disabled={hole >= maxHole}
+            className={cls.navBtn}
+          >
+            →
+          </button>
         </div>
 
-        <div className="mt-3 space-y-2">
+        <div className={cls.dockRowList}>
           {players.map((p) => {
             const key = `${p.key}:${hole}`;
             const strokes = scoreMap.get(key);
@@ -544,7 +601,7 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
             const identity = { player_id: p.player_id, guest_name: p.guest_name };
             return (
               <div key={p.key} className={cls.playerRowWrap}>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <div className="flex-1 min-w-0">
                     <div className={cls.playerName + " truncate"}>
                       {p.name}
@@ -561,7 +618,9 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
                       )}
                     </div>
                     {cls2 && (
-                      <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${cls2.tone}`}>
+                      <span
+                        className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${cls2.tone}`}
+                      >
                         {cls2.label}
                       </span>
                     )}
@@ -570,7 +629,9 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
                     <button
                       type="button"
                       onClick={() => setStrokes(p.key, identity, currentPar)}
-                      className={strokes === currentPar ? cls.parBtnActive : cls.parBtnIdle}
+                      className={
+                        strokes === currentPar ? cls.parBtnActive : cls.parBtnIdle
+                      }
                     >
                       Par
                     </button>
@@ -616,42 +677,18 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
           })}
         </div>
 
-        <p className={v2 ? "mt-3 text-[11px] text-[var(--v2-muted)]" : "mt-3 text-[11px] text-gray-400"}>
-          Anyone with the link can score this round. Edits are logged.
-        </p>
-      </div>
-
-      <div className={cls.stickyBar}>
-        <div className="max-w-lg mx-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setHole((h) => Math.max(minHole, h - 1))}
-            disabled={hole <= minHole}
-            className={cls.navBtn}
-          >
-            ←
-          </button>
-          <div className="flex-1 text-center text-xs">
-            <div className={v2 ? "text-[var(--v2-muted)]" : "text-gray-500"}>
-              {filledCells}/{totalCells} scores entered
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setHole((h) => Math.min(maxHole, h + 1))}
-            disabled={hole >= maxHole}
-            className={cls.navBtn}
-          >
-            →
-          </button>
+        <div className={cls.dockFinishRow}>
           <button
             type="button"
             onClick={handleFinish}
-            disabled={finishing || !allFilled}
+            disabled={finishing}
             className={cls.finishBtn}
-            title={allFilled ? "Finish round" : "Enter all scores to finish"}
           >
-            {finishing ? "…" : "Finish"}
+            {finishing
+              ? "Saving…"
+              : allFilled
+                ? "Finish round"
+                : `Finish round (${totalCells - filledCells} blank)`}
           </button>
         </div>
       </div>

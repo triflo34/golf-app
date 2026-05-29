@@ -77,24 +77,20 @@ export async function POST(
     p ? `u:${p}` : `g:${(g ?? "").toLowerCase()}`;
   const totalsByKey = new Map(totals.map((t) => [keyOf(t.player_id, t.guest_name), t]));
 
-  // Every roster entry must have at least one hole; otherwise reject with a
-  // helpful list so the UI can show which players still need scores.
-  const missing = roster
-    .filter((r) => !totalsByKey.has(keyOf(r.player_id, r.guest_name)))
-    .map((r) => (r.player_id ? `player:${r.player_id}` : `guest:${r.guest_name}`));
-  if (missing.length > 0) {
+  // Need at least one score across the whole round, otherwise there's
+  // nothing to "finish". Players with no scores get skipped from the
+  // aggregate scores table — they simply aren't on this round's leaderboard.
+  if (totals.length === 0) {
     return NextResponse.json(
-      {
-        error: `Some players have no scores yet`,
-        missing,
-      },
+      { error: "No scores entered yet" },
       { status: 400 },
     );
   }
 
   await withTransaction(async (tx) => {
     for (const r of roster) {
-      const agg = totalsByKey.get(keyOf(r.player_id, r.guest_name))!;
+      const agg = totalsByKey.get(keyOf(r.player_id, r.guest_name));
+      if (!agg) continue; // partial finish: skip players with no holes scored
       await tx
         .prepare(
           `INSERT INTO scores (round_id, player_id, guest_name, gross_score)

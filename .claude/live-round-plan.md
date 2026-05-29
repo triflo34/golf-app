@@ -21,6 +21,18 @@ Updated after every step so the user can pick up where this left off if a sessio
 
 🎉 **Feature complete.** `npx next build` passes. Routes registered: `/api/rounds/live`, `/api/rounds/live/[id]`, `/api/rounds/live/[id]/holes`, `/api/rounds/live/[id]/finish`, `/rounds/live/new`, `/rounds/live/[id]`.
 
+## Post-ship bugfix pass (2026-05-28, same day)
+
+User feedback after first try:
+1. **No way to save/end a round** — Finish was disabled until all 8×18 cells filled, undiscoverable.
+2. **Score entry not pinned to bottom** — player rows scrolled with content; entry slipped off-screen as the page grew.
+3. **Lag between players on optimistic updates** — 30s poll was wiping the entire `pending` map, killing in-flight optimistic state.
+
+Fixes:
+- [src/components/live-round-view.tsx](src/components/live-round-view.tsx) `load()` now only drops pending entries whose server state confirms them (matches `pending=value` or `pending=null & no row`). Unsent/in-flight writes stay visible.
+- Layout rewritten — sticky bottom **dock** containing: hole nav row (← Hole N · Par X →), scrollable player entry list (max 40vh), prominent Finish button (always enabled, shows blank count: `Finish round (12 blank)`).
+- [src/app/api/rounds/live/[id]/finish/route.ts](src/app/api/rounds/live/[id]/finish/route.ts) relaxed: only requires ≥1 hole_score total. Players with zero holes get skipped from the aggregate `scores` write. Finishing early is OK.
+
 ## Steps
 
 ### 1. Schema — guest support in `hole_scores` + round status
