@@ -66,6 +66,11 @@ export function BottomNav() {
   const { user } = useAuth();
 
   if (!user) return null;
+  // The live scoring page has its own bottom dock with hole nav + Finish; the
+  // app's global nav stacks on top of it, so we hide it here.
+  if (pathname.startsWith("/rounds/live/") && !pathname.endsWith("/new")) {
+    return null;
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-area-bottom">

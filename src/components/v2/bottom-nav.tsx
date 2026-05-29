@@ -67,6 +67,11 @@ export function V2BottomNav() {
   const { user } = useAuth();
 
   if (!user) return null;
+  // The live scoring page has its own bottom dock; hide the global nav so it
+  // doesn't stack over the Finish button.
+  if (pathname.startsWith("/rounds/live/") && !pathname.endsWith("/new")) {
+    return null;
+  }
 
   return (
     <nav className="safe-area-bottom fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--v2-border)] bg-[var(--v2-surface)]">

@@ -84,8 +84,8 @@ function styles(variant: Variant) {
     playerName: v2 ? "text-sm font-semibold text-white" : "text-sm font-semibold text-gray-900",
     playerSub: v2 ? "text-xs text-[var(--v2-muted)]" : "text-xs text-gray-500",
     dock: v2
-      ? "fixed bottom-0 left-0 right-0 border-t border-[var(--v2-border)] bg-[var(--v2-surface)]/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.4)]"
-      : "fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.08)]",
+      ? "safe-area-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-[var(--v2-border)] bg-[var(--v2-surface)]/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.4)]"
+      : "safe-area-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.08)]",
     dockNavRow: v2
       ? "flex items-center gap-2 px-4 py-2 border-b border-[var(--v2-border)] bg-[var(--v2-surface-2)]/60"
       : "flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50",
