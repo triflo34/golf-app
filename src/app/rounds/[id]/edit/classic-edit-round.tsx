@@ -76,6 +76,7 @@ export function ClassicEditRound() {
         playedAt: d.played_at,
         notes: d.notes ?? "",
         holeCount: d.hole_count === 9 ? 9 : 18,
+        ninePlayed: d.nine_played,
         players,
       });
 
@@ -103,6 +104,7 @@ export function ClassicEditRound() {
         playedAt: d.played_at,
         notes: d.notes ?? "",
         holeCount: d.hole_count === 9 ? 9 : 18,
+        ninePlayed: d.nine_played,
         players: scorecardPlayers,
       });
       // Default to scorecard mode if there's any per-hole data and no guests.
@@ -193,6 +195,7 @@ export function ClassicEditRound() {
                 played_at: payload.played_at,
                 notes: payload.notes,
                 hole_count: payload.hole_count,
+                nine_played: payload.nine_played,
                 scores: payload.players.map((p) => ({
                   player_id: p.player_id,
                   strokes: p.strokes,

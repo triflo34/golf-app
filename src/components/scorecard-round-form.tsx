@@ -17,6 +17,8 @@ export type ScorecardPayload = {
   course_id: number;
   played_at: string;
   hole_count: 9 | 18;
+  /** Which nine was played. Only meaningful for 9-hole rounds; null otherwise. */
+  nine_played: "front" | "back" | null;
   notes: string | null;
   players: { player_id: string; strokes: number[] }[];
 };
@@ -27,6 +29,8 @@ export type ScorecardFormInitial = {
   courseId: number | null;
   playedAt: string;
   holeCount: 9 | 18;
+  /** Which nine was played, only used for 9-hole rounds. Defaults to "front". */
+  ninePlayed?: "front" | "back" | null;
   notes: string;
   /** Existing per-player strokes. null in a slot = blank hole. */
   players: { user: User; strokes: (number | null)[] }[];
@@ -155,6 +159,9 @@ export function ScorecardRoundForm({
   const [holeMeta, setHoleMeta] = useState<CourseHoleDetail[]>([]);
   const [holeCount, setHoleCount] = useState<9 | 18>(
     initial?.holeCount ?? 18,
+  );
+  const [ninePlayed, setNinePlayed] = useState<"front" | "back">(
+    initial?.ninePlayed === "back" ? "back" : "front",
   );
   const [playedAt, setPlayedAt] = useState(
     initial?.playedAt ?? new Date().toISOString().slice(0, 10),
@@ -347,6 +354,7 @@ export function ScorecardRoundForm({
         course_id: courseId,
         played_at: playedAt,
         hole_count: holeCount,
+        nine_played: holeCount === 9 ? ninePlayed : null,
         notes: notes.trim() || null,
         players: payloadPlayers,
       });
@@ -488,6 +496,26 @@ export function ScorecardRoundForm({
           </div>
         </div>
       </div>
+
+      {holeCount === 9 && (
+        <div className={cls.card}>
+          <label className={cls.label}>Which nine</label>
+          <div className={cls.holesSegment}>
+            {(["front", "back"] as const).map((nine) => (
+              <button
+                key={nine}
+                type="button"
+                onClick={() => setNinePlayed(nine)}
+                className={
+                  ninePlayed === nine ? cls.holesActive : cls.holesIdle
+                }
+              >
+                {nine === "front" ? "Front 9" : "Back 9"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className={cls.card}>
         <label className={cls.label}>Players ({players.length}/8)</label>

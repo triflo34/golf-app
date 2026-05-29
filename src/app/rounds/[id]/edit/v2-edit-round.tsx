@@ -78,6 +78,7 @@ export function V2EditRound() {
         playedAt: d.played_at,
         notes: d.notes ?? "",
         holeCount: d.hole_count === 9 ? 9 : 18,
+        ninePlayed: d.nine_played,
         players,
       });
 
@@ -102,6 +103,7 @@ export function V2EditRound() {
         playedAt: d.played_at,
         notes: d.notes ?? "",
         holeCount: d.hole_count === 9 ? 9 : 18,
+        ninePlayed: d.nine_played,
         players: scorecardPlayers,
       });
       const anyStrokes = d.scores.some((s) =>
@@ -204,6 +206,7 @@ export function V2EditRound() {
                 played_at: payload.played_at,
                 notes: payload.notes,
                 hole_count: payload.hole_count,
+                nine_played: payload.nine_played,
                 scores: payload.players.map((p) => ({
                   player_id: p.player_id,
                   strokes: p.strokes,

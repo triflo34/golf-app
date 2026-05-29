@@ -38,13 +38,18 @@ Last updated: 2026-05-27
 - DB backfill: `ensureRoundsNinePlayedColumn` now also runs `UPDATE rounds SET nine_played='front' WHERE hole_count=9 AND nine_played IS NULL`. Mirror migration in `supabase/migrations/2026-05-27-backfill-nine-played.sql` (prod runs `SKIP_DB_BOOTSTRAP=1`, so apply manually in Supabase SQL editor).
 - Type check: `npx tsc --noEmit` clean.
 
-**In progress:** _none — Phase 2 first slice complete._
+**Phase 2 round 2 done (2026-05-28):**
+- Match Builder: 3+ team partitioning. New `buildMultiTeamArrangements(players, format, teamSizes, topN)` + `balancedTeamSizes(n, k)`. UI: "Number of teams" pill row (2/3/4 capped by player count); 2-team mode keeps custom sizes, 3+ auto-balances. Suggestion cards render K teams responsively, name the scratch team (lowest HC), and list per-team strokes given relative to it with allowance applied.
+- Match Builder: guest support — mixed entries list (registered users + guests with manually-entered course HC) feeds the same scramble/best-ball/individual math.
+- Match Builder: handicap allowance pills (100% / 95% / 90% / 85%) backed by USGA recommendations; default tracks format but stays sticky once user picks.
+- Round edit (`/rounds/[id]/edit`, v2 + classic) now round-trips `nine_played` for both Type-scores (`RoundForm`) and Scorecard (`ScorecardRoundForm`) paths. API: `/api/rounds/[id]` GET returns `nine_played`; PUT accepts and persists it (forces null when `hole_count != 9`).
+- Scorecard upload (`ScorecardRoundForm`, used by both new-round and edit-round): added Front 9/Back 9 toggle when 9-hole selected; `nine_played` in `ScorecardPayload`; `/api/rounds/scorecard` POST accepts and persists it.
+
+**In progress:** _none — Phase 2 second slice complete._
 
 **Pending (deferred):**
-- Round edit path (`/rounds/[id]/edit`) doesn't yet round-trip `nine_played`
-- Scorecard upload form doesn't yet capture `nine_played`
-- Phase 2 leftovers: stroke allocation visualization on the scorecard (per-hole strokes-received indicator). Tracked separately — math already exists (course HC + `course_holes.handicap_index`), needs a UI pass.
-- 3+ team partitioning in the Match Builder (currently 2 teams only — covers 1v1, 2v2, 3v3, 4v4, and asymmetric N-of-N).
+- Phase 2 leftover: stroke allocation visualization on the scorecard (per-hole strokes-received indicator). Math already exists (course HC + `course_holes.handicap_index`), needs a UI pass.
+- Show which actual hole numbers the strokes fall on in the Match Builder suggestions (uses `course_holes.handicap_index` ≤ N).
 
 ## Phase 1 checklist
 

@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     played_at?: unknown;
     notes?: unknown;
     hole_count?: unknown;
+    nine_played?: unknown;
     players?: unknown;
   };
   try {
@@ -42,6 +43,19 @@ export async function POST(request: Request) {
   }
   if (holeCount !== 9 && holeCount !== 18) {
     return NextResponse.json({ error: "hole_count must be 9 or 18" }, { status: 400 });
+  }
+
+  // nine_played: only meaningful when 9-hole; forced null otherwise.
+  let ninePlayed: "front" | "back" | null = null;
+  if (holeCount === 9) {
+    if (body.nine_played === "front" || body.nine_played === "back") {
+      ninePlayed = body.nine_played;
+    } else if (body.nine_played != null) {
+      return NextResponse.json(
+        { error: "nine_played must be 'front' or 'back'" },
+        { status: 400 },
+      );
+    }
   }
 
   const rawPlayers = Array.isArray(body.players) ? (body.players as PlayerScorecard[]) : [];
@@ -116,11 +130,11 @@ export async function POST(request: Request) {
   const roundId = await withTransaction(async (tx) => {
     const inserted = await tx
       .prepare(
-        `INSERT INTO rounds (course_id, played_at, created_by, notes, hole_count, scoring_mode)
-         VALUES (?, ?, ?, ?, ?, 'hole_by_hole')
+        `INSERT INTO rounds (course_id, played_at, created_by, notes, hole_count, nine_played, scoring_mode)
+         VALUES (?, ?, ?, ?, ?, ?, 'hole_by_hole')
          RETURNING id`,
       )
-      .get<{ id: number }>(courseId, playedAt, me.id, notes, holeCount);
+      .get<{ id: number }>(courseId, playedAt, me.id, notes, holeCount, ninePlayed);
     const rid = inserted!.id;
 
     for (const p of parsed) {

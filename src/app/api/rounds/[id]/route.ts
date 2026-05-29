@@ -27,6 +27,8 @@ export type RoundDetail = {
   played_at: string;
   notes: string | null;
   hole_count: number;
+  /** Which nine was played, only meaningful when hole_count = 9. */
+  nine_played: "front" | "back" | null;
   created_by: string;
   created_by_name: string;
   can_edit: boolean;
@@ -71,7 +73,7 @@ async function loadRound(
 ): Promise<RoundDetail | null> {
   const round = await db
     .prepare(
-      `SELECT r.id, r.course_id, r.played_at, r.notes, r.hole_count, r.created_by,
+      `SELECT r.id, r.course_id, r.played_at, r.notes, r.hole_count, r.nine_played, r.created_by,
               r.temp_high_f, r.temp_low_f, r.wind_max_mph, r.precip_in, r.weather_code,
               r.weather_fetched_at,
               c.name as course_name, u.display_name as created_by_name
@@ -86,6 +88,7 @@ async function loadRound(
       played_at: string;
       notes: string | null;
       hole_count: number;
+      nine_played: string | null;
       created_by: string;
       temp_high_f: number | null;
       temp_low_f: number | null;
@@ -173,8 +176,14 @@ async function loadRound(
     }
   }
 
+  const ninePlayed: "front" | "back" | null =
+    round.nine_played === "front" || round.nine_played === "back"
+      ? round.nine_played
+      : null;
+
   return {
     ...round,
+    nine_played: ninePlayed,
     weather,
     can_edit: isAdmin || round.created_by === currentUserId,
     pars: parsOut,
@@ -354,6 +363,7 @@ export async function PUT(
     played_at?: unknown;
     notes?: unknown;
     hole_count?: unknown;
+    nine_played?: unknown;
     scores?: unknown;
   };
   try {
@@ -378,6 +388,20 @@ export async function PUT(
   }
   if (holeCount !== 9 && holeCount !== 18) {
     return NextResponse.json({ error: "hole_count must be 9 or 18" }, { status: 400 });
+  }
+
+  // nine_played: only meaningful when 9-hole; forced null otherwise so we
+  // don't carry stale "back"/"front" values from a previous 18-hole save.
+  let ninePlayed: "front" | "back" | null = null;
+  if (holeCount === 9) {
+    if (body.nine_played === "front" || body.nine_played === "back") {
+      ninePlayed = body.nine_played;
+    } else if (body.nine_played != null) {
+      return NextResponse.json(
+        { error: "nine_played must be 'front' or 'back'" },
+        { status: 400 },
+      );
+    }
   }
 
   const v = validateScores(body.scores, holeCount);
@@ -412,9 +436,9 @@ export async function PUT(
   await withTransaction(async (tx) => {
     await tx
       .prepare(
-        `UPDATE rounds SET course_id = ?, played_at = ?, notes = ?, hole_count = ? WHERE id = ?`,
+        `UPDATE rounds SET course_id = ?, played_at = ?, notes = ?, hole_count = ?, nine_played = ? WHERE id = ?`,
       )
-      .run(courseId, playedAt, notes, holeCount, id);
+      .run(courseId, playedAt, notes, holeCount, ninePlayed, id);
     if (weatherStale) {
       await tx
         .prepare(
