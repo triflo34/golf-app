@@ -64,6 +64,22 @@ export function V2Home() {
         <h1 className="text-3xl font-bold text-[var(--v2-accent)]">The Match</h1>
       </div>
 
+      <Link
+        href="/rounds/live/new"
+        className="mb-4 flex items-center justify-between rounded-2xl border border-[var(--v2-accent)]/40 bg-gradient-to-r from-[var(--v2-accent)]/10 to-transparent px-4 py-3 transition hover:bg-[var(--v2-accent)]/15"
+      >
+        <div>
+          <div className="text-sm font-semibold text-[var(--v2-accent)] flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+            Start Live Round
+          </div>
+          <div className="text-xs text-[var(--v2-muted)]">
+            Score hole-by-hole, leaderboard updates in real time
+          </div>
+        </div>
+        <span className="text-xl text-[var(--v2-accent)]">→</span>
+      </Link>
+
       <div className="mb-4 flex items-center justify-center gap-3">
         <button
           onClick={() => setSeason((s) => s - 1)}

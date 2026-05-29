@@ -31,10 +31,15 @@ export function V2Round() {
         }
         return r.json();
       })
-      .then((d) => {
-        if (d) setData(d);
+      .then((d: RoundDetail | null) => {
+        if (!d) return;
+        if (d.status === "live") {
+          router.replace(`/rounds/live/${d.id}`);
+          return;
+        }
+        setData(d);
       });
-  }, [params?.id]);
+  }, [params?.id, router]);
 
   async function handleDelete() {
     if (!params?.id) return;

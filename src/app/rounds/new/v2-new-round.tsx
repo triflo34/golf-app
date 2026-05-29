@@ -37,6 +37,22 @@ export function V2NewRound() {
       </h1>
 
       <Link
+        href="/rounds/live/new"
+        className="mb-3 flex items-center justify-between rounded-2xl border border-[var(--v2-accent)]/40 bg-gradient-to-r from-[var(--v2-accent)]/10 to-transparent px-4 py-3 transition hover:bg-[var(--v2-accent)]/15"
+      >
+        <div>
+          <div className="text-sm font-semibold text-[var(--v2-accent)] flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+            Score live instead
+          </div>
+          <div className="text-xs text-[var(--v2-muted)]">
+            Hole-by-hole entry with a real-time leaderboard
+          </div>
+        </div>
+        <span className="text-xl text-[var(--v2-accent)]">→</span>
+      </Link>
+
+      <Link
         href="/matches/build"
         className="mb-4 block rounded-2xl border border-[var(--v2-border)] bg-[var(--v2-surface)] px-4 py-3 text-sm hover:bg-[var(--v2-surface-2)]"
       >

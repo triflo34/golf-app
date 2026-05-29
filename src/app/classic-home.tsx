@@ -60,6 +60,22 @@ export function ClassicHome() {
         <p className="text-green-600 text-sm"></p>
       </div>
 
+      <Link
+        href="/rounds/live/new"
+        className="mb-4 flex items-center justify-between rounded-xl bg-green-700 px-4 py-3 text-white shadow-sm hover:bg-green-800 transition"
+      >
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+            Start Live Round
+          </div>
+          <div className="text-xs text-green-100">
+            Score hole-by-hole, leaderboard updates in real time
+          </div>
+        </div>
+        <span className="text-xl">→</span>
+      </Link>
+
       <div className="flex items-center justify-center gap-3 mb-6">
         <button
           onClick={() => setSeason((s) => s - 1)}

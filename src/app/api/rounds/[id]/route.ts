@@ -29,6 +29,8 @@ export type RoundDetail = {
   hole_count: number;
   /** Which nine was played, only meaningful when hole_count = 9. */
   nine_played: "front" | "back" | null;
+  /** "live" means scoring is still in progress — UI should redirect to /rounds/live/[id]. */
+  status: "live" | "final";
   created_by: string;
   created_by_name: string;
   can_edit: boolean;
@@ -73,7 +75,8 @@ async function loadRound(
 ): Promise<RoundDetail | null> {
   const round = await db
     .prepare(
-      `SELECT r.id, r.course_id, r.played_at, r.notes, r.hole_count, r.nine_played, r.created_by,
+      `SELECT r.id, r.course_id, r.played_at, r.notes, r.hole_count, r.nine_played,
+              r.status, r.created_by,
               r.temp_high_f, r.temp_low_f, r.wind_max_mph, r.precip_in, r.weather_code,
               r.weather_fetched_at,
               c.name as course_name, u.display_name as created_by_name
@@ -89,6 +92,7 @@ async function loadRound(
       notes: string | null;
       hole_count: number;
       nine_played: string | null;
+      status: "live" | "final";
       created_by: string;
       temp_high_f: number | null;
       temp_low_f: number | null;

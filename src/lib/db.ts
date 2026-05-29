@@ -141,6 +141,12 @@ async function bootstrap(): Promise<void> {
   await ensureCourseNineHoleRatingColumns(sql);
   console.log("[db] bootstrap: ensureRoundsNinePlayedColumn");
   await ensureRoundsNinePlayedColumn(sql);
+  console.log("[db] bootstrap: ensureRoundsStatusColumn");
+  await ensureRoundsStatusColumn(sql);
+  console.log("[db] bootstrap: ensureHoleScoresGuestColumns");
+  await ensureHoleScoresGuestColumns(sql);
+  console.log("[db] bootstrap: ensureRoundPlayersTable");
+  await ensureRoundPlayersTable(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -157,6 +163,12 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureRoundsNinePlayedColumn(sql);
   console.log("[db] ensureCriticalColumns: nine_hole_ratings");
   await ensureCourseNineHoleRatingColumns(sql);
+  console.log("[db] ensureCriticalColumns: rounds_status");
+  await ensureRoundsStatusColumn(sql);
+  console.log("[db] ensureCriticalColumns: hole_scores_guest");
+  await ensureHoleScoresGuestColumns(sql);
+  console.log("[db] ensureCriticalColumns: round_players");
+  await ensureRoundPlayersTable(sql);
 }
 
 function ensureInit(): Promise<void> {
@@ -240,6 +252,7 @@ const SCHEMA_SQL = `
     notes        TEXT,
     hole_count   SMALLINT NOT NULL DEFAULT 18 CHECK (hole_count IN (9, 18)),
     nine_played  TEXT CHECK (nine_played IN ('front','back')),
+    status       TEXT NOT NULL DEFAULT 'final' CHECK (status IN ('live','final')),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS idx_rounds_played_at ON rounds(played_at);
@@ -261,6 +274,22 @@ const SCHEMA_SQL = `
   CREATE UNIQUE INDEX IF NOT EXISTS uq_scores_round_guest
     ON scores(round_id, guest_name) WHERE guest_name IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_scores_player ON scores(player_id);
+
+  -- Roster for a round before final scores exist (live mode). When the round
+  -- finishes, scores rows are written and round_players keeps the original
+  -- seq so the live page stays stable. For non-live rounds this table is unused.
+  CREATE TABLE IF NOT EXISTS round_players (
+    round_id   INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
+    player_id  TEXT REFERENCES users(id),
+    guest_name TEXT,
+    seq        SMALLINT NOT NULL DEFAULT 0,
+    CHECK ((player_id IS NOT NULL) <> (guest_name IS NOT NULL))
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_round_players_player
+    ON round_players(round_id, player_id) WHERE player_id IS NOT NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_round_players_guest
+    ON round_players(round_id, guest_name) WHERE guest_name IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_round_players_round ON round_players(round_id);
 
   -- ===== Golfapalooza event module =====
 
@@ -302,7 +331,8 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS hole_scores (
     id             SERIAL PRIMARY KEY,
     round_id       INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
-    player_id      TEXT NOT NULL REFERENCES users(id),
+    player_id      TEXT REFERENCES users(id),
+    guest_name     TEXT,
     hole_number    SMALLINT NOT NULL,
     strokes        SMALLINT NOT NULL,
     par            SMALLINT,
@@ -310,15 +340,20 @@ const SCHEMA_SQL = `
     yardage        INTEGER,
     updated_by     TEXT REFERENCES users(id),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (round_id, player_id, hole_number)
+    CHECK ((player_id IS NOT NULL) <> (guest_name IS NOT NULL))
   );
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_hole_scores_player
+    ON hole_scores(round_id, player_id, hole_number) WHERE player_id IS NOT NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_hole_scores_guest
+    ON hole_scores(round_id, guest_name, hole_number) WHERE guest_name IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_hole_scores_round ON hole_scores(round_id);
 
   CREATE TABLE IF NOT EXISTS score_edits (
     id            SERIAL PRIMARY KEY,
     hole_score_id INTEGER REFERENCES hole_scores(id) ON DELETE SET NULL,
     round_id      INTEGER NOT NULL,
-    player_id     TEXT NOT NULL,
+    player_id     TEXT,
+    guest_name    TEXT,
     hole_number   SMALLINT NOT NULL,
     old_strokes   SMALLINT,
     new_strokes   SMALLINT,
@@ -555,6 +590,88 @@ async function ensureRoundsNinePlayedColumn(sql: postgres.Sql): Promise<void> {
     `UPDATE rounds SET nine_played = 'front'
      WHERE hole_count = 9 AND nine_played IS NULL`,
   );
+}
+
+async function ensureRoundsStatusColumn(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(
+    `ALTER TABLE rounds ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'final'`,
+  );
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'rounds_status_check'
+      ) THEN
+        ALTER TABLE rounds
+          ADD CONSTRAINT rounds_status_check
+          CHECK (status IN ('live','final'));
+      END IF;
+    END$$;
+  `);
+}
+
+async function ensureHoleScoresGuestColumns(sql: postgres.Sql): Promise<void> {
+  // Add the guest_name column and let player_id be nullable so guests can
+  // appear on the live scorer alongside registered users. Existing rows
+  // (all registered-player edits) are unaffected.
+  await sql.unsafe(`
+    ALTER TABLE hole_scores  ADD COLUMN IF NOT EXISTS guest_name TEXT;
+    ALTER TABLE hole_scores  ALTER COLUMN player_id DROP NOT NULL;
+    ALTER TABLE score_edits  ADD COLUMN IF NOT EXISTS guest_name TEXT;
+    ALTER TABLE score_edits  ALTER COLUMN player_id DROP NOT NULL;
+  `);
+  // Exactly-one-of constraint (named, idempotent via guard).
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'hole_scores_player_or_guest_check'
+      ) THEN
+        ALTER TABLE hole_scores
+          ADD CONSTRAINT hole_scores_player_or_guest_check
+          CHECK ((player_id IS NOT NULL) <> (guest_name IS NOT NULL));
+      END IF;
+    END$$;
+  `);
+  // Replace the old strict UNIQUE with two partial unique indexes — one per
+  // identity kind. Drop the legacy constraint if it exists. UNIQUE creates an
+  // implicit index named `hole_scores_round_id_player_id_hole_number_key`
+  // (Postgres default), so we drop it by constraint name.
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'hole_scores_round_id_player_id_hole_number_key'
+      ) THEN
+        ALTER TABLE hole_scores
+          DROP CONSTRAINT hole_scores_round_id_player_id_hole_number_key;
+      END IF;
+    END$$;
+  `);
+  await sql.unsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_hole_scores_player
+      ON hole_scores(round_id, player_id, hole_number) WHERE player_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_hole_scores_guest
+      ON hole_scores(round_id, guest_name, hole_number) WHERE guest_name IS NOT NULL;
+  `);
+}
+
+async function ensureRoundPlayersTable(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS round_players (
+      round_id   INTEGER NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
+      player_id  TEXT REFERENCES users(id),
+      guest_name TEXT,
+      seq        SMALLINT NOT NULL DEFAULT 0,
+      CHECK ((player_id IS NOT NULL) <> (guest_name IS NOT NULL))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_round_players_player
+      ON round_players(round_id, player_id) WHERE player_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_round_players_guest
+      ON round_players(round_id, guest_name) WHERE guest_name IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_round_players_round ON round_players(round_id);
+  `);
 }
 
 async function ensureCourseApiColumns(sql: postgres.Sql): Promise<void> {

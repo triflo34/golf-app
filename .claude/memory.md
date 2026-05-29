@@ -13,6 +13,7 @@ Social golf leaderboard app for tracking rounds, scores, and friendly competitio
 (Updated after every meaningful change)
 - Auth working (prod redirect-loop / 504 hang fixed, survives concurrent spam-click)
 - Rounds can be created — now supports 9- or 18-hole (per-round, defaults from course, user can override)
+- **Live Round Mode**: hole-by-hole scoring page at `/rounds/live/[id]` with real-time leaderboard, optimistic UI, 30s polling, offline queue, finish-to-final transition. Entry via "Start Live Round" CTA on home + new-round page. Registered users and guests both supported.
 - Scores partially implemented
 - Leaderboard: 18/9/All holes toggle, season + scope (mine/everyone) toggles, Score Trends line chart (custom tooltip shows weather), placement points (linear N..1) + 1st/2nd/3rd counts + wins columns
 - Stats page exists with H2H + player picker
@@ -34,6 +35,15 @@ Social golf leaderboard app for tracking rounds, scores, and friendly competitio
 - Bootstrap root cause never confirmed (which step hangs through Supabase pooler). Bypassed via env flag rather than fixed.
 
 ## Recent Changes
+- Added Live Round Mode (2026-05-28):
+  - Schema: `rounds.status` (live/final, default final), `hole_scores.player_id` nullable + `guest_name` + XOR check + two partial UNIQUE indexes, `score_edits` same nullability, new `round_players` roster table. `ensureRoundsStatusColumn`, `ensureHoleScoresGuestColumns`, `ensureRoundPlayersTable` self-migrate locally + run in prod via `ensureCriticalColumns` (works with `SKIP_DB_BOOTSTRAP=1`).
+  - New APIs under `src/app/api/rounds/live/`: `POST /` (create), `GET /[id]` (returns players + holes + scores + computed leaderboard), `POST /[id]/holes` (per-hole upsert by player_id or guest_name, logs `score_edits`), `POST /[id]/finish` (writes aggregate `scores` rows, flips `status='final'`, schedules weather backfill via `after()`).
+  - New shared components: `src/components/live-round-setup.tsx` (course + 9/18 + nine_played + players roster), `src/components/live-round-view.tsx` (top leaderboard with crown + ties as `T2` + vs-par color + rank-flash animation, hole-strip nav, big +/− entry, sticky bottom Prev/Next + Finish bar, 30s background poll, optimistic + `fetchOrQueue` offline support).
+  - New pages: `src/app/rounds/live/new/` (page.tsx + classic/v2 wrappers) and `src/app/rounds/live/[id]/` (page.tsx + classic/v2 wrappers).
+  - `/rounds/[id]` server route now returns `status` and the classic + v2 round detail pages redirect to `/rounds/live/[id]` when `status === 'live'`.
+  - CTAs added: "Start Live Round" card on home (classic + v2) above the season picker, "Score live instead" link above the Build-a-fair-match card on `/rounds/new`.
+  - Mini-game standings deferred to feature #5 (Mini Game Engine).
+  - Prod migration: `ensureCriticalColumns` will patch on first request after deploy, OR run the SQL block in `.claude/live-round-plan.md`.
 - Added weather integration (2026-05-13):
   - Schema: `courses.latitude/longitude` and `rounds.temp_high_f/temp_low_f/wind_max_mph/precip_in/weather_code/weather_fetched_at`. Self-migrating helpers in `db.ts`; prod ALTERs run via Supabase SQL editor.
   - New `src/lib/weather.ts` (server): `geocodeCourse` (Nominatim, structured then free-text, 1.1s pacing + 429 retry), `fetchRoundWeather` (Open-Meteo archive for >5d old, forecast w/ past_days for recent), `populateRoundWeather` (full pipeline, idempotent on `weather_fetched_at`).

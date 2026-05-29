@@ -27,6 +27,22 @@ export function ClassicNewRound() {
       <h1 className="text-2xl font-bold text-green-800 mb-4">Log a Round</h1>
 
       <Link
+        href="/rounds/live/new"
+        className="mb-3 flex items-center justify-between rounded-lg bg-green-700 px-4 py-3 text-white hover:bg-green-800 transition"
+      >
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+            Score live instead
+          </div>
+          <div className="text-xs text-green-100">
+            Hole-by-hole entry with a real-time leaderboard
+          </div>
+        </div>
+        <span className="text-xl">→</span>
+      </Link>
+
+      <Link
         href="/matches/build"
         className="mb-4 block bg-white border border-gray-200 rounded-lg px-4 py-3 hover:bg-gray-50"
       >
