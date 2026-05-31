@@ -20,6 +20,7 @@ export function V2Round() {
   const [notFound, setNotFound] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [togglingExclude, setTogglingExclude] = useState(false);
 
   useEffect(() => {
     if (!params?.id) return;
@@ -53,6 +54,25 @@ export function V2Round() {
     }
     router.push("/");
     router.refresh();
+  }
+
+  async function handleToggleExclude() {
+    if (!params?.id || !data) return;
+    setTogglingExclude(true);
+    const next = !data.excluded;
+    const res = await fetch(`/api/rounds/${params.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excluded: next }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error ?? "Update failed");
+      setTogglingExclude(false);
+      return;
+    }
+    setData({ ...data, excluded: next });
+    setTogglingExclude(false);
   }
 
   if (notFound) {
@@ -97,6 +117,14 @@ export function V2Round() {
         ← Home
       </Link>
 
+      {data.excluded && (
+        <div className="mt-3 rounded-xl border border-amber-700 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+          <span className="font-semibold">Excluded from stats.</span> This
+          round is hidden from the leaderboard, handicap, head-to-head, and
+          all aggregates.
+        </div>
+      )}
+
       <V2Card className="mb-4 mt-3">
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -108,6 +136,11 @@ export function V2Round() {
           {data.hole_count === 9 && (
             <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300">
               9 holes
+            </span>
+          )}
+          {data.excluded && (
+            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+              excluded
             </span>
           )}
         </div>
@@ -210,38 +243,55 @@ export function V2Round() {
       )}
 
       {data.can_edit && (
-        <div className="flex gap-2 pb-2">
-          <Link
-            href={`/rounds/${data.id}/edit`}
-            className="flex-1 rounded-2xl bg-[var(--v2-accent)] py-2.5 text-center text-sm font-semibold text-black hover:bg-[var(--v2-accent-soft)]"
-          >
-            Edit
-          </Link>
-          {!confirming ? (
-            <button
-              onClick={() => setConfirming(true)}
-              className="flex-1 rounded-2xl border border-red-900 bg-transparent py-2.5 text-sm font-semibold text-red-400 hover:bg-red-950/40"
+        <div className="space-y-2 pb-2">
+          <div className="flex gap-2">
+            <Link
+              href={`/rounds/${data.id}/edit`}
+              className="flex-1 rounded-2xl bg-[var(--v2-accent)] py-2.5 text-center text-sm font-semibold text-black hover:bg-[var(--v2-accent-soft)]"
             >
-              Delete
-            </button>
-          ) : (
-            <>
+              Edit
+            </Link>
+            {!confirming ? (
               <button
-                onClick={() => setConfirming(false)}
-                disabled={deleting}
-                className="flex-1 rounded-2xl border border-[var(--v2-border)] bg-[var(--v2-surface)] py-2.5 text-sm font-semibold text-[var(--v2-muted)]"
+                onClick={() => setConfirming(true)}
+                className="flex-1 rounded-2xl border border-red-900 bg-transparent py-2.5 text-sm font-semibold text-red-400 hover:bg-red-950/40"
               >
-                Cancel
+                Delete
               </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 rounded-2xl bg-red-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {deleting ? "…" : "Delete?"}
-              </button>
-            </>
-          )}
+            ) : (
+              <>
+                <button
+                  onClick={() => setConfirming(false)}
+                  disabled={deleting}
+                  className="flex-1 rounded-2xl border border-[var(--v2-border)] bg-[var(--v2-surface)] py-2.5 text-sm font-semibold text-[var(--v2-muted)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 rounded-2xl bg-red-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {deleting ? "…" : "Delete?"}
+                </button>
+              </>
+            )}
+          </div>
+          <button
+            onClick={handleToggleExclude}
+            disabled={togglingExclude}
+            className={`w-full rounded-2xl border py-2 text-sm font-medium transition disabled:opacity-50 ${
+              data.excluded
+                ? "border-[var(--v2-accent)]/40 bg-[var(--v2-accent)]/10 text-[var(--v2-accent)] hover:bg-[var(--v2-accent)]/20"
+                : "border-amber-800 bg-transparent text-amber-300 hover:bg-amber-950/40"
+            }`}
+          >
+            {togglingExclude
+              ? "Saving…"
+              : data.excluded
+                ? "Restore to stats"
+                : "Exclude from stats / leaderboard / handicap"}
+          </button>
         </div>
       )}
     </V2PageShell>

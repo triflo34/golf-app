@@ -90,7 +90,9 @@ export async function GET(request: Request) {
         `SELECT DISTINCT s.round_id
          FROM scores s
          JOIN rounds r ON r.id = s.round_id
-         WHERE s.player_id = ? AND r.played_at >= ? AND r.played_at <= ? ${holesFilter}`,
+         WHERE s.player_id = ? AND r.played_at >= ? AND r.played_at <= ?
+           AND r.excluded = FALSE
+           ${holesFilter}`,
       )
       .all<{ round_id: number }>(me.id, start, end, ...holesArg);
     if (myRoundRows.length === 0) {
@@ -158,6 +160,7 @@ export async function GET(request: Request) {
        JOIN rounds r ON r.id = s.round_id
        LEFT JOIN users u ON u.id = s.player_id
        WHERE r.played_at >= ? AND r.played_at <= ?
+         AND r.excluded = FALSE
          AND (s.player_id IS NULL OR u.hidden = 0)
          ${holesFilter}`,
     )
@@ -187,6 +190,7 @@ export async function GET(request: Request) {
        FROM hole_scores hs
        JOIN rounds r ON r.id = hs.round_id
        WHERE r.played_at >= ? AND r.played_at <= ?
+         AND r.excluded = FALSE
          AND hs.par IS NOT NULL
          ${holesFilter}
        GROUP BY hs.player_id`,

@@ -89,7 +89,7 @@ export async function GET(request: Request) {
              FROM scores s
              JOIN rounds r ON r.id = s.round_id
              JOIN courses c ON c.id = r.course_id
-             WHERE s.player_id = ?${seasonClause}
+             WHERE s.player_id = ? AND r.excluded = FALSE${seasonClause}
              ORDER BY r.played_at DESC`,
           )
           .all<ScoreRow>(ref.id, ...seasonArgs)
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
              FROM scores s
              JOIN rounds r ON r.id = s.round_id
              JOIN courses c ON c.id = r.course_id
-             WHERE LOWER(s.guest_name) = ?${seasonClause}
+             WHERE LOWER(s.guest_name) = ? AND r.excluded = FALSE${seasonClause}
              ORDER BY r.played_at DESC`,
           )
           .all<ScoreRow>(ref.name, ...seasonArgs);

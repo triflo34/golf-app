@@ -337,8 +337,13 @@ export function V2Home() {
                 <V2Card className="!p-3">
                   <div className="mb-2 flex items-start justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-white">
+                      <div className="truncate text-sm font-semibold text-white flex items-center gap-1.5">
                         {round.course_name}
+                        {round.excluded && (
+                          <span className="text-[9px] font-semibold uppercase text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded">
+                            excluded
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-[var(--v2-muted)]">
                         {formatDate(round.played_at)}

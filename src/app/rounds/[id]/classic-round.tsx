@@ -17,6 +17,7 @@ export function ClassicRound() {
   const [notFound, setNotFound] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [togglingExclude, setTogglingExclude] = useState(false);
 
   useEffect(() => {
     if (!params?.id) return;
@@ -50,6 +51,25 @@ export function ClassicRound() {
     }
     router.push("/");
     router.refresh();
+  }
+
+  async function handleToggleExclude() {
+    if (!params?.id || !data) return;
+    setTogglingExclude(true);
+    const next = !data.excluded;
+    const res = await fetch(`/api/rounds/${params.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excluded: next }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error ?? "Update failed");
+      setTogglingExclude(false);
+      return;
+    }
+    setData({ ...data, excluded: next });
+    setTogglingExclude(false);
   }
 
   if (notFound) {
@@ -91,6 +111,14 @@ export function ClassicRound() {
         ← Home
       </Link>
 
+      {data.excluded && (
+        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <span className="font-semibold">Excluded from stats.</span> This
+          round is hidden from the leaderboard, handicap, head-to-head, and
+          all aggregates.
+        </div>
+      )}
+
       <div className="card mt-3 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
           <Link
@@ -102,6 +130,11 @@ export function ClassicRound() {
           {data.hole_count === 9 && (
             <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
               9 holes
+            </span>
+          )}
+          {data.excluded && (
+            <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+              excluded
             </span>
           )}
         </div>
@@ -210,38 +243,55 @@ export function ClassicRound() {
       )}
 
       {data.can_edit && (
-        <div className="flex gap-2">
-          <Link
-            href={`/rounds/${data.id}/edit`}
-            className="flex-1 py-2.5 bg-green-700 text-white text-center font-medium rounded-lg hover:bg-green-800 transition"
-          >
-            Edit
-          </Link>
-          {!confirming ? (
-            <button
-              onClick={() => setConfirming(true)}
-              className="flex-1 py-2.5 bg-white text-red-600 border border-red-200 font-medium rounded-lg hover:bg-red-50 transition"
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Link
+              href={`/rounds/${data.id}/edit`}
+              className="flex-1 py-2.5 bg-green-700 text-white text-center font-medium rounded-lg hover:bg-green-800 transition"
             >
-              Delete
-            </button>
-          ) : (
-            <>
+              Edit
+            </Link>
+            {!confirming ? (
               <button
-                onClick={() => setConfirming(false)}
-                disabled={deleting}
-                className="flex-1 py-2.5 bg-white text-gray-600 border border-gray-200 font-medium rounded-lg"
+                onClick={() => setConfirming(true)}
+                className="flex-1 py-2.5 bg-white text-red-600 border border-red-200 font-medium rounded-lg hover:bg-red-50 transition"
               >
-                Cancel
+                Delete
               </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 py-2.5 bg-red-600 text-white font-medium rounded-lg disabled:opacity-50"
-              >
-                {deleting ? "..." : "Delete?"}
-              </button>
-            </>
-          )}
+            ) : (
+              <>
+                <button
+                  onClick={() => setConfirming(false)}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 bg-white text-gray-600 border border-gray-200 font-medium rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 bg-red-600 text-white font-medium rounded-lg disabled:opacity-50"
+                >
+                  {deleting ? "..." : "Delete?"}
+                </button>
+              </>
+            )}
+          </div>
+          <button
+            onClick={handleToggleExclude}
+            disabled={togglingExclude}
+            className={`w-full py-2 text-sm font-medium rounded-lg border transition disabled:opacity-50 ${
+              data.excluded
+                ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                : "bg-white text-amber-700 border-amber-200 hover:bg-amber-50"
+            }`}
+          >
+            {togglingExclude
+              ? "Saving…"
+              : data.excluded
+                ? "Restore to stats"
+                : "Exclude from stats / leaderboard / handicap"}
+          </button>
         </div>
       )}
     </div>

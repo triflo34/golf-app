@@ -79,7 +79,7 @@ export async function getPlayerHandicapIndex(
        FROM scores s
        JOIN rounds r  ON r.id = s.round_id
        JOIN courses c ON c.id = r.course_id
-       WHERE s.player_id = ?
+       WHERE s.player_id = ? AND r.excluded = FALSE
        ORDER BY r.played_at ASC, r.id ASC`,
     )
     .all<RoundRow>(userId);
@@ -113,7 +113,7 @@ export async function getPlayerHandicapDetails(
        FROM scores s
        JOIN rounds r  ON r.id = s.round_id
        JOIN courses c ON c.id = r.course_id
-       WHERE s.player_id = ?
+       WHERE s.player_id = ? AND r.excluded = FALSE
        ORDER BY r.played_at ASC, r.id ASC`,
     )
     .all<
@@ -236,7 +236,7 @@ export async function getPlayerHandicapIndexes(
        FROM scores s
        JOIN rounds r  ON r.id = s.round_id
        JOIN courses c ON c.id = r.course_id
-       WHERE s.player_id IN (${placeholders})
+       WHERE s.player_id IN (${placeholders}) AND r.excluded = FALSE
        ORDER BY s.player_id, r.played_at ASC, r.id ASC`,
     )
     .all<RoundRow & { player_id: string; played_at: string; round_id: number }>(

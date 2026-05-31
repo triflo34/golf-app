@@ -153,6 +153,8 @@ async function bootstrap(): Promise<void> {
   await ensureEventHoleConfigColumns(sql);
   console.log("[db] bootstrap: ensureEventParticipantSeqColumn");
   await ensureEventParticipantSeqColumn(sql);
+  console.log("[db] bootstrap: ensureRoundsExcludedColumn");
+  await ensureRoundsExcludedColumn(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -181,6 +183,8 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureEventHoleConfigColumns(sql);
   console.log("[db] ensureCriticalColumns: event_participant_seq");
   await ensureEventParticipantSeqColumn(sql);
+  console.log("[db] ensureCriticalColumns: rounds_excluded");
+  await ensureRoundsExcludedColumn(sql);
 }
 
 function ensureInit(): Promise<void> {
@@ -707,6 +711,12 @@ async function ensureRoundPlayersTable(sql: postgres.Sql): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS uq_round_players_guest
       ON round_players(round_id, guest_name) WHERE guest_name IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_round_players_round ON round_players(round_id);
+  `);
+}
+
+async function ensureRoundsExcludedColumn(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE rounds ADD COLUMN IF NOT EXISTS excluded BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 }
 

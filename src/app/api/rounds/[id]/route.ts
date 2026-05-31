@@ -31,6 +31,8 @@ export type RoundDetail = {
   nine_played: "front" | "back" | null;
   /** "live" means scoring is still in progress — UI should redirect to /rounds/live/[id]. */
   status: "live" | "final";
+  /** When true, this round is hidden from leaderboard, stats, handicap, etc. */
+  excluded: boolean;
   created_by: string;
   created_by_name: string;
   can_edit: boolean;
@@ -76,7 +78,7 @@ async function loadRound(
   const round = await db
     .prepare(
       `SELECT r.id, r.course_id, r.played_at, r.notes, r.hole_count, r.nine_played,
-              r.status, r.created_by,
+              r.status, r.excluded, r.created_by,
               r.temp_high_f, r.temp_low_f, r.wind_max_mph, r.precip_in, r.weather_code,
               r.weather_fetched_at,
               c.name as course_name, u.display_name as created_by_name
@@ -93,6 +95,7 @@ async function loadRound(
       hole_count: number;
       nine_played: string | null;
       status: "live" | "final";
+      excluded: boolean;
       created_by: string;
       temp_high_f: number | null;
       temp_low_f: number | null;
@@ -494,6 +497,42 @@ export async function PUT(
     after(() => populateRoundWeather(id));
   }
 
+  return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id: idParam } = await params;
+  const id = Number(idParam);
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "Bad id" }, { status: 400 });
+  }
+  const existing = await db
+    .prepare("SELECT created_by FROM rounds WHERE id = ?")
+    .get<{ created_by: string }>(id);
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!me.is_admin && existing.created_by !== me.id) {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
+
+  let body: { excluded?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  if (typeof body.excluded !== "boolean") {
+    return NextResponse.json({ error: "excluded must be boolean" }, { status: 400 });
+  }
+
+  await db
+    .prepare("UPDATE rounds SET excluded = ? WHERE id = ?")
+    .run(body.excluded, id);
   return NextResponse.json({ ok: true });
 }
 

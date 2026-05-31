@@ -132,7 +132,9 @@ export async function GET(request: Request) {
       .prepare(
         `SELECT r.id, r.played_at, c.name as course_name
          FROM rounds r JOIN courses c ON c.id = r.course_id
-         WHERE r.id IN (${placeholders})${seasonClause}
+         WHERE r.id IN (${placeholders})
+           AND r.excluded = FALSE
+           ${seasonClause}
          ORDER BY r.played_at DESC`,
       )
       .all<{ id: number; played_at: string; course_name: string }>(

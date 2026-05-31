@@ -60,7 +60,9 @@ export async function GET(request: Request) {
   }
 
   const seasonClause =
-    season != null ? " WHERE r.played_at >= ? AND r.played_at <= ?" : "";
+    season != null
+      ? " WHERE r.excluded = FALSE AND r.played_at >= ? AND r.played_at <= ?"
+      : " WHERE r.excluded = FALSE";
   const seasonArgs =
     season != null ? [`${season}-01-01`, `${season}-12-31`] : [];
 

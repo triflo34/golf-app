@@ -71,7 +71,7 @@ export async function GET(
        FROM scores s
        JOIN rounds r ON r.id = s.round_id
        LEFT JOIN users u ON u.id = s.player_id
-       WHERE r.course_id = ?
+       WHERE r.course_id = ? AND r.excluded = FALSE
        ORDER BY s.gross_score ASC, r.played_at DESC
        LIMIT 10`,
     )

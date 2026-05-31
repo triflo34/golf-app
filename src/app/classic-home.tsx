@@ -375,8 +375,13 @@ export function ClassicHome() {
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-gray-800 text-sm truncate">
+                    <div className="font-semibold text-gray-800 text-sm truncate flex items-center gap-1.5">
                       {round.course_name}
+                      {round.excluded && (
+                        <span className="text-[9px] font-semibold uppercase text-amber-700 bg-amber-100 px-1 py-0.5 rounded">
+                          excluded
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-gray-500">
                       {formatDate(round.played_at)}

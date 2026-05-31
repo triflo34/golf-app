@@ -8,6 +8,7 @@ export type RoundListItem = {
   course_id: number;
   course_name: string;
   notes: string | null;
+  excluded: boolean;
   scores: {
     player_id: string | null;
     guest_name: string | null;
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
 
   const rounds = await db
     .prepare(
-      `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes
+      `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes, r.excluded
        FROM rounds r JOIN courses c ON c.id = r.course_id
        ORDER BY r.played_at DESC, r.id DESC
        LIMIT ?`,
@@ -40,6 +41,7 @@ export async function GET(request: Request) {
       course_id: number;
       course_name: string;
       notes: string | null;
+      excluded: boolean;
     }>(limit);
 
   if (rounds.length === 0) return NextResponse.json({ rounds: [] });
