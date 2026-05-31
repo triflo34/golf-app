@@ -4,64 +4,56 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 
+/**
+ * v2 bottom nav — 5 items per spec §5.8.
+ * Home / Rounds / Stats / Events / Profile.
+ *
+ * Recent rounds + new-round logging are reached from Home and from the
+ * "Rounds" tab (which lands on the round list / live round if active).
+ * Courses moved off the global nav and lives under the Rounds flow.
+ *
+ * Visual: fixed to bottom, near-black blurred surface, hairline gold top.
+ * Icons stroke-2, 20px, gold when active / faint when idle.
+ */
 const navItems = [
   {
+    key: "home",
     href: "/",
-    label: "Leaderboard",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-        <path d="M5 3a2 2 0 00-2 2v14a2 2 0 002 2h4V3H5zM10 3v18h4V3h-4zM15 3v18h4a2 2 0 002-2V5a2 2 0 00-2-2h-4z" />
-      </svg>
-    ),
+    label: "Home",
+    icon: HomeIcon,
+    match: (p: string) => p === "/",
   },
   {
+    key: "rounds",
     href: "/rounds/new",
-    label: "Log",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-        <path fillRule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
-      </svg>
-    ),
+    label: "Rounds",
+    icon: RoundsIcon,
+    match: (p: string) =>
+      p.startsWith("/rounds") || p === "/courses" || p.startsWith("/courses/"),
   },
   {
-    href: "/events",
-    label: "Events",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-        <path fillRule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3a.75.75 0 011.5 0v1.5h.75a3 3 0 013 3v11.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V7.5a3 3 0 013-3H6V3a.75.75 0 01.75-.75zm13.5 9a1.5 1.5 0 00-1.5-1.5H5.25a1.5 1.5 0 00-1.5 1.5v7.5a1.5 1.5 0 001.5 1.5h13.5a1.5 1.5 0 001.5-1.5v-7.5z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: "/courses",
-    label: "Courses",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-        <path fillRule="evenodd" d="M8.161 2.58a1.875 1.875 0 011.678 0l4.993 2.498c.106.052.23.052.336 0l3.869-1.935A1.875 1.875 0 0121.75 4.82v12.485c0 .71-.401 1.36-1.037 1.677l-4.875 2.437a1.875 1.875 0 01-1.676 0L9.17 18.92a.188.188 0 00-.336 0l-3.868 1.935A1.875 1.875 0 012.25 19.18V6.695c0-.71.401-1.36 1.036-1.677l4.875-2.437z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
+    key: "stats",
     href: "/stats",
     label: "Stats",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-        <path d="M18.375 2.25c-1.035 0-1.875.84-1.875 1.875v15.75c0 1.035.84 1.875 1.875 1.875h.75c1.035 0 1.875-.84 1.875-1.875V4.125c0-1.036-.84-1.875-1.875-1.875h-.75zM9.75 8.625c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v11.25c0 1.035-.84 1.875-1.875 1.875h-.75a1.875 1.875 0 01-1.875-1.875V8.625zM3 13.125c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v6.75c0 1.035-.84 1.875-1.875 1.875h-.75A1.875 1.875 0 013 19.875v-6.75z" />
-      </svg>
-    ),
+    icon: StatsIcon,
+    match: (p: string) => p.startsWith("/stats"),
   },
   {
+    key: "events",
+    href: "/events",
+    label: "Events",
+    icon: EventsIcon,
+    match: (p: string) => p.startsWith("/events"),
+  },
+  {
+    key: "profile",
     href: "/profile",
     label: "Profile",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-        <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
-      </svg>
-    ),
+    icon: ProfileIcon,
+    match: (p: string) => p.startsWith("/profile"),
   },
-];
+] as const;
 
-/** Dark bottom nav matching the v2 mockup — green for active, gray for idle. */
 export function V2BottomNav() {
   const pathname = usePathname();
   const { user } = useAuth();
@@ -74,29 +66,136 @@ export function V2BottomNav() {
   }
 
   return (
-    <nav className="safe-area-bottom fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--v2-border)] bg-[var(--v2-surface)]">
-      <div className="mx-auto flex h-16 max-w-lg items-center justify-around">
+    <nav
+      className="safe-area-bottom fixed bottom-0 left-0 right-0 z-50"
+      style={{
+        background: "rgba(8, 13, 8, 0.96)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        borderTop: "0.5px solid rgba(212, 175, 55, 0.15)",
+      }}
+    >
+      <div className="mx-auto flex max-w-lg items-stretch justify-around px-2 py-2">
         {navItems.map((item) => {
-          const isActive =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+          const isActive = item.match(pathname);
+          const Icon = item.icon;
           return (
             <Link
-              key={item.href}
+              key={item.key}
               href={item.href}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 transition-colors ${
-                isActive
-                  ? "text-[var(--v2-score)]"
-                  : "text-[var(--v2-muted)] hover:text-white"
-              }`}
+              className={`flex flex-1 flex-col items-center justify-center gap-1 py-1 transition-colors ${
+                isActive ? "text-[var(--v2-gold)]" : "text-[var(--v2-text-faint)]"
+              } hover:text-[var(--v2-text)]`}
             >
-              {item.icon}
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <Icon active={isActive} />
+              <span
+                className="text-[9.5px] font-medium"
+                style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+              >
+                {item.label}
+              </span>
             </Link>
           );
         })}
       </div>
     </nav>
+  );
+}
+
+type IconProps = { active: boolean };
+
+function HomeIcon({ active }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={active ? 2.25 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 11l9-8 9 8" />
+      <path d="M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10" />
+    </svg>
+  );
+}
+
+function RoundsIcon({ active }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={active ? 2.25 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 2v6" />
+      <circle cx="12" cy="14" r="3" />
+      <path d="M12 17v5" />
+      <path d="M5 22h14" />
+    </svg>
+  );
+}
+
+function StatsIcon({ active }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={active ? 2.25 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 20h18" />
+      <path d="M6 20v-8" />
+      <path d="M11 20V8" />
+      <path d="M16 20v-5" />
+      <path d="M21 20V4" />
+    </svg>
+  );
+}
+
+function EventsIcon({ active }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={active ? 2.25 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 9V4a2 2 0 012-2h8a2 2 0 012 2v5" />
+      <path d="M5 9h14l-1 9a3 3 0 01-3 3H9a3 3 0 01-3-3L5 9z" />
+      <path d="M9 13l2 2 4-4" />
+    </svg>
+  );
+}
+
+function ProfileIcon({ active }: IconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={active ? 2.25 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+    </svg>
   );
 }

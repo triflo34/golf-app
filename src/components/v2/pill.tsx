@@ -10,8 +10,12 @@ type Props = {
 };
 
 /**
- * Pill / chip used for filters (year strip in Highlights mockup) and toggles
- * (Edit profile, Try classic UI). Yellow border + fill when active.
+ * v2 filter chip. Two states per spec §5.2:
+ *   - active   → gold-tinted bg + brighter gold border + gold text
+ *   - inactive → transparent bg + hairline gold border + dim text
+ *
+ * Used in horizontal chip rows (season, scope, format, holes), and as
+ * non-interactive tags via `as="span"`.
  */
 export function V2Pill({
   children,
@@ -20,26 +24,13 @@ export function V2Pill({
   as = "button",
   className = "",
 }: Props) {
-  const base =
-    "inline-flex items-center justify-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-colors";
-  const activeCls =
-    "bg-[var(--v2-accent)] text-black";
-  const idleCls =
-    "border border-[var(--v2-border)] bg-[var(--v2-surface)] text-[var(--v2-muted)] hover:text-white";
+  const tone = active ? "v2-chip v2-chip-on" : "v2-chip v2-chip-off";
 
   if (as === "span") {
-    return (
-      <span className={`${base} ${active ? activeCls : idleCls} ${className}`}>
-        {children}
-      </span>
-    );
+    return <span className={`${tone} ${className}`}>{children}</span>;
   }
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`${base} ${active ? activeCls : idleCls} ${className}`}
-    >
+    <button type="button" onClick={onClick} className={`${tone} ${className}`}>
       {children}
     </button>
   );

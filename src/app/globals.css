@@ -10,16 +10,45 @@
    unported classic page. Instead, v2 components / page wrappers reference
    --v2-bg / --v2-surface explicitly. Classic pages stay untouched. */
 html[data-ui="v2"] {
-  --v2-bg: #0a0a0a;
-  --v2-fg: #f5f5f5;
-  --v2-surface: #1c1c1c;
-  --v2-surface-2: #262626;
-  --v2-border: #2a2a2a;
-  --v2-muted: #9ca3af;
-  --v2-accent: #fbbf24;
-  --v2-accent-soft: #f59e0b;
-  --v2-score: #22c55e;
-  --v2-score-soft: #4ade80;
+  /* backgrounds */
+  --v2-bg-0: #080d08;       /* deepest — nav bar, recessed wells */
+  --v2-bg-1: #0a0f0a;       /* app background top */
+  --v2-bg-2: #0d1a0d;       /* app background bottom (gradient target) */
+  --v2-bg: #0a0f0a;         /* alias for legacy v2 components */
+  --v2-green-deep: #1a2e1a; /* brand green — banners, avatar text-on-gold */
+
+  /* accent */
+  --v2-gold: #d4af37;
+  --v2-gold-bright: #f0d977;
+  --v2-gold-deep: #c79b22;
+  --v2-accent: #d4af37;         /* alias */
+  --v2-accent-soft: #f0d977;    /* alias */
+
+  /* status + player colors */
+  --v2-sage: #97c459;
+  --v2-coral: #d85a30;
+  --v2-pink: #d4537e;
+  --v2-purple: #7f77dd;
+  --v2-red: #e24b4a;
+  --v2-amber-warn: #e2855a;
+  --v2-score: #97c459;          /* alias for sage */
+  --v2-score-soft: #b3d488;
+
+  /* text */
+  --v2-fg: #f5f5f0;
+  --v2-text: #f5f5f0;
+  --v2-text-dim: #8a9a8a;
+  --v2-text-faint: #5f6a5f;
+  --v2-muted: #8a9a8a;          /* alias */
+
+  /* surfaces — used by legacy v2 callsites */
+  --v2-surface: rgba(20, 30, 20, 0.5);
+  --v2-surface-2: #0d1a0d;
+  --v2-border: rgba(212, 175, 55, 0.1);
+
+  /* podium */
+  --v2-silver: #b4b2a9;
+  --v2-bronze: #d85a30;
 }
 
 @theme inline {
@@ -27,6 +56,9 @@ html[data-ui="v2"] {
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-fraunces), Georgia, serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-outfit: var(--font-outfit), system-ui, sans-serif;
 }
 
 body {
@@ -73,4 +105,225 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* =================================================================
+ * v2 design-system helpers
+ * Scoped to html[data-ui="v2"] so they only kick in when v2 is active.
+ * Components prefer these classes over inline rgba() to keep markup
+ * legible and the token set centralized.
+ * ================================================================= */
+html[data-ui="v2"] body {
+  font-family: var(--font-outfit), system-ui, -apple-system, sans-serif;
+  color: var(--v2-text);
+}
+
+html[data-ui="v2"] .v2-bg {
+  background: linear-gradient(180deg, var(--v2-bg-1) 0%, var(--v2-bg-2) 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+html[data-ui="v2"] .v2-card {
+  background: rgba(20, 30, 20, 0.5);
+  border: 0.5px solid rgba(212, 175, 55, 0.1);
+  border-radius: 13px;
+  padding: 14px;
+  transition: border-color 0.2s ease;
+}
+
+html[data-ui="v2"] .v2-card-hover:hover {
+  border-color: rgba(212, 175, 55, 0.25);
+}
+
+html[data-ui="v2"] .v2-card-gold {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(20, 30, 20, 0.6) 100%);
+  border: 0.5px solid rgba(212, 175, 55, 0.25);
+  border-radius: 13px;
+}
+
+html[data-ui="v2"] .v2-card-live {
+  background: linear-gradient(135deg, #1a2e1a 0%, #0f1f0f 100%);
+  border: 0.5px solid rgba(212, 175, 55, 0.3);
+  border-radius: 13px;
+  position: relative;
+  overflow: hidden;
+}
+html[data-ui="v2"] .v2-card-live::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(circle at top right, rgba(212, 175, 55, 0.15), transparent 70%);
+  pointer-events: none;
+}
+
+/* Chip pair: chip-on / chip-off */
+html[data-ui="v2"] .v2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 13px;
+  border-radius: 13px;
+  font-family: var(--font-outfit), system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  border: 0.5px solid;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+html[data-ui="v2"] .v2-chip-on {
+  background: rgba(212, 175, 55, 0.2);
+  border-color: rgba(212, 175, 55, 0.45);
+  color: var(--v2-gold);
+}
+html[data-ui="v2"] .v2-chip-off {
+  background: transparent;
+  border-color: rgba(212, 175, 55, 0.15);
+  color: var(--v2-text-dim);
+}
+html[data-ui="v2"] .v2-chip-off:hover {
+  border-color: rgba(212, 175, 55, 0.35);
+  color: var(--v2-text);
+}
+
+/* Segmented control */
+html[data-ui="v2"] .v2-seg-track {
+  display: flex;
+  gap: 4px;
+  background: rgba(8, 13, 8, 0.6);
+  border-radius: 9px;
+  padding: 3px;
+}
+html[data-ui="v2"] .v2-seg {
+  flex: 1;
+  padding: 6px;
+  border: none;
+  background: transparent;
+  color: var(--v2-text-dim);
+  font-family: var(--font-outfit), system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+html[data-ui="v2"] .v2-seg-on {
+  background: rgba(212, 175, 55, 0.18);
+  color: var(--v2-gold);
+}
+
+/* Leaderboard row */
+html[data-ui="v2"] .v2-lb-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: rgba(20, 30, 20, 0.5);
+  border: 0.5px solid rgba(212, 175, 55, 0.1);
+  border-radius: 13px;
+  transition: transform 0.15s ease, border-color 0.2s ease;
+}
+html[data-ui="v2"] .v2-lb-row:hover {
+  transform: translateX(2px);
+  border-color: rgba(212, 175, 55, 0.25);
+}
+html[data-ui="v2"] .v2-lb-row-you {
+  background: linear-gradient(90deg, rgba(151, 196, 89, 0.1) 0%, rgba(20, 30, 20, 0.5) 70%);
+  border-color: rgba(151, 196, 89, 0.28);
+}
+
+/* Score pills */
+html[data-ui="v2"] .v2-score-green {
+  background: rgba(151, 196, 89, 0.18);
+  color: #97c459;
+}
+html[data-ui="v2"] .v2-score-gold {
+  background: rgba(212, 175, 55, 0.18);
+  color: #d4af37;
+}
+html[data-ui="v2"] .v2-score-red {
+  background: rgba(226, 75, 74, 0.15);
+  color: #e24b4a;
+}
+
+/* Live pill — pulsing red */
+html[data-ui="v2"] .v2-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e24b4a;
+  color: #fff;
+  font-family: var(--font-outfit), system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+html[data-ui="v2"] .v2-live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #fff;
+  animation: v2-pulse 1.5s ease-in-out infinite;
+}
+@keyframes v2-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Sync banner */
+html[data-ui="v2"] .v2-sync-banner {
+  background: rgba(151, 196, 89, 0.12);
+  border: 0.5px solid rgba(151, 196, 89, 0.28);
+  color: var(--v2-sage);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-family: var(--font-outfit), system-ui, sans-serif;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+html[data-ui="v2"] .v2-sync-banner-warn {
+  background: rgba(226, 133, 90, 0.12);
+  border-color: rgba(226, 133, 90, 0.4);
+  color: var(--v2-amber-warn);
+}
+
+/* Reveal-on-mount entrance */
+html[data-ui="v2"] .v2-reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: v2-rise 0.5s ease forwards;
+}
+@keyframes v2-rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Rank-change flash (live leaderboard) */
+html[data-ui="v2"] .v2-rank-flash {
+  animation: v2-rank-flash 1.4s ease-out;
+}
+@keyframes v2-rank-flash {
+  0% { background-color: rgba(212, 175, 55, 0.25); }
+  100% { background-color: transparent; }
+}
+
+/* Hairline gold divider */
+html[data-ui="v2"] .v2-hr-gold {
+  height: 0.5px;
+  background: rgba(212, 175, 55, 0.15);
+  border: none;
+  margin: 8px 0;
 }

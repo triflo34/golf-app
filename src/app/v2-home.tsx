@@ -3,40 +3,30 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { ScoreTrendChart } from "@/components/score-trend-chart";
 import { V2PageShell } from "@/components/v2/page-shell";
 import { V2Card } from "@/components/v2/card";
-import { V2Pill } from "@/components/v2/pill";
 import { V2SectionTitle } from "@/components/v2/section-title";
-import type { LeaderboardRow } from "@/app/api/leaderboard/route";
+import { V2Avatar, toneForName } from "@/components/v2/avatar";
+import { V2LivePill } from "@/components/v2/live-pill";
+import { V2ScorePill, scorePillToneForVsPar } from "@/components/v2/score-pill";
 import type { RoundListItem } from "@/app/api/rounds/list/route";
 import type { ActiveLiveRound } from "@/app/api/rounds/live/active/route";
 
+/**
+ * v2 Home — spec §7.1.
+ * Replaces the classic leaderboard-on-home with: greeting strip + live hero
+ * (when a round is in progress) + 2×2 quick actions + activity feed.
+ *
+ * The full season leaderboard moves to the Stats tab. This screen is the
+ * "what's happening right now" surface.
+ */
 export function V2Home() {
   const { user, loading: authLoading } = useAuth();
-  const [season, setSeason] = useState(new Date().getFullYear());
-  const [scope, setScope] = useState<"mine" | "all">("mine");
-  const [holes, setHoles] = useState<"18" | "9" | "all">("18");
-  const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [recent, setRecent] = useState<RoundListItem[] | null>(null);
   const [liveRounds, setLiveRounds] = useState<ActiveLiveRound[]>([]);
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
-
-  const loadBoard = useCallback(
-    async (s: number, sc: "mine" | "all", h: "18" | "9" | "all") => {
-      setRows(null);
-      const res = await fetch(
-        `/api/leaderboard?season=${s}&scope=${sc}&holes=${h}`,
-        { cache: "no-store" },
-      );
-      const data = await res.json();
-      setRows(data.leaderboard ?? []);
-    },
-    [],
-  );
 
   const loadRecent = useCallback(async () => {
-    const res = await fetch(`/api/rounds/list?limit=5`, { cache: "no-store" });
+    const res = await fetch(`/api/rounds/list?limit=6`, { cache: "no-store" });
     const data = await res.json();
     setRecent(data.rounds ?? []);
   }, []);
@@ -53,332 +43,434 @@ export function V2Home() {
 
   useEffect(() => {
     if (user) {
-      loadBoard(season, scope, holes);
       loadRecent();
       loadLiveRounds();
     }
-  }, [user, season, scope, holes, loadBoard, loadRecent, loadLiveRounds]);
+  }, [user, loadRecent, loadLiveRounds]);
 
   if (authLoading || !user) {
     return (
       <V2PageShell>
         <div className="flex h-[60vh] items-center justify-center">
-          <div className="animate-pulse text-[var(--v2-accent)]">Loading…</div>
+          <div className="animate-pulse text-[var(--v2-gold)]">Loading…</div>
         </div>
       </V2PageShell>
     );
   }
 
-  const currentYear = new Date().getFullYear();
-
   return (
     <V2PageShell>
-      <div className="mb-4 text-center">
-        <h1 className="text-3xl font-bold text-[var(--v2-accent)]">The Match</h1>
-      </div>
+      <GreetingStrip name={user.display_name} />
 
       {liveRounds.length > 0 && (
-        <div className="mb-4 space-y-2">
-          {liveRounds.map((lr) => (
-            <Link
-              key={lr.id}
-              href={`/rounds/live/${lr.id}`}
-              className="flex items-center justify-between rounded-2xl border-2 border-red-500 bg-red-950/40 px-4 py-3 transition hover:bg-red-950/60"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-bold text-red-300 flex items-center gap-1.5">
-                  <span className="inline-block h-2 w-2 rounded-full bg-red-400 animate-pulse" />
-                  {lr.i_am_in ? "Resume Live Round" : "Join Live Round"}
-                </div>
-                <div className="text-xs text-red-200/80 truncate">
-                  {lr.course_name} · {lr.player_count} player
-                  {lr.player_count === 1 ? "" : "s"} · {lr.hole_count} holes
-                </div>
-              </div>
-              <span className="text-xl text-red-300 ml-2">→</span>
-            </Link>
+        <div className="mt-4 v2-reveal">
+          {liveRounds.slice(0, 1).map((lr) => (
+            <LiveHero key={lr.id} round={lr} />
           ))}
         </div>
       )}
 
-      <Link
-        href="/rounds/live/new"
-        className="mb-4 flex items-center justify-between rounded-2xl border border-[var(--v2-accent)]/40 bg-gradient-to-r from-[var(--v2-accent)]/10 to-transparent px-4 py-3 transition hover:bg-[var(--v2-accent)]/15"
-      >
-        <div>
-          <div className="text-sm font-semibold text-[var(--v2-accent)] flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-red-400 animate-pulse" />
-            Start Live Round
-          </div>
-          <div className="text-xs text-[var(--v2-muted)]">
-            Score hole-by-hole, leaderboard updates in real time
-          </div>
-        </div>
-        <span className="text-xl text-[var(--v2-accent)]">→</span>
-      </Link>
-
-      <div className="mb-4 flex items-center justify-center gap-3">
-        <button
-          onClick={() => setSeason((s) => s - 1)}
-          className="rounded-full border border-[var(--v2-border)] bg-[var(--v2-surface)] px-3 py-1 text-[var(--v2-accent)]"
-          aria-label="Previous season"
-        >
-          ←
-        </button>
-        <span className="text-lg font-bold text-white">{season} Season</span>
-        <button
-          onClick={() => setSeason((s) => s + 1)}
-          disabled={season >= currentYear}
-          className="rounded-full border border-[var(--v2-border)] bg-[var(--v2-surface)] px-3 py-1 text-[var(--v2-accent)] disabled:opacity-30"
-          aria-label="Next season"
-        >
-          →
-        </button>
+      <div className="mt-5 v2-reveal" style={{ animationDelay: "0.02s" }}>
+        <QuickActions />
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-1">
-        <V2Pill active={scope === "mine"} onClick={() => setScope("mine")}>
-          My circle
-        </V2Pill>
-        <V2Pill active={scope === "all"} onClick={() => setScope("all")}>
-          Everyone
-        </V2Pill>
-        <span className="mx-1 text-[var(--v2-muted)]">·</span>
-        {(["18", "9", "all"] as const).map((h) => (
-          <V2Pill key={h} active={holes === h} onClick={() => setHoles(h)}>
-            {h === "all" ? "All" : `${h}`}
-          </V2Pill>
-        ))}
-      </div>
-
-      <V2SectionTitle>Season Leaderboard</V2SectionTitle>
-      {rows === null ? (
-        <V2Card>
-          <div className="py-6 text-center text-[var(--v2-muted)]">Loading…</div>
-        </V2Card>
-      ) : rows.length === 0 ||
-        (rows.length === 1 && rows[0].rounds_played === 0) ? (
-        <V2Card>
-          <div className="py-6 text-center text-sm text-[var(--v2-muted)]">
-            <p>
-              {scope === "mine"
-                ? "You haven't played a round this season yet."
-                : "No rounds logged yet this season."}
-            </p>
-            <Link
-              href="/rounds/new"
-              className="mt-3 inline-block text-sm font-medium text-[var(--v2-accent)] hover:underline"
-            >
-              Log a round →
-            </Link>
-          </div>
-        </V2Card>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((row, i) => {
-            const expanded = expandedKey === row.key;
-            const hs = row.hole_stats;
-            const hasHoleStats = hs && hs.holes_scored > 0;
-            const rankBg =
-              i === 0
-                ? "bg-[var(--v2-accent)] text-black"
-                : i === 1
-                  ? "bg-gray-400 text-black"
-                  : i === 2
-                    ? "bg-orange-500 text-black"
-                    : "bg-[var(--v2-surface-2)] text-[var(--v2-muted)]";
-            return (
-              <V2Card key={row.key} className="!p-0">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedKey((k) => (k === row.key ? null : row.key))
-                  }
-                  className="flex w-full items-center gap-3 p-3 text-left"
-                  aria-expanded={expanded}
-                >
-                  <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${rankBg}`}
-                  >
-                    {i + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 truncate font-semibold text-white">
-                      {row.name}
-                      {row.is_guest && (
-                        <span className="rounded bg-[var(--v2-accent)]/20 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--v2-accent)]">
-                          guest
-                        </span>
-                      )}
-                      <span
-                        className={`ml-auto text-xs text-[var(--v2-muted)] transition-transform ${
-                          expanded ? "rotate-180" : ""
-                        }`}
-                        aria-hidden="true"
-                      >
-                        ▾
-                      </span>
-                    </div>
-                    <div className="text-xs text-[var(--v2-muted)]">
-                      {row.rounds_played} rounds · {row.wins} wins · best{" "}
-                      {row.best_score}
-                    </div>
-                    {(row.firsts > 0 ||
-                      row.seconds > 0 ||
-                      row.thirds > 0 ||
-                      row.fourths > 0) && (
-                      <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-semibold">
-                        <span className="rounded bg-[var(--v2-accent)]/20 px-1.5 py-0.5 text-[var(--v2-accent)]">
-                          1st {row.firsts}
-                          {row.firsts_tied > 0 && ` (${row.firsts_tied}t)`}
-                        </span>
-                        <span className="rounded bg-gray-500/30 px-1.5 py-0.5 text-gray-200">
-                          2nd {row.seconds}
-                          {row.seconds_tied > 0 && ` (${row.seconds_tied}t)`}
-                        </span>
-                        <span className="rounded bg-orange-500/25 px-1.5 py-0.5 text-orange-300">
-                          3rd {row.thirds}
-                          {row.thirds_tied > 0 && ` (${row.thirds_tied}t)`}
-                        </span>
-                        <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-300">
-                          💩 {row.fourths}
-                          {row.fourths_tied > 0 && ` (${row.fourths_tied}t)`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-[var(--v2-score)]">
-                      {row.avg_score}
-                    </div>
-                    <div className="text-xs text-[var(--v2-muted)]">avg</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-[var(--v2-accent)]">
-                      {row.points}
-                    </div>
-                    <div className="text-xs text-[var(--v2-muted)]">pts</div>
-                  </div>
-                </button>
-
-                {expanded && hasHoleStats && (
-                  <div className="border-t border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2">
-                    <div className="mb-1 text-[10px] uppercase tracking-wide text-[var(--v2-muted)]">
-                      Hole stats · {hs.holes_scored} holes
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
-                      <span className="rounded bg-[var(--v2-accent)]/20 px-2 py-0.5 text-[var(--v2-accent)]">
-                        🦅 {hs.eagles}
-                      </span>
-                      <span className="rounded bg-red-500/20 px-2 py-0.5 text-red-300">
-                        Birdies {hs.birdies}
-                      </span>
-                      <span className="rounded bg-[var(--v2-score)]/20 px-2 py-0.5 text-[var(--v2-score-soft)]">
-                        Pars {hs.pars}
-                      </span>
-                      <span className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-300">
-                        Bogeys {hs.bogeys}
-                      </span>
-                      <span className="rounded bg-blue-700/30 px-2 py-0.5 text-blue-200">
-                        2+ {hs.doubles_plus}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {expanded && !hasHoleStats && (
-                  <div className="border-t border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-xs text-[var(--v2-muted)]">
-                    No hole-by-hole data this season.{" "}
-                    <Link
-                      href="/rounds/new"
-                      className="text-[var(--v2-accent)] hover:underline"
-                    >
-                      Upload a scorecard
-                    </Link>{" "}
-                    to track birdies and pars.
-                  </div>
-                )}
-              </V2Card>
-            );
-          })}
-        </div>
-      )}
-
-      {rows && rows.some((r) => r.series.length > 0) && (
-        <div className="mt-6">
-          <V2SectionTitle>Score Trends</V2SectionTitle>
-          <V2Card>
-            <ScoreTrendChart rows={rows} />
-          </V2Card>
-        </div>
-      )}
-
-      <div className="mt-6">
-        <V2SectionTitle>Recent Rounds</V2SectionTitle>
+      <div className="mt-7 v2-reveal" style={{ animationDelay: "0.04s" }}>
+        <V2SectionTitle right={<Link href="/stats">See all ›</Link>}>
+          Activity
+        </V2SectionTitle>
         {recent === null ? (
           <V2Card>
-            <div className="py-4 text-center text-sm text-[var(--v2-muted)]">
+            <div className="py-4 text-center text-sm text-[var(--v2-text-dim)]">
               Loading…
             </div>
           </V2Card>
         ) : recent.length === 0 ? (
           <V2Card>
-            <div className="py-4 text-center text-sm text-[var(--v2-muted)]">
-              No rounds yet.
+            <div className="py-4 text-center text-sm text-[var(--v2-text-dim)]">
+              No activity yet. Log a round to get started.
             </div>
           </V2Card>
         ) : (
-          <div className="space-y-2">
+          <ul className="space-y-2">
             {recent.map((round) => (
-              <Link
-                key={round.id}
-                href={`/rounds/${round.id}`}
-                className="block"
-              >
-                <V2Card className="!p-3">
-                  <div className="mb-2 flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-white flex items-center gap-1.5">
-                        {round.course_name}
-                        {round.excluded && (
-                          <span className="text-[9px] font-semibold uppercase text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded">
-                            excluded
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-[var(--v2-muted)]">
-                        {formatDate(round.played_at)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {round.scores.map((s, i) => (
-                      <div
-                        key={`${i}-${s.name}`}
-                        className="flex items-center gap-1.5 rounded-lg bg-[var(--v2-surface-2)] px-2 py-1"
-                      >
-                        <span className="max-w-[8rem] truncate text-xs text-[var(--v2-muted)]">
-                          {s.name}
-                        </span>
-                        <span className="rounded bg-[var(--v2-score)] px-1.5 py-0.5 text-xs font-bold text-black">
-                          {s.gross_score}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </V2Card>
-              </Link>
+              <ActivityRow key={round.id} round={round} />
             ))}
-          </div>
+          </ul>
         )}
       </div>
     </V2PageShell>
   );
 }
 
-function formatDate(s: string) {
-  return new Date(s + "T00:00:00").toLocaleDateString("en-US", {
-    weekday: "short",
+// ===========================================================================
+
+function GreetingStrip({ name }: { name: string }) {
+  const greeting = greetingFor(new Date().getHours());
+  const initial = (name.charAt(0) ?? "?").toUpperCase();
+  const tone = toneForName(name);
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <V2Avatar initial={initial} tone={tone} size={36} leader={tone === "gold"} />
+        <div className="leading-tight">
+          <div
+            className="text-[10px] uppercase tracking-wider text-[var(--v2-text-dim)]"
+            style={{
+              fontFamily: "var(--font-outfit), system-ui, sans-serif",
+              letterSpacing: "0.1em",
+            }}
+          >
+            {greeting}
+          </div>
+          <div
+            className="text-[15px] font-medium text-[var(--v2-text)]"
+            style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+          >
+            {name}
+          </div>
+        </div>
+      </div>
+      <Link
+        href="/profile"
+        aria-label="Profile"
+        className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[var(--v2-gold)]/30 bg-[var(--v2-gold)]/10 text-[var(--v2-gold)] hover:bg-[var(--v2-gold)]/20"
+      >
+        <BellIcon />
+      </Link>
+    </div>
+  );
+}
+
+function LiveHero({ round }: { round: ActiveLiveRound }) {
+  return (
+    <Link
+      href={`/rounds/live/${round.id}`}
+      className="block"
+    >
+      <V2Card variant="live" className="relative">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div
+              className="text-[10px] font-semibold uppercase text-[var(--v2-gold)]"
+              style={{
+                fontFamily: "var(--font-outfit), system-ui, sans-serif",
+                letterSpacing: "0.1em",
+              }}
+            >
+              Live now · {round.hole_count} holes
+            </div>
+            <h3
+              className="mt-1 truncate text-[19px] leading-tight text-[var(--v2-text)]"
+              style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+            >
+              {round.course_name}
+            </h3>
+            <div
+              className="mt-1 text-[11px] text-[var(--v2-text-dim)]"
+              style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+            >
+              {round.player_count} player{round.player_count === 1 ? "" : "s"} ·{" "}
+              {round.i_am_in ? "you're in" : "tap to join"}
+            </div>
+          </div>
+          <V2LivePill />
+        </div>
+        <div className="mt-3 flex items-center justify-between border-t border-[var(--v2-gold)]/15 pt-3">
+          <div className="flex items-center gap-2 text-[var(--v2-gold)]">
+            <span style={{ fontSize: "14px" }}>♛</span>
+            <span
+              className="text-[12px] font-medium"
+              style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+            >
+              Open scorecard
+            </span>
+          </div>
+          <span
+            className="text-[var(--v2-gold)]"
+            style={{ fontFamily: "var(--font-fraunces), Georgia, serif", fontSize: "18px" }}
+          >
+            →
+          </span>
+        </div>
+      </V2Card>
+    </Link>
+  );
+}
+
+function QuickActions() {
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      <QuickTile
+        href="/rounds/live/new"
+        icon={<PlayIcon />}
+        title="Start live round"
+        sub="Hole-by-hole scoring"
+      />
+      <QuickTile
+        href="/rounds/new"
+        icon={<CameraIcon />}
+        title="Scan scorecard"
+        sub="From a paper card"
+      />
+      <QuickTile
+        href="/matches/build"
+        icon={<BalanceIcon />}
+        title="Fair match"
+        sub="Even teams, handicap-aware"
+      />
+      <QuickTile
+        href="/events"
+        icon={<TrophyIcon />}
+        title="Events"
+        sub="Golfapalooza & more"
+      />
+    </div>
+  );
+}
+
+function QuickTile({
+  href,
+  icon,
+  title,
+  sub,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <Link href={href} className="block">
+      <V2Card interactive className="!p-3">
+        <div className="flex items-start gap-2.5">
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] text-[var(--v2-gold)]"
+            style={{
+              background: "rgba(212, 175, 55, 0.12)",
+              border: "0.5px solid rgba(212, 175, 55, 0.25)",
+            }}
+          >
+            {icon}
+          </span>
+          <div className="min-w-0">
+            <div
+              className="truncate text-[13px] font-medium text-[var(--v2-text)]"
+              style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+            >
+              {title}
+            </div>
+            <div
+              className="text-[10px] text-[var(--v2-text-dim)]"
+              style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+            >
+              {sub}
+            </div>
+          </div>
+        </div>
+      </V2Card>
+    </Link>
+  );
+}
+
+function ActivityRow({ round }: { round: RoundListItem }) {
+  // Winner = the strict-lowest gross. Excluded rounds get a muted treatment.
+  const lowest =
+    round.scores.length > 0
+      ? round.scores.reduce(
+          (acc, s) => (s.gross_score < acc ? s.gross_score : acc),
+          round.scores[0].gross_score,
+        )
+      : 0;
+  const winners = round.scores.filter((s) => s.gross_score === lowest);
+  const headline =
+    round.scores.length === 0
+      ? "Round logged"
+      : winners.length === 1
+        ? `${winners[0].name} won at ${round.course_name}`
+        : `${round.scores.length} players · ${round.course_name}`;
+  // Cheap "career-ish" tone: very low gross (≤72) → gold, otherwise green
+  const headlineTone =
+    lowest <= 72 ? "gold" : scorePillToneForVsPar(lowest - 72);
+
+  return (
+    <li>
+      <Link href={`/rounds/${round.id}`} className="block">
+        <V2Card interactive className="!p-3">
+          <div className="flex items-center gap-3">
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[var(--v2-sage)]"
+              style={{
+                background: "rgba(151, 196, 89, 0.15)",
+                border: "0.5px solid rgba(151, 196, 89, 0.3)",
+              }}
+            >
+              <FlagIcon />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div
+                className="truncate text-[13px] font-medium text-[var(--v2-text)] flex items-center gap-1.5"
+                style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+              >
+                {headline}
+                {round.excluded && (
+                  <span
+                    className="rounded bg-[var(--v2-amber-warn)]/20 px-1 py-0.5 text-[8.5px] font-semibold uppercase text-[var(--v2-amber-warn)]"
+                    style={{ letterSpacing: "0.08em" }}
+                  >
+                    excluded
+                  </span>
+                )}
+              </div>
+              <div
+                className="text-[10.5px] text-[var(--v2-text-dim)]"
+                style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+              >
+                {formatRelativeDate(round.played_at)} · {round.scores.length}{" "}
+                player{round.scores.length === 1 ? "" : "s"}
+              </div>
+            </div>
+            {round.scores.length > 0 && (
+              <V2ScorePill tone={headlineTone}>{lowest}</V2ScorePill>
+            )}
+          </div>
+        </V2Card>
+      </Link>
+    </li>
+  );
+}
+
+// ===========================================================================
+
+function greetingFor(hour: number): string {
+  if (hour < 5) return "Late night";
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  if (hour < 22) return "Good evening";
+  return "Late night";
+}
+
+function formatRelativeDate(ymd: string): string {
+  const d = new Date(ymd + "T00:00:00");
+  const diff = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff < 7) return `${diff} days ago`;
+  return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
+}
+
+// ===========================================================================
+// Icons — 20px stroke-2 by default
+
+function BellIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 003.4 0" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polygon points="6 4 20 12 6 20 6 4" />
+    </svg>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+
+function BalanceIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3v18" />
+      <path d="M3 7l9-2 9 2" />
+      <path d="M5 10l-2 6a4 4 0 008 0l-2-6" />
+      <path d="M19 10l-2 6a4 4 0 008 0l-2-6" />
+    </svg>
+  );
+}
+
+function TrophyIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 9V3h12v6a6 6 0 01-12 0z" />
+      <path d="M6 5H3v3a3 3 0 003 3" />
+      <path d="M18 5h3v3a3 3 0 01-3 3" />
+      <path d="M9 19h6" />
+      <path d="M12 15v4" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 22V4l13 4-13 4" />
+    </svg>
+  );
 }

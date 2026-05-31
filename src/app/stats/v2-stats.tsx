@@ -3,31 +3,39 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PlayerPicker } from "@/components/player-picker";
+import { ScoreTrendChart } from "@/components/score-trend-chart";
 import { V2PageShell } from "@/components/v2/page-shell";
 import { V2Card } from "@/components/v2/card";
 import { V2Pill } from "@/components/v2/pill";
 import { V2StatTile } from "@/components/v2/stat-tile";
 import { V2SectionTitle } from "@/components/v2/section-title";
+import { V2SegmentedControl } from "@/components/v2/segmented-control";
+import { V2LeaderboardRow } from "@/components/v2/leaderboard-row";
+import { useAuth } from "@/components/auth-provider";
 import type { H2HResult } from "@/app/api/h2h/route";
 import type { PlayerStats } from "@/app/api/player/route";
 import type { FunStats } from "@/app/api/stats/fun/route";
+import type { LeaderboardRow } from "@/app/api/leaderboard/route";
 
-type Tab = "h2h" | "player" | "fun";
+type Tab = "leaderboard" | "h2h" | "player" | "fun";
 
 export function V2Stats() {
-  const [tab, setTab] = useState<Tab>("h2h");
+  const [tab, setTab] = useState<Tab>("leaderboard");
   const [season, setSeason] = useState<number | "all">("all");
 
   return (
     <V2PageShell>
-      <div className="mb-4 flex items-center justify-center gap-6 border-b border-[var(--v2-border)] pb-2">
+      <div className="mb-4 flex items-center justify-center gap-5 border-b border-[var(--v2-gold)]/15 pb-2">
+        <TabButton
+          active={tab === "leaderboard"}
+          onClick={() => setTab("leaderboard")}
+        >
+          Board
+        </TabButton>
         <TabButton active={tab === "h2h"} onClick={() => setTab("h2h")}>
           H2H
         </TabButton>
-        <TabButton
-          active={tab === "player"}
-          onClick={() => setTab("player")}
-        >
+        <TabButton active={tab === "player"} onClick={() => setTab("player")}>
           Player
         </TabButton>
         <TabButton active={tab === "fun"} onClick={() => setTab("fun")}>
@@ -37,7 +45,9 @@ export function V2Stats() {
 
       <SeasonFilter season={season} onChange={setSeason} />
 
-      {tab === "h2h" ? (
+      {tab === "leaderboard" ? (
+        <LeaderboardTab season={season} />
+      ) : tab === "h2h" ? (
         <H2HTab season={season} />
       ) : tab === "player" ? (
         <PlayerTab season={season} />
@@ -61,16 +71,222 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative pb-2 text-sm font-semibold transition ${
-        active ? "text-white" : "text-[var(--v2-muted)] hover:text-white"
+      className={`relative pb-2 text-[13px] font-medium transition ${
+        active ? "text-[var(--v2-gold)]" : "text-[var(--v2-text-dim)] hover:text-[var(--v2-text)]"
       }`}
+      style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
     >
       {children}
       {active && (
-        <span className="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full bg-[var(--v2-accent)]" />
+        <span className="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full bg-[var(--v2-gold)]" />
       )}
     </button>
   );
+}
+
+// ===========================================================================
+// Leaderboard tab — spec §7.3 + §5.4
+
+type Metric = "points" | "avg" | "wins" | "best";
+
+function LeaderboardTab({ season }: { season: number | "all" }) {
+  const { user } = useAuth();
+  const [scope, setScope] = useState<"mine" | "all">("mine");
+  const [holes, setHoles] = useState<"18" | "9" | "all">("18");
+  const [metric, setMetric] = useState<Metric>("points");
+  const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
+
+  useEffect(() => {
+    setRows(null);
+    const s = season === "all" ? new Date().getFullYear() : season;
+    fetch(`/api/leaderboard?season=${s}&scope=${scope}&holes=${holes}`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((d) => setRows(d.leaderboard ?? []));
+  }, [season, scope, holes]);
+
+  if (rows === null) {
+    return (
+      <V2Card>
+        <div className="py-6 text-center text-[var(--v2-text-dim)]">
+          Loading…
+        </div>
+      </V2Card>
+    );
+  }
+  if (
+    rows.length === 0 ||
+    (rows.length === 1 && rows[0].rounds_played === 0)
+  ) {
+    return (
+      <V2Card>
+        <div className="py-6 text-center text-sm text-[var(--v2-text-dim)]">
+          {scope === "mine"
+            ? "You haven't played a round in this filter yet."
+            : "No rounds logged in this filter yet."}
+        </div>
+      </V2Card>
+    );
+  }
+
+  // Sort by chosen metric. Strict, since ties are common — fall back to points
+  // so podium ranking stays stable as users flip the toggle.
+  const sortedRows = rows.slice().sort((a, b) => {
+    if (metric === "avg") {
+      // Lower is better. Ignore zeros (no rounds).
+      const aAvg = a.avg_score || 999;
+      const bAvg = b.avg_score || 999;
+      if (aAvg !== bAvg) return aAvg - bAvg;
+    } else if (metric === "wins") {
+      if (a.wins !== b.wins) return b.wins - a.wins;
+    } else if (metric === "best") {
+      const aBest = a.best_score || 999;
+      const bBest = b.best_score || 999;
+      if (aBest !== bBest) return aBest - bBest;
+    } else {
+      if (a.points !== b.points) return b.points - a.points;
+    }
+    // tiebreaker: points DESC, then rounds_played DESC
+    if (a.points !== b.points) return b.points - a.points;
+    return b.rounds_played - a.rounds_played;
+  });
+
+  // Compute display ranks with ties.
+  type Display = LeaderboardRow & { rank: number; tied: boolean };
+  const display: Display[] = [];
+  let lastKey: string | null = null;
+  let lastRank = 0;
+  sortedRows.forEach((row, i) => {
+    const key = metricKey(row, metric);
+    const tied = lastKey != null && key === lastKey;
+    if (!tied) lastRank = i + 1;
+    display.push({ ...row, rank: lastRank, tied });
+    lastKey = key;
+  });
+  // Mark tie groups so the row knows to T-prefix.
+  const rankCounts = new Map<number, number>();
+  for (const r of display) {
+    rankCounts.set(r.rank, (rankCounts.get(r.rank) ?? 0) + 1);
+  }
+
+  const minAvg = Math.min(
+    ...display.filter((r) => r.avg_score > 0).map((r) => r.avg_score),
+  );
+
+  return (
+    <div>
+      {/* Filter chips: scope + holes, divided by hairline */}
+      <div className="no-scrollbar mb-3 flex items-center gap-2 overflow-x-auto">
+        <V2Pill active={scope === "mine"} onClick={() => setScope("mine")}>
+          My circle
+        </V2Pill>
+        <V2Pill active={scope === "all"} onClick={() => setScope("all")}>
+          Everyone
+        </V2Pill>
+        <span
+          aria-hidden="true"
+          className="mx-1 h-4 w-px bg-[var(--v2-gold)]/15"
+        />
+        {(["18", "9", "all"] as const).map((h) => (
+          <V2Pill key={h} active={holes === h} onClick={() => setHoles(h)}>
+            {h === "all" ? "All" : `${h}H`}
+          </V2Pill>
+        ))}
+      </div>
+
+      {/* Metric sort */}
+      <div className="mb-4">
+        <V2SegmentedControl
+          value={metric}
+          onChange={setMetric}
+          options={[
+            { value: "points", label: "Points" },
+            { value: "avg", label: "Avg" },
+            { value: "wins", label: "Wins" },
+            { value: "best", label: "Best" },
+          ]}
+        />
+      </div>
+
+      {/* Ranked rows */}
+      <div>
+        {display.map((row) => {
+          const meta = `${row.rounds_played} rounds · ${row.wins} ${
+            row.wins === 1 ? "win" : "wins"
+          } · best ${row.best_score || "—"}`;
+          const tiedRow = (rankCounts.get(row.rank) ?? 0) > 1;
+          const isYou = !row.is_guest && row.user_id === user?.id;
+          const isLeader = row.rank === 1 && !tiedRow;
+          // Color the avg sage if it's the leader-of-the-pack lowest, amber if
+          // notably higher than the pack leader (>= +5 strokes).
+          const primaryTone: "sage" | "amber" | "white" =
+            metric === "avg"
+              ? row.avg_score === minAvg
+                ? "sage"
+                : row.avg_score - minAvg >= 5
+                  ? "amber"
+                  : "white"
+              : "white";
+          const primaryValue =
+            metric === "avg"
+              ? row.avg_score || "—"
+              : metric === "wins"
+                ? row.wins
+                : metric === "best"
+                  ? row.best_score || "—"
+                  : row.points;
+          const primaryLabel =
+            metric === "avg"
+              ? "avg"
+              : metric === "wins"
+                ? "wins"
+                : metric === "best"
+                  ? "best"
+                  : "pts";
+          return (
+            <V2LeaderboardRow
+              key={row.key}
+              rank={row.rank}
+              tied={tiedRow}
+              isYou={isYou}
+              isLeader={isLeader}
+              name={row.name}
+              meta={meta}
+              primaryValue={primaryValue}
+              primaryLabel={primaryLabel}
+              primaryTone={primaryTone}
+              secondaryValue={metric === "points" ? row.avg_score || "—" : row.points}
+              secondaryLabel={metric === "points" ? "avg" : "pts"}
+            />
+          );
+        })}
+      </div>
+
+      {/* Score Trends chart */}
+      {rows.some((r) => r.series.length > 0) && (
+        <div className="mt-6">
+          <V2SectionTitle>Score Trends</V2SectionTitle>
+          <V2Card>
+            <ScoreTrendChart rows={rows} />
+          </V2Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function metricKey(row: LeaderboardRow, metric: Metric): string {
+  switch (metric) {
+    case "avg":
+      return String(row.avg_score);
+    case "wins":
+      return String(row.wins);
+    case "best":
+      return String(row.best_score);
+    case "points":
+      return String(row.points);
+  }
 }
 
 function SeasonFilter({
