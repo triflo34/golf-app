@@ -56,6 +56,8 @@ export async function POST(request: Request) {
     entry_fee_cents?: unknown;
     description?: unknown;
     exclude_from_leaderboard?: unknown;
+    total_holes?: unknown;
+    second_course_id?: unknown;
   };
   try {
     body = await request.json();
@@ -75,6 +77,18 @@ export async function POST(request: Request) {
       ? body.description.trim()
       : null;
   const excludeFromLeaderboard = body.exclude_from_leaderboard === true;
+  const totalHolesRaw = Number(body.total_holes);
+  const totalHoles =
+    totalHolesRaw === 9 || totalHolesRaw === 18 || totalHolesRaw === 36
+      ? totalHolesRaw
+      : 18;
+  const secondCourseIdNum = Number(body.second_course_id);
+  const secondCourseId =
+    totalHoles === 36 &&
+    Number.isInteger(secondCourseIdNum) &&
+    secondCourseIdNum > 0
+      ? secondCourseIdNum
+      : null;
 
   if (name.length === 0 || name.length > 120) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -94,13 +108,21 @@ export async function POST(request: Request) {
     .get<{ id: number }>(courseId);
   if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
 
+  if (secondCourseId !== null) {
+    const c2 = await db
+      .prepare("SELECT id FROM courses WHERE id = ?")
+      .get<{ id: number }>(secondCourseId);
+    if (!c2) return NextResponse.json({ error: "Second course not found" }, { status: 404 });
+  }
+
   const eventId = await withTransaction(async (tx) => {
     const inserted = await tx
       .prepare(
         `INSERT INTO events
            (name, course_id, start_date, end_date, entry_fee_cents,
-            description, exclude_from_leaderboard, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            description, exclude_from_leaderboard, created_by,
+            total_holes, second_course_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
       .get<{ id: number }>(
@@ -112,6 +134,8 @@ export async function POST(request: Request) {
         description,
         excludeFromLeaderboard,
         me.id,
+        totalHoles,
+        secondCourseId,
       );
     const id = inserted!.id;
     await tx

@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth-provider";
 import { ScoreTrendChart } from "@/components/score-trend-chart";
 import type { LeaderboardRow } from "@/app/api/leaderboard/route";
 import type { RoundListItem } from "@/app/api/rounds/list/route";
+import type { ActiveLiveRound } from "@/app/api/rounds/live/active/route";
 
 export function ClassicHome() {
   const { user, loading: authLoading } = useAuth();
@@ -15,6 +16,7 @@ export function ClassicHome() {
   const [showPointsHelp, setShowPointsHelp] = useState(false);
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [recent, setRecent] = useState<RoundListItem[] | null>(null);
+  const [liveRounds, setLiveRounds] = useState<ActiveLiveRound[]>([]);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const loadBoard = useCallback(
@@ -36,12 +38,23 @@ export function ClassicHome() {
     setRecent(data.rounds ?? []);
   }, []);
 
+  const loadLiveRounds = useCallback(async () => {
+    const res = await fetch(`/api/rounds/live/active`, { cache: "no-store" });
+    if (!res.ok) {
+      setLiveRounds([]);
+      return;
+    }
+    const data = await res.json();
+    setLiveRounds(data.rounds ?? []);
+  }, []);
+
   useEffect(() => {
     if (user) {
       loadBoard(season, scope, holes);
       loadRecent();
+      loadLiveRounds();
     }
-  }, [user, season, scope, holes, loadBoard, loadRecent]);
+  }, [user, season, scope, holes, loadBoard, loadRecent, loadLiveRounds]);
 
   if (authLoading || !user) {
     return (
@@ -59,6 +72,30 @@ export function ClassicHome() {
         <h1 className="text-2xl font-bold text-green-800">The Match</h1>
         <p className="text-green-600 text-sm"></p>
       </div>
+
+      {liveRounds.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {liveRounds.map((lr) => (
+            <Link
+              key={lr.id}
+              href={`/rounds/live/${lr.id}`}
+              className="flex items-center justify-between rounded-xl border-2 border-red-400 bg-red-50 px-4 py-3 shadow-sm hover:bg-red-100 transition"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-red-700 flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  {lr.i_am_in ? "Resume Live Round" : "Join Live Round"}
+                </div>
+                <div className="text-xs text-red-900 truncate">
+                  {lr.course_name} · {lr.player_count} player
+                  {lr.player_count === 1 ? "" : "s"} · {lr.hole_count} holes
+                </div>
+              </div>
+              <span className="text-xl text-red-700 ml-2">→</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <Link
         href="/rounds/live/new"

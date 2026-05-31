@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import type { EventStatus } from "@/lib/types";
 import type {
   Best18Entry,
@@ -195,6 +196,12 @@ export default function EventDetailPage({
             className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[event.status]}`}
           >
             {event.status.replace("_", " ")}
+            {event.status === "in_progress" &&
+              progressLabel(rounds, standings) && (
+                <span className="ml-1 font-normal opacity-90">
+                  · {progressLabel(rounds, standings)}
+                </span>
+              )}
           </span>
         </div>
         <div className="mt-1 text-sm text-gray-600">{event.course_name}</div>
@@ -213,21 +220,22 @@ export default function EventDetailPage({
           )}
         </div>
 
-        {isOrganizer && (
-          <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          {isOrganizer && (
             <Link
               href={`/events/${event.id}/manage`}
               className="text-sm font-medium text-green-700 hover:underline"
             >
               Manage event →
             </Link>
-            {event.status === "draft" && (
-              <span className="text-xs text-amber-700">
-                · Add players and side games, then start
-              </span>
-            )}
-          </div>
-        )}
+          )}
+          <CopyLinkButton path={`/events/${event.id}`} />
+          {isOrganizer && event.status === "draft" && (
+            <span className="text-xs text-amber-700">
+              · Add players and side games, then start
+            </span>
+          )}
+        </div>
       </div>
 
       <nav className="mt-5 -mx-4 border-b border-gray-200 overflow-x-auto">
@@ -251,7 +259,12 @@ export default function EventDetailPage({
 
       <section className="mt-4">
         {tab === "live" && (
-          <LiveTab eventId={event.id} players={players} rounds={rounds} />
+          <LiveTab
+            eventId={event.id}
+            players={players}
+            rounds={rounds}
+            standings={standings}
+          />
         )}
         {tab === "side" && (
           <SideGamesView
@@ -278,10 +291,12 @@ function LiveTab({
   eventId,
   players,
   rounds,
+  standings,
 }: {
   eventId: number;
   players: Participant[];
   rounds: EventRound[];
+  standings: EventStandings | null;
 }) {
   if (players.length === 0) {
     return (
@@ -293,7 +308,9 @@ function LiveTab({
   if (rounds.length === 0) {
     return (
       <div>
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Players</h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">
+          Players ({players.length})
+        </h2>
         <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
           {players.map((p) => (
             <li key={p.user_id} className="px-3 py-2 text-sm flex items-center justify-between">
@@ -315,41 +332,191 @@ function LiveTab({
       <h2 className="text-sm font-semibold text-gray-700">Rounds</h2>
       <ul className="space-y-2">
         {rounds.map((r) => (
-          <li key={r.id}>
-            <Link
-              href={`/events/${eventId}/score/${r.id}`}
-              className="block rounded-lg border border-gray-200 bg-white p-3 hover:border-green-400"
-            >
-              <div className="flex items-center justify-between">
-                <div className="font-semibold text-gray-900">
-                  Round {r.round_number}
-                </div>
-                <span className="text-xs text-gray-500 capitalize">
-                  {r.round_format}
-                </span>
-              </div>
-              <div className="text-xs text-gray-500">
-                {r.played_at} · {r.hole_count} holes
-              </div>
-            </Link>
-          </li>
+          <RoundCard
+            key={r.id}
+            eventId={eventId}
+            round={r}
+            playerCount={players.length}
+            standings={standings}
+          />
         ))}
       </ul>
-      <details className="text-xs text-gray-600">
-        <summary className="cursor-pointer">Players ({players.length})</summary>
-        <ul className="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
+      <div>
+        <h3 className="mt-4 mb-2 text-sm font-semibold text-gray-700">
+          Players ({players.length})
+        </h3>
+        <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white text-sm">
           {players.map((p) => (
             <li key={p.user_id} className="px-3 py-2 flex items-center justify-between">
               <span className="text-gray-900">{p.display_name}</span>
               {p.group_num != null && (
-                <span className="text-gray-500">Group {p.group_num}</span>
+                <span className="text-xs text-gray-500">Group {p.group_num}</span>
               )}
             </li>
           ))}
         </ul>
-      </details>
+      </div>
     </div>
   );
+}
+
+function RoundCard({
+  eventId,
+  round,
+  playerCount,
+  standings,
+}: {
+  eventId: number;
+  round: EventRound;
+  playerCount: number;
+  standings: EventStandings | null;
+}) {
+  // Per-round mini-leaderboard sourced from standings.leaderboard[*].per_round.
+  type MiniRow = {
+    player_id: string;
+    display_name: string;
+    strokes: number;
+    through: number;
+    vs_par: number;
+  };
+  const miniRows: MiniRow[] = [];
+  if (standings) {
+    for (const p of standings.leaderboard) {
+      const pr = p.per_round.find((x) => x.round_id === round.id);
+      if (!pr) continue;
+      miniRows.push({
+        player_id: p.player_id,
+        display_name: p.display_name,
+        strokes: pr.strokes,
+        through: pr.through,
+        vs_par: pr.vs_par,
+      });
+    }
+  }
+  miniRows.sort((a, b) => {
+    if (a.through === 0 && b.through > 0) return 1;
+    if (b.through === 0 && a.through > 0) return -1;
+    if (a.vs_par !== b.vs_par) return a.vs_par - b.vs_par;
+    return a.strokes - b.strokes;
+  });
+  const top = miniRows.slice(0, 3);
+  const anyStarted = miniRows.some((r) => r.through > 0);
+  const maxThrough = miniRows.reduce((m, r) => Math.max(m, r.through), 0);
+  // Players present in mini rows count once each. For scramble, this fans
+  // out across team members, so use those who've recorded any hole.
+  const playersScored = miniRows.filter((r) => r.through > 0).length;
+
+  return (
+    <li className="rounded-lg border border-gray-200 bg-white">
+      <Link
+        href={`/events/${eventId}/score/${round.id}`}
+        className="block p-3 hover:bg-green-50 rounded-t-lg"
+      >
+        <div className="flex items-center justify-between">
+          <div className="font-semibold text-gray-900">
+            Round {round.round_number}
+          </div>
+          <span className="flex items-center gap-1.5 text-xs">
+            {anyStarted && (
+              <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                LIVE
+              </span>
+            )}
+            <span className="text-gray-500 capitalize">
+              {round.round_format}
+            </span>
+          </span>
+        </div>
+        <div className="text-xs text-gray-500">
+          {round.played_at} · {round.hole_count} holes
+          {anyStarted && (
+            <>
+              {" "}
+              · thru hole {maxThrough} · {playersScored}/{playerCount}{" "}
+              {round.round_format === "scramble" ? "scored" : "players in"}
+            </>
+          )}
+        </div>
+        {top.length > 0 && anyStarted && (
+          <ul className="mt-2 space-y-0.5">
+            {top.map((row, i) => {
+              const vsParTone =
+                row.through === 0
+                  ? "text-gray-500"
+                  : row.vs_par > 0
+                    ? "text-red-600"
+                    : row.vs_par < 0
+                      ? "text-green-700"
+                      : "text-gray-500";
+              return (
+                <li
+                  key={row.player_id}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  <span className="w-4 text-gray-400 text-right">
+                    {i + 1}
+                  </span>
+                  <span className="flex-1 truncate text-gray-800">
+                    {row.display_name}
+                  </span>
+                  <span className="text-gray-500">
+                    thru {row.through}
+                  </span>
+                  <span className="w-8 text-right text-gray-900 font-medium">
+                    {row.strokes || "–"}
+                  </span>
+                  <span className={`w-10 text-right font-semibold ${vsParTone}`}>
+                    {row.through === 0 ? "" : vsParLabel(row.vs_par)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Link>
+      <div className="border-t border-gray-100 px-3 py-2 flex items-center justify-end">
+        <Link
+          href={`/events/${eventId}/scorecard/${round.id}`}
+          className="text-xs font-medium text-green-700 hover:underline"
+        >
+          View scorecard →
+        </Link>
+      </div>
+    </li>
+  );
+}
+
+function vsParLabel(n: number): string {
+  if (n === 0) return "E";
+  return n > 0 ? `+${n}` : String(n);
+}
+
+function progressLabel(
+  rounds: EventRound[],
+  standings: EventStandings | null,
+): string | null {
+  if (!standings) return null;
+  // Find the lowest-numbered round that's started but not fully complete.
+  // "Complete" = every player has reached the round's hole_count.
+  let liveRound: EventRound | null = null;
+  let maxThrough = 0;
+  for (const r of rounds) {
+    const perRoundEntries = standings.leaderboard
+      .map((p) => p.per_round.find((pr) => pr.round_id === r.id))
+      .filter((x): x is NonNullable<typeof x> => Boolean(x));
+    if (perRoundEntries.length === 0) continue;
+    const through = perRoundEntries.reduce((m, e) => Math.max(m, e.through), 0);
+    if (through === 0) continue;
+    const allDone = perRoundEntries.every((e) => e.through >= r.hole_count);
+    if (!allDone) {
+      liveRound = r;
+      maxThrough = through;
+      break;
+    }
+  }
+  if (!liveRound) return null;
+  return `R${liveRound.round_number} thru ${maxThrough}`;
 }
 
 const SIDE_GAME_LABEL: Record<SideGameSummary["kind"], string> = {

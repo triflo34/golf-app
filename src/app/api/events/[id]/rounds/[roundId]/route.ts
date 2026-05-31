@@ -82,7 +82,7 @@ export async function GET(
        FROM event_participants ep
        JOIN users u ON u.id = ep.user_id
        WHERE ep.event_id = ? AND ep.role = 'player'
-       ORDER BY COALESCE(ep.group_num, 99), u.display_name ASC`,
+       ORDER BY ep.seq ASC, u.display_name ASC`,
     )
     .all<PlayerRow>(eventId);
 

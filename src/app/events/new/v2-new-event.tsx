@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
@@ -16,7 +16,13 @@ export function V2NewEvent() {
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [name, setName] = useState("");
-  const [courseId, setCourseId] = useState<number | "">("");
+  const [courseId, setCourseId] = useState<number | null>(null);
+  const [courseQuery, setCourseQuery] = useState("");
+  const [showCoursePicker, setShowCoursePicker] = useState(false);
+  const [secondCourseId, setSecondCourseId] = useState<number | null>(null);
+  const [secondCourseQuery, setSecondCourseQuery] = useState("");
+  const [showSecondCoursePicker, setShowSecondCoursePicker] = useState(false);
+  const [totalHoles, setTotalHoles] = useState<9 | 18 | 36>(18);
   const today = new Date().toISOString().slice(0, 10);
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
@@ -33,6 +39,37 @@ export function V2NewEvent() {
       .then((d) => setCourses(d.courses ?? []))
       .catch(() => setCourses([]));
   }, []);
+
+  const selectedCourse = useMemo(
+    () => courses.find((c) => c.id === courseId) ?? null,
+    [courses, courseId],
+  );
+  const selectedSecondCourse = useMemo(
+    () => courses.find((c) => c.id === secondCourseId) ?? null,
+    [courses, secondCourseId],
+  );
+
+  const filteredCourses = useMemo(() => {
+    const q = courseQuery.trim().toLowerCase();
+    if (!q) return courses.slice(0, 20);
+    return courses
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) || c.city.toLowerCase().includes(q),
+      )
+      .slice(0, 30);
+  }, [courses, courseQuery]);
+
+  const filteredSecondCourses = useMemo(() => {
+    const q = secondCourseQuery.trim().toLowerCase();
+    if (!q) return courses.slice(0, 20);
+    return courses
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) || c.city.toLowerCase().includes(q),
+      )
+      .slice(0, 30);
+  }, [courses, secondCourseQuery]);
 
   if (authLoading || !user) {
     return (
@@ -52,7 +89,7 @@ export function V2NewEvent() {
       setError("Name is required");
       return;
     }
-    if (typeof courseId !== "number") {
+    if (courseId == null) {
       setError("Pick a course");
       return;
     }
@@ -79,6 +116,8 @@ export function V2NewEvent() {
           entry_fee_cents: Math.round(dollars * 100),
           description: description.trim() || null,
           exclude_from_leaderboard: excludeFromLeaderboard,
+          total_holes: totalHoles,
+          second_course_id: totalHoles === 36 ? secondCourseId : null,
         }),
       });
       const data = await res.json();
@@ -119,26 +158,162 @@ export function V2NewEvent() {
           />
         </label>
 
-        <label className="block">
-          <span className="block text-sm font-medium text-[var(--v2-muted)]">
+        <div className="block">
+          <span className="block text-sm font-medium text-[var(--v2-muted)] mb-1">
             Course
           </span>
-          <select
-            value={courseId === "" ? "" : String(courseId)}
-            onChange={(e) =>
-              setCourseId(e.target.value ? Number(e.target.value) : "")
-            }
-            className={INPUT_CLS}
-            required
-          >
-            <option value="">Select a course…</option>
-            {courses.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} — {c.city}
-              </option>
+          {selectedCourse ? (
+            <div className="flex items-center justify-between rounded-lg bg-[var(--v2-surface-2)] px-3 py-2 border border-[var(--v2-border)]">
+              <div>
+                <div className="font-semibold text-white">
+                  {selectedCourse.name}
+                </div>
+                <div className="text-xs text-[var(--v2-muted)]">
+                  {selectedCourse.city}, {selectedCourse.state} · Par{" "}
+                  {selectedCourse.par} · {selectedCourse.holes} holes
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCourseId(null);
+                  setShowCoursePicker(true);
+                }}
+                className="text-sm font-medium text-[var(--v2-accent)]"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="Search courses"
+                value={courseQuery}
+                onChange={(e) => setCourseQuery(e.target.value)}
+                onFocus={() => setShowCoursePicker(true)}
+                className={INPUT_CLS}
+              />
+              {showCoursePicker && (
+                <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)]">
+                  {filteredCourses.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setCourseId(c.id);
+                        setCourseQuery("");
+                        setShowCoursePicker(false);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-[var(--v2-surface)] border-b border-[var(--v2-border)] last:border-b-0"
+                    >
+                      <div className="text-sm font-semibold text-white">
+                        {c.name}
+                      </div>
+                      <div className="text-xs text-[var(--v2-muted)]">
+                        {c.city} · Par {c.par} · {c.holes} holes
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="block">
+          <span className="block text-sm font-medium text-[var(--v2-muted)] mb-1">
+            Total holes
+          </span>
+          <div className="inline-flex rounded-lg border border-[var(--v2-border)] overflow-hidden">
+            {([9, 18, 36] as const).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setTotalHoles(n)}
+                className={`px-4 py-1.5 text-sm font-medium ${
+                  totalHoles === n
+                    ? "bg-[var(--v2-accent)] text-black"
+                    : "bg-[var(--v2-surface-2)] text-[var(--v2-muted)] hover:bg-[var(--v2-border)]"
+                }`}
+              >
+                {n}
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
+          <p className="mt-1 text-xs text-[var(--v2-muted)]">
+            {totalHoles === 9 && "1 round, 9 holes, individual stroke play."}
+            {totalHoles === 18 && "1 round, 18 holes, individual stroke play."}
+            {totalHoles === 36 &&
+              "2 rounds: 18 individual + 18 scramble. Optionally play round 2 on a second course."}
+          </p>
+        </div>
+
+        {totalHoles === 36 && (
+          <div className="block">
+            <span className="block text-sm font-medium text-[var(--v2-muted)] mb-1">
+              Round 2 course (optional)
+            </span>
+            {selectedSecondCourse ? (
+              <div className="flex items-center justify-between rounded-lg bg-[var(--v2-surface-2)] px-3 py-2 border border-[var(--v2-border)]">
+                <div>
+                  <div className="font-semibold text-white">
+                    {selectedSecondCourse.name}
+                  </div>
+                  <div className="text-xs text-[var(--v2-muted)]">
+                    {selectedSecondCourse.city}, {selectedSecondCourse.state} ·
+                    Par {selectedSecondCourse.par} ·{" "}
+                    {selectedSecondCourse.holes} holes
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSecondCourseId(null);
+                    setShowSecondCoursePicker(true);
+                  }}
+                  className="text-sm font-medium text-[var(--v2-accent)]"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  placeholder="Same as round 1 — search to pick a different course"
+                  value={secondCourseQuery}
+                  onChange={(e) => setSecondCourseQuery(e.target.value)}
+                  onFocus={() => setShowSecondCoursePicker(true)}
+                  className={INPUT_CLS}
+                />
+                {showSecondCoursePicker && (
+                  <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)]">
+                    {filteredSecondCourses.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSecondCourseId(c.id);
+                          setSecondCourseQuery("");
+                          setShowSecondCoursePicker(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-[var(--v2-surface)] border-b border-[var(--v2-border)] last:border-b-0"
+                      >
+                        <div className="text-sm font-semibold text-white">
+                          {c.name}
+                        </div>
+                        <div className="text-xs text-[var(--v2-muted)]">
+                          {c.city} · Par {c.par} · {c.holes} holes
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block min-w-0">

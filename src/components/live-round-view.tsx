@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { fetchOrQueue } from "@/lib/offline-queue";
 import type { LiveLeaderRow, LiveRoundLoad } from "@/app/api/rounds/live/[id]/route";
 
@@ -445,12 +446,23 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
       `}</style>
 
       <div className={cls.container}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <Link href="/" className={cls.backLink}>← Home</Link>
-          <div className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
-            <span className={v2 ? "text-red-300" : "text-red-600"}>LIVE</span>
-            <span className={v2 ? "text-[var(--v2-muted)]" : "text-gray-400"}>· {round.course_name}</span>
+          <div className="flex items-center gap-2">
+            <CopyLinkButton
+              path={`/rounds/live/${roundId}`}
+              label="Invite"
+              className={
+                v2
+                  ? "inline-flex items-center gap-1.5 rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface)] px-2.5 py-1 text-xs font-medium text-[var(--v2-accent)]"
+                  : "inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-green-700 hover:border-green-400"
+              }
+            />
+            <div className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+              <span className={v2 ? "text-red-300" : "text-red-600"}>LIVE</span>
+              <span className={v2 ? "text-[var(--v2-muted)]" : "text-gray-400"}>· {round.course_name}</span>
+            </div>
           </div>
         </div>
 

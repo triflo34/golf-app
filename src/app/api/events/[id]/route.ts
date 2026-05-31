@@ -23,6 +23,7 @@ type ParticipantRow = {
   role: "organizer" | "player";
   is_organizer: boolean;
   group_num: number | null;
+  seq: number;
   display_name: string;
   username: string;
 };
@@ -48,11 +49,11 @@ async function loadEvent(eventId: number) {
   if (!event) return null;
   const participants = await db
     .prepare(
-      `SELECT ep.user_id, ep.role, ep.is_organizer, ep.group_num,
+      `SELECT ep.user_id, ep.role, ep.is_organizer, ep.group_num, ep.seq,
               u.display_name, u.username
        FROM event_participants ep JOIN users u ON u.id = ep.user_id
        WHERE ep.event_id = ?
-       ORDER BY ep.is_organizer DESC, u.display_name ASC`,
+       ORDER BY ep.seq ASC, u.display_name ASC`,
     )
     .all<ParticipantRow>(eventId);
   const rounds = await db

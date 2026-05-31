@@ -327,6 +327,32 @@ export default function EventManagePage({
     }
   }
 
+  async function movePlayer(userId: string, dir: -1 | 1) {
+    setError(null);
+    const idx = players.findIndex((p) => p.user_id === userId);
+    if (idx < 0) return;
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= players.length) return;
+    const next = players.slice();
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    const ids = next.map((p) => p.user_id);
+    // Optimistic: reflect new order immediately.
+    setParticipants(next);
+    try {
+      const res = await fetch(`/api/events/${id}/participants/reorder`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_ids: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Reorder failed");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reorder failed");
+      await reload();
+    }
+  }
+
   async function toggleSideGame(kind: SideGameKind) {
     if (locked) return;
     const next = enabledKinds.has(kind)
@@ -442,8 +468,28 @@ export default function EventManagePage({
           <div className="text-sm text-gray-500">No players yet.</div>
         ) : (
           <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
-            {players.map((p) => (
+            {players.map((p, idx) => (
               <li key={p.user_id} className="px-3 py-2 flex items-center justify-between gap-2">
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => movePlayer(p.user_id, -1)}
+                    disabled={busy || idx === 0}
+                    aria-label="Move up"
+                    className="w-6 h-5 text-xs text-gray-500 hover:text-green-700 disabled:opacity-20"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => movePlayer(p.user_id, 1)}
+                    disabled={busy || idx === players.length - 1}
+                    aria-label="Move down"
+                    className="w-6 h-5 text-xs text-gray-500 hover:text-green-700 disabled:opacity-20"
+                  >
+                    ▼
+                  </button>
+                </div>
                 <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">
                   {p.display_name}
                   {p.is_organizer && (

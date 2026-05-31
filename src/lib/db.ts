@@ -147,6 +147,12 @@ async function bootstrap(): Promise<void> {
   await ensureHoleScoresGuestColumns(sql);
   console.log("[db] bootstrap: ensureRoundPlayersTable");
   await ensureRoundPlayersTable(sql);
+  console.log("[db] bootstrap: ensureFeedEventsTable");
+  await ensureFeedEventsTable(sql);
+  console.log("[db] bootstrap: ensureEventHoleConfigColumns");
+  await ensureEventHoleConfigColumns(sql);
+  console.log("[db] bootstrap: ensureEventParticipantSeqColumn");
+  await ensureEventParticipantSeqColumn(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -169,6 +175,12 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureHoleScoresGuestColumns(sql);
   console.log("[db] ensureCriticalColumns: round_players");
   await ensureRoundPlayersTable(sql);
+  console.log("[db] ensureCriticalColumns: feed_events");
+  await ensureFeedEventsTable(sql);
+  console.log("[db] ensureCriticalColumns: event_hole_config");
+  await ensureEventHoleConfigColumns(sql);
+  console.log("[db] ensureCriticalColumns: event_participant_seq");
+  await ensureEventParticipantSeqColumn(sql);
 }
 
 function ensureInit(): Promise<void> {
@@ -454,6 +466,30 @@ const SCHEMA_SQL = `
   );
   CREATE INDEX IF NOT EXISTS idx_recent_course_searches_user
     ON recent_course_searches(user_id, searched_at DESC);
+
+  -- Social activity feed. One row per generated event (round_completed,
+  -- round_win, birdie, eagle, bogey_free_nine, career_best, first_sub_threshold).
+  -- dedup_key makes regeneration on edits idempotent.
+  CREATE TABLE IF NOT EXISTS feed_events (
+    id          SERIAL PRIMARY KEY,
+    kind        TEXT NOT NULL CHECK (kind IN (
+                  'round_completed','round_win','birdie','eagle',
+                  'bogey_free_nine','career_best','first_sub_threshold'
+                )),
+    round_id    INTEGER REFERENCES rounds(id) ON DELETE CASCADE,
+    player_id   TEXT REFERENCES users(id) ON DELETE CASCADE,
+    guest_name  TEXT,
+    data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    dedup_key   TEXT NOT NULL UNIQUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS idx_feed_events_occurred_at
+    ON feed_events(occurred_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_feed_events_round
+    ON feed_events(round_id);
+  CREATE INDEX IF NOT EXISTS idx_feed_events_player
+    ON feed_events(player_id);
 `;
 
 async function ensureHiddenColumn(sql: postgres.Sql): Promise<void> {
@@ -671,6 +707,94 @@ async function ensureRoundPlayersTable(sql: postgres.Sql): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS uq_round_players_guest
       ON round_players(round_id, guest_name) WHERE guest_name IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_round_players_round ON round_players(round_id);
+  `);
+}
+
+async function ensureEventParticipantSeqColumn(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE event_participants
+      ADD COLUMN IF NOT EXISTS seq SMALLINT NOT NULL DEFAULT 0;
+  `);
+  // Backfill: for any event whose participants are all seq=0, assign sequential
+  // order by display_name so existing events have a stable order rather than
+  // an arbitrary one.
+  await sql.unsafe(`
+    WITH ranked AS (
+      SELECT ep.event_id, ep.user_id,
+             ROW_NUMBER() OVER (
+               PARTITION BY ep.event_id
+               ORDER BY ep.is_organizer DESC, u.display_name ASC
+             ) AS rn
+      FROM event_participants ep
+      JOIN users u ON u.id = ep.user_id
+      WHERE ep.event_id IN (
+        SELECT event_id FROM event_participants
+        GROUP BY event_id
+        HAVING COUNT(*) FILTER (WHERE seq <> 0) = 0
+      )
+    )
+    UPDATE event_participants ep
+    SET seq = ranked.rn
+    FROM ranked
+    WHERE ep.event_id = ranked.event_id AND ep.user_id = ranked.user_id;
+  `);
+}
+
+async function ensureEventHoleConfigColumns(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS total_holes      SMALLINT NOT NULL DEFAULT 18;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS second_course_id INTEGER REFERENCES courses(id);
+  `);
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'events_total_holes_check'
+      ) THEN
+        ALTER TABLE events
+          ADD CONSTRAINT events_total_holes_check
+          CHECK (total_holes IN (9, 18, 36));
+      END IF;
+    END$$;
+  `);
+}
+
+async function ensureFeedEventsTable(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS feed_events (
+      id          SERIAL PRIMARY KEY,
+      kind        TEXT NOT NULL,
+      round_id    INTEGER REFERENCES rounds(id) ON DELETE CASCADE,
+      player_id   TEXT REFERENCES users(id) ON DELETE CASCADE,
+      guest_name  TEXT,
+      data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMPTZ NOT NULL,
+      dedup_key   TEXT NOT NULL UNIQUE,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'feed_events_kind_check'
+      ) THEN
+        ALTER TABLE feed_events
+          ADD CONSTRAINT feed_events_kind_check
+          CHECK (kind IN (
+            'round_completed','round_win','birdie','eagle',
+            'bogey_free_nine','career_best','first_sub_threshold'
+          ));
+      END IF;
+    END$$;
+  `);
+  await sql.unsafe(`
+    CREATE INDEX IF NOT EXISTS idx_feed_events_occurred_at
+      ON feed_events(occurred_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_feed_events_round
+      ON feed_events(round_id);
+    CREATE INDEX IF NOT EXISTS idx_feed_events_player
+      ON feed_events(player_id);
   `);
 }
 

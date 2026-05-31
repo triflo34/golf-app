@@ -8,7 +8,13 @@ export type LeaderboardEntry = {
   strokes: number;
   through: number;
   vs_par: number;
-  per_round: { round_id: number; round_number: number; strokes: number; through: number }[];
+  per_round: {
+    round_id: number;
+    round_number: number;
+    strokes: number;
+    through: number;
+    vs_par: number;
+  }[];
 };
 
 export type Best18Entry = {
@@ -202,12 +208,15 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
     for (const r of rounds) {
       const rs = scoresByPlayerRound.get(p.user_id)?.get(r.id) ?? [];
       let rStrokes = 0;
+      let rVsPar = 0;
       for (const s of rs) {
         rStrokes += s.strokes;
         // Prefer snapshotted par on the row; fall back to current course_holes
         // for rows that were written before snapshotting existed.
         const parForHole = s.par ?? parByHole.get(s.hole_number) ?? 4;
-        vsPar += s.strokes - parForHole;
+        const delta = s.strokes - parForHole;
+        vsPar += delta;
+        rVsPar += delta;
       }
       strokes += rStrokes;
       through += rs.length;
@@ -216,6 +225,7 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
         round_number: r.round_number,
         strokes: rStrokes,
         through: rs.length,
+        vs_par: rVsPar,
       });
     }
     return {

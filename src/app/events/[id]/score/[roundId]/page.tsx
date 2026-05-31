@@ -4,6 +4,7 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrQueue } from "@/lib/offline-queue";
+import type { ScoreEditEntry } from "@/app/api/events/[id]/rounds/[roundId]/edits/route";
 
 type RoundInfo = {
   id: number;
@@ -73,6 +74,22 @@ function classify(strokes: number, par: number): { label: string; tone: string }
   return { label: `+${d}`, tone: "bg-gray-100 text-gray-700" };
 }
 
+function vsParLabel(n: number): string {
+  if (n === 0) return "E";
+  return n > 0 ? `+${n}` : String(n);
+}
+
+type LeaderRow = {
+  key: string;
+  name: string;
+  subtitle: string | null;
+  strokes: number;
+  through: number;
+  vsPar: number;
+  rank: number;
+  is_leader: boolean;
+};
+
 export default function ScorePage({
   params,
 }: {
@@ -84,7 +101,8 @@ export default function ScorePage({
   const [data, setData] = useState<RoundLoad | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hole, setHole] = useState(1);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [edits, setEdits] = useState<ScoreEditEntry[] | null>(null);
+  const [showEdits, setShowEdits] = useState(false);
 
   // Optimistic overlays: { "key": strokes | null } where null means "cleared".
   // `key` is `${playerId}:${hole}` for individual or `team:${teamId}:${hole}` for scramble.
@@ -100,14 +118,50 @@ export default function ScorePage({
       return;
     }
     setError(null);
-    setData(await res.json());
-    // Fresh server data is authoritative — drop any pending overlays.
-    setPendingScores(new Map());
+    const next = (await res.json()) as RoundLoad;
+    setData(next);
+    // Only drop pending entries the server has caught up on. A pending value
+    // that still differs from the server is in-flight or queued — keep it so
+    // the user's tap doesn't flicker back to the stale server value.
+    setPendingScores((prev) => {
+      if (prev.size === 0) return prev;
+      const serverScore = new Map<string, number>();
+      for (const s of next.scores) {
+        serverScore.set(`${s.player_id}:${s.hole_number}`, s.strokes);
+      }
+      const serverTeamScore = new Map<string, number>();
+      for (const s of next.team_scores) {
+        serverTeamScore.set(`team:${s.team_id}:${s.hole_number}`, s.strokes);
+      }
+      const out = new Map(prev);
+      for (const [k, v] of prev) {
+        const server = k.startsWith("team:") ? serverTeamScore.get(k) : serverScore.get(k);
+        if (v === null) {
+          if (server === undefined) out.delete(k); // cleared and confirmed
+        } else if (server === v) {
+          out.delete(k); // server caught up
+        }
+      }
+      return out;
+    });
+  }, [id, roundId]);
+
+  const loadEdits = useCallback(async () => {
+    const res = await fetch(`/api/events/${id}/rounds/${roundId}/edits`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return;
+    const body = await res.json();
+    setEdits(body.edits ?? []);
   }, [id, roundId]);
 
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  useEffect(() => {
+    if (user && showEdits) loadEdits();
+  }, [user, showEdits, loadEdits]);
 
   // Background refresh so peer edits show up. Pauses when the tab is hidden.
   useEffect(() => {
@@ -160,101 +214,86 @@ export default function ScorePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data === null]);
 
-  const scoreMap = useMemo(() => {
-    const m = new Map<string, ScoreInfo>();
+  // Plain strokes maps, overlayed with optimistic pending values.
+  const playerStrokes = useMemo(() => {
+    const m = new Map<string, number>(); // key = `${playerId}:${hole}` → strokes
     if (!data) return m;
     for (const s of data.scores) {
-      m.set(`${s.player_id}:${s.hole_number}`, s);
+      m.set(`${s.player_id}:${s.hole_number}`, s.strokes);
     }
-    // Overlay pending optimistic updates.
-    for (const [key, strokes] of pendingScores) {
-      if (key.startsWith("team:")) continue;
-      if (strokes === null) {
-        m.delete(key);
-      } else {
-        const [playerId, holeStr] = key.split(":");
-        const hn = Number(holeStr);
-        m.set(key, {
-          id: -1,
-          player_id: playerId,
-          hole_number: hn,
-          strokes,
-          updated_by: user?.id ?? null,
-          updated_by_name: user?.display_name ?? null,
-          updated_at: new Date().toISOString(),
-        });
-      }
+    for (const [k, v] of pendingScores) {
+      if (k.startsWith("team:")) continue;
+      if (v === null) m.delete(k);
+      else m.set(k, v);
     }
     return m;
-  }, [data, pendingScores, user]);
+  }, [data, pendingScores]);
 
-  const teamScoreMap = useMemo(() => {
-    const m = new Map<string, TeamScoreInfo>();
+  const teamStrokes = useMemo(() => {
+    const m = new Map<string, number>(); // key = `${teamId}:${hole}` → strokes
     if (!data) return m;
     for (const s of data.team_scores) {
-      m.set(`${s.team_id}:${s.hole_number}`, s);
+      m.set(`${s.team_id}:${s.hole_number}`, s.strokes);
     }
-    for (const [key, strokes] of pendingScores) {
-      if (!key.startsWith("team:")) continue;
-      // key shape: team:<teamId>:<hole>
-      const parts = key.split(":");
-      const teamId = Number(parts[1]);
-      const hn = Number(parts[2]);
+    for (const [k, v] of pendingScores) {
+      if (!k.startsWith("team:")) continue;
+      const parts = k.split(":");
+      const teamId = parts[1];
+      const hn = parts[2];
       const mapKey = `${teamId}:${hn}`;
-      if (strokes === null) {
-        m.delete(mapKey);
-      } else {
-        m.set(mapKey, {
-          id: -1,
-          team_id: teamId,
-          hole_number: hn,
-          strokes,
-          updated_by: user?.id ?? null,
-          updated_by_name: user?.display_name ?? null,
-          updated_at: new Date().toISOString(),
-        });
-      }
+      if (v === null) m.delete(mapKey);
+      else m.set(mapKey, v);
     }
     return m;
-  }, [data, pendingScores, user]);
+  }, [data, pendingScores]);
 
-  const totals = useMemo(() => {
-    const t = new Map<string, { strokes: number; through: number; vsPar: number }>();
-    if (!data) return t;
+  // Last-edit metadata (server-only — we don't track this for pending overlays).
+  const scoreMeta = useMemo(() => {
+    const m = new Map<string, ScoreInfo>();
+    if (!data) return m;
+    for (const s of data.scores) m.set(`${s.player_id}:${s.hole_number}`, s);
+    return m;
+  }, [data]);
+
+  // Live leaderboard, recomputed in lockstep with optimistic edits.
+  const leaderboard: LeaderRow[] = useMemo(() => {
+    if (!data) return [];
     const parByHole = new Map(data.holes.map((h) => [h.hole_number, h.par]));
+    type Agg = { through: number; strokes: number; vsPar: number };
     if (isScramble) {
-      for (const tm of data.teams) {
-        let strokes = 0;
-        let through = 0;
-        let vsPar = 0;
+      const rows = data.teams.map((tm) => {
+        let a: Agg = { through: 0, strokes: 0, vsPar: 0 };
         for (const h of data.holes) {
-          const s = teamScoreMap.get(`${tm.id}:${h.hole_number}`);
-          if (s) {
-            strokes += s.strokes;
-            through += 1;
-            vsPar += s.strokes - (parByHole.get(h.hole_number) ?? 4);
+          const s = teamStrokes.get(`${tm.id}:${h.hole_number}`);
+          if (s != null) {
+            a = {
+              through: a.through + 1,
+              strokes: a.strokes + s,
+              vsPar: a.vsPar + s - (parByHole.get(h.hole_number) ?? 4),
+            };
           }
         }
-        t.set(`team:${tm.id}`, { strokes, through, vsPar });
-      }
-    } else {
-      for (const p of data.players) {
-        let strokes = 0;
-        let through = 0;
-        let vsPar = 0;
-        for (const h of data.holes) {
-          const s = scoreMap.get(`${p.user_id}:${h.hole_number}`);
-          if (s) {
-            strokes += s.strokes;
-            through += 1;
-            vsPar += s.strokes - (parByHole.get(h.hole_number) ?? 4);
-          }
-        }
-        t.set(p.user_id, { strokes, through, vsPar });
-      }
+        const sub = tm.members.map((m) => m.display_name).join(", ") || null;
+        return { key: `team:${tm.id}`, name: tm.name, subtitle: sub, ...a };
+      });
+      return rankRows(rows);
     }
-    return t;
-  }, [data, scoreMap, teamScoreMap, isScramble]);
+    const rows = data.players.map((p) => {
+      let a: Agg = { through: 0, strokes: 0, vsPar: 0 };
+      for (const h of data.holes) {
+        const s = playerStrokes.get(`${p.user_id}:${h.hole_number}`);
+        if (s != null) {
+          a = {
+            through: a.through + 1,
+            strokes: a.strokes + s,
+            vsPar: a.vsPar + s - (parByHole.get(h.hole_number) ?? 4),
+          };
+        }
+      }
+      return { key: p.user_id, name: p.display_name, subtitle: null, ...a };
+    });
+    return rankRows(rows);
+  }, [data, playerStrokes, teamStrokes, isScramble]);
 
   if (authLoading || !user) {
     return (
@@ -263,7 +302,7 @@ export default function ScorePage({
       </div>
     );
   }
-  if (error) {
+  if (error && !data) {
     return (
       <div className="max-w-lg mx-auto px-4 py-6">
         <Link href={`/events/${id}`} className="text-sm text-green-700">
@@ -291,19 +330,14 @@ export default function ScorePage({
 
   function setStrokes(playerId: string, strokes: number | null) {
     const key = `${playerId}:${hole}`;
-    // Snapshot previous pending value so we can revert on failure.
     const prev = pendingScores.get(key);
     const hadPrev = pendingScores.has(key);
-    // Optimistic: update UI immediately.
     setPendingScores((m) => {
       const next = new Map(m);
       next.set(key, strokes);
       return next;
     });
-    setSaving(key);
     setError(null);
-    // Fire-and-forget; don't refetch on success — the optimistic value already matches.
-    // fetchOrQueue returns null when offline (queued for later) — treat as success.
     fetchOrQueue(`/api/events/${id}/rounds/${roundId}/holes`, {
       method: "POST",
       body: { player_id: playerId, hole_number: hole, strokes },
@@ -322,9 +356,6 @@ export default function ScorePage({
           else next.delete(key);
           return next;
         });
-      })
-      .finally(() => {
-        setSaving((curr) => (curr === key ? null : curr));
       });
   }
 
@@ -337,7 +368,6 @@ export default function ScorePage({
       next.set(key, strokes);
       return next;
     });
-    setSaving(key);
     setError(null);
     fetchOrQueue(`/api/events/${id}/rounds/${roundId}/team-holes`, {
       method: "POST",
@@ -357,261 +387,465 @@ export default function ScorePage({
           else next.delete(key);
           return next;
         });
-      })
-      .finally(() => {
-        setSaving((curr) => (curr === key ? null : curr));
       });
   }
 
-  return (
-    <div className="max-w-lg mx-auto px-4 py-4 pb-24">
-      <div className="flex items-center justify-between">
-        <Link href={`/events/${id}`} className="text-sm text-green-700">
-          ← Event
-        </Link>
-        <div className="text-xs text-gray-500">
-          R{round.round_number} · {round.round_format} · {round.hole_count} holes
-        </div>
-      </div>
+  const minHole = holes[0]?.hole_number ?? 1;
+  const maxHole = holes[holes.length - 1]?.hole_number ?? 18;
+  const unitCount = isScramble ? teams.length : players.length;
+  const totalCells = holes.length * unitCount;
+  const filledCells = isScramble
+    ? teamStrokes.size
+    : playerStrokes.size;
 
-      <div className="mt-3 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setHole((h) => Math.max(1, h - 1))}
-          disabled={hole === 1}
-          className="px-3 py-1.5 rounded border border-gray-300 text-sm disabled:opacity-30"
-        >
-          ←
-        </button>
-        <div className="text-center">
-          <div className="text-sm text-gray-500">Hole</div>
-          <div className="text-3xl font-bold text-green-800 leading-none">{hole}</div>
-          <div className="text-xs text-gray-500">
-            Par {currentPar}
-            {currentYardage != null && (
-              <> · {currentYardage} yds</>
-            )}
-            {currentHandicap != null && (
-              <> · HCP {currentHandicap}</>
-            )}
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      <div className="max-w-lg mx-auto px-4 py-4 pb-[60vh]">
+        <div className="flex items-center justify-between gap-2">
+          <Link href={`/events/${id}`} className="text-sm text-green-700 font-medium">
+            ← Event
+          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/events/${id}/scorecard/${roundId}`}
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-green-700 hover:border-green-400"
+            >
+              Scorecard
+            </Link>
+            <div className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+              <span className="text-red-600">LIVE</span>
+              <span className="text-gray-400">
+                · R{round.round_number} · {round.round_format} · {round.hole_count}
+              </span>
+            </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setHole((h) => Math.min(round.hole_count, h + 1))}
-          disabled={hole === round.hole_count}
-          className="px-3 py-1.5 rounded border border-gray-300 text-sm disabled:opacity-30"
-        >
-          →
-        </button>
-      </div>
 
-      <div className="mt-3 -mx-4 overflow-x-auto">
-        <div className="flex px-4 gap-1 min-w-max">
-          {holes.map((h) => {
-            const units = isScramble ? teams.length : players.length;
-            const filled = isScramble
-              ? teams.filter((tm) => teamScoreMap.has(`${tm.id}:${h.hole_number}`)).length
-              : players.filter((p) => scoreMap.has(`${p.user_id}:${h.hole_number}`)).length;
-            const complete = units > 0 && filled === units;
-            const isCurrent = h.hole_number === hole;
-            return (
-              <button
-                key={h.hole_number}
-                type="button"
-                onClick={() => setHole(h.hole_number)}
-                className={`min-w-[2rem] h-8 text-xs font-medium rounded border ${
-                  isCurrent
-                    ? "border-green-700 bg-green-700 text-white"
-                    : complete
-                      ? "border-green-300 bg-green-50 text-green-800"
-                      : "border-gray-200 text-gray-600"
-                }`}
-              >
-                {h.hole_number}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {error && (
-        <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {isScramble && teams.length === 0 && (
-        <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
-          No scramble teams yet. Organizer needs to create teams from the Manage
-          page before scramble scoring can begin.
-        </div>
-      )}
-
-      {isScramble ? (
-        <ul className="mt-4 divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
-          {teams.map((tm) => {
-            const score = teamScoreMap.get(`${tm.id}:${hole}`);
-            const tot = totals.get(`team:${tm.id}`);
-            const cls = score ? classify(score.strokes, currentPar) : null;
-            const key = `team:${tm.id}:${hole}`;
-            const isSaving = saving === key;
-            return (
-              <li key={tm.id} className="px-3 py-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">
-                    {tm.name}
-                  </div>
-                  <div className="text-xs text-gray-500 truncate">
-                    {tm.members.map((m) => m.display_name).join(", ")}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {tot && tot.through > 0
-                      ? `${tot.strokes} thru ${tot.through} · ${tot.vsPar > 0 ? `+${tot.vsPar}` : tot.vsPar} v par`
-                      : "—"}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setTeamStrokes(tm.id, currentPar)}
-                    className={`h-9 px-2 rounded-md border text-xs font-semibold ${
-                      score?.strokes === currentPar
-                        ? "border-green-600 bg-green-600 text-white"
-                        : "border-green-300 bg-green-50 text-green-800"
-                    }`}
-                    title={`Set to par (${currentPar})`}
+        <div className="mt-3 bg-white rounded-xl shadow-sm border border-gray-200 p-3">
+          <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+            {isScramble ? "Team Leaderboard" : "Leaderboard"}
+          </div>
+          {leaderboard.length === 0 ? (
+            <div className="mt-2 text-xs text-gray-500">
+              {isScramble
+                ? "No scramble teams yet. Organizer needs to create teams before scoring."
+                : "No players yet."}
+            </div>
+          ) : (
+            <div className="mt-2 space-y-1">
+              {leaderboard.map((row) => {
+                const tied =
+                  leaderboard.findIndex(
+                    (r) => r.rank === row.rank && r.key !== row.key,
+                  ) !== -1;
+                const vsParTone =
+                  row.through === 0
+                    ? "text-gray-500"
+                    : row.vsPar > 0
+                      ? "text-red-600"
+                      : row.vsPar < 0
+                        ? "text-green-700"
+                        : "text-gray-500";
+                return (
+                  <div
+                    key={row.key}
+                    className="flex items-center justify-between rounded-lg px-2 py-1.5"
                   >
-                    Par
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTeamStrokes(tm.id, Math.max(1, (score?.strokes ?? currentPar) - 1))}
-                    /* optimistic: no disable */
-                    className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
-                  >
-                    −
-                  </button>
-                  <div className="w-12 text-center">
-                    <div className="text-2xl font-semibold text-gray-900 leading-none">
-                      {score?.strokes ?? "–"}
-                    </div>
-                    {cls && (
-                      <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded ${cls.tone}`}>
-                        {cls.label}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={
+                          row.is_leader
+                            ? "inline-flex items-center justify-center w-7 h-7 rounded-full bg-yellow-400 text-yellow-900 text-xs font-bold"
+                            : "inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 text-gray-600 text-xs font-bold"
+                        }
+                      >
+                        {tied ? `T${row.rank}` : row.rank}
                       </span>
-                    )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 truncate">
+                          {row.is_leader && (
+                            <span className="text-yellow-500">👑 </span>
+                          )}
+                          {row.name}
+                        </div>
+                        {row.subtitle && (
+                          <div className="text-[10px] text-gray-500 truncate">
+                            {row.subtitle}
+                          </div>
+                        )}
+                        <div className="text-[11px] text-gray-500">
+                          {row.through === 0
+                            ? "—"
+                            : `${row.strokes} · thru ${row.through}`}
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`text-lg font-bold ${vsParTone}`}>
+                      {row.through === 0 ? "—" : vsParLabel(row.vsPar)}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setTeamStrokes(tm.id, (score?.strokes ?? currentPar) + 1)}
-                    /* optimistic: no disable */
-                    className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
-                  >
-                    +
-                  </button>
-                  {score && (
-                    <button
-                      type="button"
-                      onClick={() => setTeamStrokes(tm.id, null)}
-                      /* optimistic: no disable */
-                      className="ml-1 text-xs text-gray-400 hover:text-red-600"
-                      title="Clear"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-      <ul className="mt-4 divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
-        {players.map((p) => {
-          const score = scoreMap.get(`${p.user_id}:${hole}`);
-          const tot = totals.get(p.user_id);
-          const cls = score ? classify(score.strokes, currentPar) : null;
-          const key = `${p.user_id}:${hole}`;
-          const isSaving = saving === key;
-          return (
-            <li key={p.user_id} className="px-3 py-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">
-                  {p.display_name}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {tot && tot.through > 0
-                    ? `${tot.strokes} thru ${tot.through} · ${tot.vsPar > 0 ? `+${tot.vsPar}` : tot.vsPar} v par`
-                    : "—"}
-                </div>
-                {score?.updated_by_name && score.updated_by !== p.user_id && (
-                  <div className="text-[10px] text-gray-400">
-                    last edit by {score.updated_by_name}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setStrokes(p.user_id, currentPar)}
-                  className={`h-9 px-2 rounded-md border text-xs font-semibold ${
-                    score?.strokes === currentPar
-                      ? "border-green-600 bg-green-600 text-white"
-                      : "border-green-300 bg-green-50 text-green-800"
-                  }`}
-                  title={`Set to par (${currentPar})`}
-                >
-                  Par
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStrokes(p.user_id, Math.max(1, (score?.strokes ?? currentPar) - 1))}
-                  /* optimistic: no disable */
-                  className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
-                >
-                  −
-                </button>
-                <div className="w-12 text-center">
-                  <div className="text-2xl font-semibold text-gray-900 leading-none">
-                    {score?.strokes ?? "–"}
-                  </div>
-                  {cls && (
-                    <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded ${cls.tone}`}>
-                      {cls.label}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setStrokes(p.user_id, (score?.strokes ?? currentPar) + 1)}
-                  /* optimistic: no disable */
-                  className="w-9 h-9 rounded-md border border-gray-300 text-lg leading-none"
-                >
-                  +
-                </button>
-                {score && (
-                  <button
-                    type="button"
-                    onClick={() => setStrokes(p.user_id, null)}
-                    /* optimistic: no disable */
-                    className="ml-1 text-xs text-gray-400 hover:text-red-600"
-                    title="Clear"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      )}
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-      <p className="mt-3 text-[11px] text-gray-400">
-        {isScramble ? "Team scores. " : ""}
-        Anyone in the event can edit any score. Edits are logged.
-      </p>
+        <div className="mt-3 -mx-4 overflow-x-auto">
+          <div className="flex px-4 gap-1 min-w-max">
+            {holes.map((h) => {
+              const filled = isScramble
+                ? teams.filter((tm) => teamStrokes.has(`${tm.id}:${h.hole_number}`)).length
+                : players.filter((p) => playerStrokes.has(`${p.user_id}:${h.hole_number}`)).length;
+              const complete = unitCount > 0 && filled === unitCount;
+              const isCurrent = h.hole_number === hole;
+              return (
+                <button
+                  key={h.hole_number}
+                  type="button"
+                  onClick={() => setHole(h.hole_number)}
+                  className={
+                    isCurrent
+                      ? "min-w-[2rem] h-8 text-xs font-bold rounded border border-green-700 bg-green-700 text-white"
+                      : complete
+                        ? "min-w-[2rem] h-8 text-xs font-medium rounded border border-green-300 bg-green-50 text-green-800"
+                        : "min-w-[2rem] h-8 text-xs font-medium rounded border border-gray-200 text-gray-600 bg-white"
+                  }
+                >
+                  {h.hole_number}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="mt-3 rounded-md border border-gray-200 bg-white">
+          <button
+            type="button"
+            onClick={() => setShowEdits((v) => !v)}
+            className="w-full px-3 py-2 flex items-center justify-between text-xs font-semibold text-gray-700"
+            aria-expanded={showEdits}
+          >
+            <span>Recent edits</span>
+            <span
+              className={`transition-transform text-gray-400 ${
+                showEdits ? "rotate-180" : ""
+              }`}
+              aria-hidden="true"
+            >
+              ▾
+            </span>
+          </button>
+          {showEdits && (
+            <div className="border-t border-gray-100 px-3 py-2 text-xs text-gray-700 max-h-48 overflow-y-auto">
+              {edits === null ? (
+                <div className="text-gray-400">Loading…</div>
+              ) : edits.length === 0 ? (
+                <div className="text-gray-400">No edits yet.</div>
+              ) : (
+                <ul className="space-y-1">
+                  {edits.map((e) => (
+                    <li key={e.id} className="leading-snug">
+                      <span className="text-gray-500">
+                        {formatRelative(e.edited_at)} ·
+                      </span>{" "}
+                      <span className="font-medium text-gray-900">
+                        {e.edited_by_name}
+                      </span>{" "}
+                      {e.subject_name && e.subject_name !== e.edited_by_name && (
+                        <>
+                          set{" "}
+                          <span className="font-medium text-gray-900">
+                            {e.subject_name}
+                          </span>
+                          &apos;s
+                        </>
+                      )}
+                      {(!e.subject_name ||
+                        e.subject_name === e.edited_by_name) && <>set</>}{" "}
+                      hole {e.hole_number}{" "}
+                      {e.new_strokes == null ? (
+                        <>
+                          to{" "}
+                          <span className="text-red-700 font-semibold">
+                            cleared
+                          </span>
+                        </>
+                      ) : e.old_strokes == null ? (
+                        <>
+                          to{" "}
+                          <span className="text-green-700 font-semibold">
+                            {e.new_strokes}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          from{" "}
+                          <span className="text-gray-500">{e.old_strokes}</span>{" "}
+                          →{" "}
+                          <span className="text-green-700 font-semibold">
+                            {e.new_strokes}
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        <p className="mt-3 text-[11px] text-gray-400">
+          {isScramble ? "Team scores. " : ""}
+          Anyone in the event can edit any score. Edits are logged.
+        </p>
+      </div>
+
+      <div className="safe-area-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.08)]">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
+          <button
+            type="button"
+            onClick={() => setHole((h) => Math.max(minHole, h - 1))}
+            disabled={hole <= minHole}
+            className="w-11 h-11 rounded-md border border-gray-300 bg-white text-gray-800 text-lg leading-none disabled:opacity-30"
+          >
+            ←
+          </button>
+          <div className="flex-1 text-center text-sm font-bold text-green-800">
+            Hole {hole} · Par {currentPar}
+            <div className="text-[10px] text-gray-500">
+              {currentYardage != null && <>{currentYardage} yds</>}
+              {currentYardage != null && currentHandicap != null && <> · </>}
+              {currentHandicap != null && <>HCP {currentHandicap}</>}
+              {(currentYardage != null || currentHandicap != null) && <> · </>}
+              {filledCells}/{totalCells} entered
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHole((h) => Math.min(maxHole, h + 1))}
+            disabled={hole >= maxHole}
+            className="w-11 h-11 rounded-md border border-gray-300 bg-white text-gray-800 text-lg leading-none disabled:opacity-30"
+          >
+            →
+          </button>
+        </div>
+
+        <div className="max-h-[40vh] overflow-y-auto px-3 py-2 space-y-2 max-w-lg mx-auto">
+          {isScramble && teams.length === 0 && (
+            <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+              No scramble teams yet. Organizer needs to create teams from the
+              Manage page before scramble scoring can begin.
+            </div>
+          )}
+
+          {isScramble
+            ? teams.map((tm) => {
+                const score = teamStrokes.get(`${tm.id}:${hole}`) ?? null;
+                const cls = score != null ? classify(score, currentPar) : null;
+                return (
+                  <div
+                    key={tm.id}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 truncate">
+                          {tm.name}
+                        </div>
+                        <div className="text-[10px] text-gray-500 truncate">
+                          {tm.members.map((m) => m.display_name).join(", ")}
+                        </div>
+                        {cls && (
+                          <span
+                            className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${cls.tone}`}
+                          >
+                            {cls.label}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setTeamStrokes(tm.id, currentPar)}
+                          className={
+                            score === currentPar
+                              ? "h-11 px-3 rounded-md border border-green-600 bg-green-600 text-xs font-semibold text-white"
+                              : "h-11 px-3 rounded-md border border-green-300 bg-green-50 text-xs font-semibold text-green-800"
+                          }
+                        >
+                          Par
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTeamStrokes(
+                              tm.id,
+                              Math.max(1, (score ?? currentPar) - 1),
+                            )
+                          }
+                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                        >
+                          −
+                        </button>
+                        <div className="w-14 text-center">
+                          <div className="text-3xl font-bold text-gray-900 leading-none">
+                            {score ?? "–"}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTeamStrokes(tm.id, (score ?? currentPar) + 1)
+                          }
+                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                        >
+                          +
+                        </button>
+                        {score != null && (
+                          <button
+                            type="button"
+                            onClick={() => setTeamStrokes(tm.id, null)}
+                            className="ml-1 text-xs text-gray-400 hover:text-red-600"
+                            title="Clear"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            : players.map((p) => {
+                const score = playerStrokes.get(`${p.user_id}:${hole}`) ?? null;
+                const cls = score != null ? classify(score, currentPar) : null;
+                const meta = scoreMeta.get(`${p.user_id}:${hole}`);
+                return (
+                  <div
+                    key={p.user_id}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 truncate">
+                          {p.display_name}
+                        </div>
+                        {cls && (
+                          <span
+                            className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${cls.tone}`}
+                          >
+                            {cls.label}
+                          </span>
+                        )}
+                        {meta?.updated_by_name &&
+                          meta.updated_by !== p.user_id && (
+                            <div className="text-[10px] text-gray-400 mt-0.5">
+                              last edit by {meta.updated_by_name}
+                            </div>
+                          )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setStrokes(p.user_id, currentPar)}
+                          className={
+                            score === currentPar
+                              ? "h-11 px-3 rounded-md border border-green-600 bg-green-600 text-xs font-semibold text-white"
+                              : "h-11 px-3 rounded-md border border-green-300 bg-green-50 text-xs font-semibold text-green-800"
+                          }
+                        >
+                          Par
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setStrokes(
+                              p.user_id,
+                              Math.max(1, (score ?? currentPar) - 1),
+                            )
+                          }
+                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                        >
+                          −
+                        </button>
+                        <div className="w-14 text-center">
+                          <div className="text-3xl font-bold text-gray-900 leading-none">
+                            {score ?? "–"}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setStrokes(p.user_id, (score ?? currentPar) + 1)
+                          }
+                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                        >
+                          +
+                        </button>
+                        {score != null && (
+                          <button
+                            type="button"
+                            onClick={() => setStrokes(p.user_id, null)}
+                            className="ml-1 text-xs text-gray-400 hover:text-red-600"
+                            title="Clear"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+        </div>
+      </div>
     </div>
   );
+}
+
+function formatRelative(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function rankRows<T extends { key: string; through: number; vsPar: number; strokes: number }>(
+  rows: T[],
+): (T & { rank: number; is_leader: boolean })[] {
+  const sorted = rows.slice().sort((a, b) => {
+    if (a.through === 0 && b.through > 0) return 1;
+    if (b.through === 0 && a.through > 0) return -1;
+    if (a.vsPar !== b.vsPar) return a.vsPar - b.vsPar;
+    if (a.strokes !== b.strokes) return a.strokes - b.strokes;
+    return a.key.localeCompare(b.key);
+  });
+  const out: (T & { rank: number; is_leader: boolean })[] = [];
+  let lastVs: number | null = null;
+  let lastBucket: number | null = null;
+  let rank = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const r = sorted[i];
+    const bucket = r.through === 0 ? 0 : 1;
+    const tied = lastVs !== null && r.vsPar === lastVs && bucket === lastBucket;
+    if (!tied) rank = i + 1;
+    lastVs = r.vsPar;
+    lastBucket = bucket;
+    out.push({ ...r, rank, is_leader: rank === 1 && r.through > 0 });
+  }
+  return out;
 }

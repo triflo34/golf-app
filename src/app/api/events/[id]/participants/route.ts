@@ -78,16 +78,25 @@ export async function POST(
     return NextResponse.json({ error: "Max 8 players per event" }, { status: 409 });
   }
 
+  // New players go to the end of the manual order. Existing max seq + 1 means
+  // the organizer's ordering is preserved when adding.
+  const maxSeq = await db
+    .prepare(
+      `SELECT COALESCE(MAX(seq), 0)::int AS m FROM event_participants WHERE event_id = ?`,
+    )
+    .get<{ m: number }>(eventId);
+  const nextSeq = (maxSeq?.m ?? 0) + 1;
+
   // Everyone is role='player' now; is_organizer is the additional flag and
   // is preserved on conflict so re-adding doesn't strip organizer rights.
   await db
     .prepare(
-      `INSERT INTO event_participants (event_id, user_id, role, group_num)
-       VALUES (?, ?, 'player', ?)
+      `INSERT INTO event_participants (event_id, user_id, role, group_num, seq)
+       VALUES (?, ?, 'player', ?, ?)
        ON CONFLICT (event_id, user_id) DO UPDATE
          SET group_num = EXCLUDED.group_num`,
     )
-    .run(eventId, userId, groupNum);
+    .run(eventId, userId, groupNum, nextSeq);
 
   return NextResponse.json({ ok: true });
 }
