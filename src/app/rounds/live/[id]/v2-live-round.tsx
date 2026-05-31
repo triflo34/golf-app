@@ -1,6 +1,6 @@
 "use client";
 
-import { LiveRoundView } from "@/components/live-round-view";
+import { LiveRoundV2 } from "@/components/v2/live-round-v2";
 
 export function V2LiveRound({ id }: { id: string }) {
   const rid = Number(id);
@@ -11,5 +11,5 @@ export function V2LiveRound({ id }: { id: string }) {
       </div>
     );
   }
-  return <LiveRoundView roundId={rid} variant="v2" />;
+  return <LiveRoundV2 roundId={rid} />;
 }
