@@ -369,7 +369,7 @@ export function LiveRoundV2({ roundId }: Props) {
   return (
     <div className="v2-bg min-h-screen text-[var(--v2-text)]">
       {/* Header */}
-      <div className="mx-auto max-w-lg px-4 pt-3 pb-[56vh]">
+      <div className="mx-auto max-w-lg px-4 pt-3 pb-[64vh]">
         <header className="flex items-center justify-between gap-2 py-1">
           <Link
             href="/"
@@ -523,7 +523,7 @@ export function LiveRoundV2({ roundId }: Props) {
       </div>
 
       {/* Sticky scoring dock */}
-      <div className="safe-area-bottom fixed inset-x-0 bottom-0 z-40 border-t border-[var(--v2-border)] bg-[var(--v2-bg-0)]/95 backdrop-blur shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+      <div className="safe-area-bottom fixed inset-x-0 bottom-0 z-40 border-t border-[var(--v2-border)] bg-[var(--v2-bg-0)] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
         <div className="mx-auto max-w-lg">
           {/* Hole nav */}
           <div className="flex items-center gap-2 border-b border-[var(--v2-border)] px-4 py-2">
@@ -555,7 +555,7 @@ export function LiveRoundV2({ roundId }: Props) {
           </div>
 
           {/* Player rows */}
-          <div className="max-h-[38vh] space-y-1.5 overflow-y-auto px-3 py-2.5">
+          <div className="max-h-[48vh] space-y-1.5 overflow-y-auto px-3 py-2.5">
             {players.map((p) => {
               const key = `${p.key}:${hole}`;
               const strokes = scoreMap.get(key);
@@ -564,36 +564,38 @@ export function LiveRoundV2({ roundId }: Props) {
               return (
                 <div
                   key={p.key}
-                  className="flex items-center gap-2 rounded-xl border border-[var(--v2-border)] bg-[var(--v2-surface)] px-2.5 py-2"
+                  className="flex items-center gap-2 rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface)] px-2.5 py-1.5"
                 >
                   <V2Avatar
                     initial={(p.name.charAt(0) || "?").toUpperCase()}
                     tone={toneForName(p.name)}
-                    size={30}
+                    size={28}
                   />
                   <div className="min-w-0 flex-1">
-                    <div
-                      className="truncate text-[13px] font-medium text-[var(--v2-text)]"
-                      style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
-                    >
-                      {p.name}
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="truncate text-[13px] font-medium text-[var(--v2-text)]"
+                        style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+                      >
+                        {p.name}
+                      </span>
                       {p.is_guest && (
-                        <span className="ml-1.5 text-[8.5px] font-semibold uppercase text-[var(--v2-text-faint)]">
+                        <span className="shrink-0 text-[8.5px] font-semibold uppercase text-[var(--v2-text-faint)]">
                           guest
                         </span>
                       )}
+                      {type && (
+                        <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold ${type.chip}`}>
+                          {type.label}
+                        </span>
+                      )}
                     </div>
-                    {type && (
-                      <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[9.5px] font-semibold ${type.chip}`}>
-                        {type.label}
-                      </span>
-                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setStrokes(p.key, identity, currentPar)}
-                      className={`h-10 rounded-md px-2.5 text-[11px] font-semibold ${
+                      className={`h-9 rounded-md px-2 text-[11px] font-semibold ${
                         strokes === currentPar
                           ? "bg-[var(--v2-gold)] text-[var(--v2-green-deep)]"
                           : "border border-[var(--v2-gold)]/35 bg-[var(--v2-gold)]/10 text-[var(--v2-gold)]"
@@ -604,12 +606,12 @@ export function LiveRoundV2({ roundId }: Props) {
                     <button
                       type="button"
                       onClick={() => setStrokes(p.key, identity, Math.max(1, (strokes ?? currentPar) - 1))}
-                      className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-bg-0)] text-2xl leading-none text-[var(--v2-text)]"
+                      className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-bg-0)] text-xl leading-none text-[var(--v2-text)]"
                     >
                       −
                     </button>
                     <div
-                      className="w-9 text-center text-2xl font-bold leading-none text-[var(--v2-text)]"
+                      className="w-7 text-center text-xl font-bold leading-none text-[var(--v2-text)]"
                       style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
                     >
                       {strokes ?? "–"}
@@ -617,7 +619,7 @@ export function LiveRoundV2({ roundId }: Props) {
                     <button
                       type="button"
                       onClick={() => setStrokes(p.key, identity, (strokes ?? currentPar) + 1)}
-                      className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-bg-0)] text-2xl leading-none text-[var(--v2-text)]"
+                      className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-bg-0)] text-xl leading-none text-[var(--v2-text)]"
                     >
                       +
                     </button>

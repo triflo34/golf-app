@@ -8,7 +8,7 @@ import { V2PageShell } from "@/components/v2/page-shell";
 import type { Course } from "@/lib/types";
 
 const INPUT_CLS =
-  "mt-1 w-full rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-base text-white placeholder-[var(--v2-muted)] focus:border-[var(--v2-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-accent)]/40";
+  "mt-1 w-full rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-base text-[var(--v2-text)] placeholder-[var(--v2-text-dim)] focus:border-[var(--v2-gold)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-gold)]/40";
 
 export function V2NewEvent() {
   const router = useRouter();
@@ -75,7 +75,7 @@ export function V2NewEvent() {
     return (
       <V2PageShell>
         <div className="flex h-[60vh] items-center justify-center">
-          <div className="animate-pulse text-[var(--v2-accent)]">Loading…</div>
+          <div className="animate-pulse text-[var(--v2-gold)]">Loading…</div>
         </div>
       </V2PageShell>
     );
@@ -134,17 +134,20 @@ export function V2NewEvent() {
     <V2PageShell>
       <Link
         href="/events"
-        className="text-sm font-medium text-[var(--v2-accent)]"
+        className="text-sm font-medium text-[var(--v2-gold)]"
       >
         ← Events
       </Link>
-      <h1 className="my-4 text-2xl font-bold text-[var(--v2-accent)]">
+      <h1
+        className="my-4 text-[22px] font-medium text-[var(--v2-gold)]"
+        style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+      >
         New event
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block">
-          <span className="block text-sm font-medium text-[var(--v2-muted)]">
+          <span className="block text-sm font-medium text-[var(--v2-text-dim)]">
             Event name
           </span>
           <input
@@ -159,16 +162,16 @@ export function V2NewEvent() {
         </label>
 
         <div className="block">
-          <span className="block text-sm font-medium text-[var(--v2-muted)] mb-1">
+          <span className="block text-sm font-medium text-[var(--v2-text-dim)] mb-1">
             Course
           </span>
           {selectedCourse ? (
             <div className="flex items-center justify-between rounded-lg bg-[var(--v2-surface-2)] px-3 py-2 border border-[var(--v2-border)]">
               <div>
-                <div className="font-semibold text-white">
+                <div className="font-semibold text-[var(--v2-text)]">
                   {selectedCourse.name}
                 </div>
-                <div className="text-xs text-[var(--v2-muted)]">
+                <div className="text-xs text-[var(--v2-text-dim)]">
                   {selectedCourse.city}, {selectedCourse.state} · Par{" "}
                   {selectedCourse.par} · {selectedCourse.holes} holes
                 </div>
@@ -179,7 +182,7 @@ export function V2NewEvent() {
                   setCourseId(null);
                   setShowCoursePicker(true);
                 }}
-                className="text-sm font-medium text-[var(--v2-accent)]"
+                className="text-sm font-medium text-[var(--v2-gold)]"
               >
                 Change
               </button>
@@ -207,10 +210,10 @@ export function V2NewEvent() {
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-[var(--v2-surface)] border-b border-[var(--v2-border)] last:border-b-0"
                     >
-                      <div className="text-sm font-semibold text-white">
+                      <div className="text-sm font-semibold text-[var(--v2-text)]">
                         {c.name}
                       </div>
-                      <div className="text-xs text-[var(--v2-muted)]">
+                      <div className="text-xs text-[var(--v2-text-dim)]">
                         {c.city} · Par {c.par} · {c.holes} holes
                       </div>
                     </button>
@@ -222,7 +225,7 @@ export function V2NewEvent() {
         </div>
 
         <div className="block">
-          <span className="block text-sm font-medium text-[var(--v2-muted)] mb-1">
+          <span className="block text-sm font-medium text-[var(--v2-text-dim)] mb-1">
             Total holes
           </span>
           <div className="inline-flex rounded-lg border border-[var(--v2-border)] overflow-hidden">
@@ -233,15 +236,15 @@ export function V2NewEvent() {
                 onClick={() => setTotalHoles(n)}
                 className={`px-4 py-1.5 text-sm font-medium ${
                   totalHoles === n
-                    ? "bg-[var(--v2-accent)] text-black"
-                    : "bg-[var(--v2-surface-2)] text-[var(--v2-muted)] hover:bg-[var(--v2-border)]"
+                    ? "bg-[var(--v2-gold)] text-[var(--v2-green-deep)]"
+                    : "bg-[var(--v2-surface-2)] text-[var(--v2-text-dim)] hover:bg-[var(--v2-border)]"
                 }`}
               >
                 {n}
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-[var(--v2-muted)]">
+          <p className="mt-1 text-xs text-[var(--v2-text-dim)]">
             {totalHoles === 9 && "1 round, 9 holes, individual stroke play."}
             {totalHoles === 18 && "1 round, 18 holes, individual stroke play."}
             {totalHoles === 36 &&
@@ -251,16 +254,16 @@ export function V2NewEvent() {
 
         {totalHoles === 36 && (
           <div className="block">
-            <span className="block text-sm font-medium text-[var(--v2-muted)] mb-1">
+            <span className="block text-sm font-medium text-[var(--v2-text-dim)] mb-1">
               Round 2 course (optional)
             </span>
             {selectedSecondCourse ? (
               <div className="flex items-center justify-between rounded-lg bg-[var(--v2-surface-2)] px-3 py-2 border border-[var(--v2-border)]">
                 <div>
-                  <div className="font-semibold text-white">
+                  <div className="font-semibold text-[var(--v2-text)]">
                     {selectedSecondCourse.name}
                   </div>
-                  <div className="text-xs text-[var(--v2-muted)]">
+                  <div className="text-xs text-[var(--v2-text-dim)]">
                     {selectedSecondCourse.city}, {selectedSecondCourse.state} ·
                     Par {selectedSecondCourse.par} ·{" "}
                     {selectedSecondCourse.holes} holes
@@ -272,7 +275,7 @@ export function V2NewEvent() {
                     setSecondCourseId(null);
                     setShowSecondCoursePicker(true);
                   }}
-                  className="text-sm font-medium text-[var(--v2-accent)]"
+                  className="text-sm font-medium text-[var(--v2-gold)]"
                 >
                   Change
                 </button>
@@ -300,10 +303,10 @@ export function V2NewEvent() {
                         }}
                         className="w-full text-left px-3 py-2 hover:bg-[var(--v2-surface)] border-b border-[var(--v2-border)] last:border-b-0"
                       >
-                        <div className="text-sm font-semibold text-white">
+                        <div className="text-sm font-semibold text-[var(--v2-text)]">
                           {c.name}
                         </div>
-                        <div className="text-xs text-[var(--v2-muted)]">
+                        <div className="text-xs text-[var(--v2-text-dim)]">
                           {c.city} · Par {c.par} · {c.holes} holes
                         </div>
                       </button>
@@ -317,7 +320,7 @@ export function V2NewEvent() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block min-w-0">
-            <span className="block text-sm font-medium text-[var(--v2-muted)]">
+            <span className="block text-sm font-medium text-[var(--v2-text-dim)]">
               Start date
             </span>
             <input
@@ -329,7 +332,7 @@ export function V2NewEvent() {
             />
           </label>
           <label className="block min-w-0">
-            <span className="block text-sm font-medium text-[var(--v2-muted)]">
+            <span className="block text-sm font-medium text-[var(--v2-text-dim)]">
               End date
             </span>
             <input
@@ -343,7 +346,7 @@ export function V2NewEvent() {
         </div>
 
         <label className="block">
-          <span className="block text-sm font-medium text-[var(--v2-muted)]">
+          <span className="block text-sm font-medium text-[var(--v2-text-dim)]">
             Entry fee ($)
           </span>
           <input
@@ -357,7 +360,7 @@ export function V2NewEvent() {
         </label>
 
         <label className="block">
-          <span className="block text-sm font-medium text-[var(--v2-muted)]">
+          <span className="block text-sm font-medium text-[var(--v2-text-dim)]">
             Description / rules (optional)
           </span>
           <textarea
@@ -373,9 +376,9 @@ export function V2NewEvent() {
             type="checkbox"
             checked={excludeFromLeaderboard}
             onChange={(e) => setExcludeFromLeaderboard(e.target.checked)}
-            className="mt-1 accent-[var(--v2-accent)]"
+            className="mt-1 accent-[var(--v2-gold)]"
           />
-          <span className="text-sm text-[var(--v2-fg)]">
+          <span className="text-sm text-[var(--v2-text)]">
             Exclude this event from the overall leaderboard and handicap
             tracking
           </span>
@@ -390,7 +393,7 @@ export function V2NewEvent() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-lg bg-[var(--v2-accent)] px-4 py-3 font-semibold text-black hover:bg-[var(--v2-accent-soft)] disabled:opacity-60"
+          className="w-full rounded-lg bg-[var(--v2-gold)] px-4 py-3 font-semibold text-[var(--v2-green-deep)] hover:bg-[var(--v2-gold-bright)] disabled:opacity-60"
         >
           {submitting ? "Creating…" : "Create event"}
         </button>

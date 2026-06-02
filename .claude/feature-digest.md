@@ -128,10 +128,12 @@ Built for an annual Memorial Weekend event (2 rounds across the weekend, group o
 
 ## In flight / on hold
 
-### v2 design-system redesign (in progress)
-Dark/gold mobile redesign (Fraunces serif + Outfit sans, gold-on-deep-green, translucent cards) rolling out screen-by-screen under `src/components/v2/` + `*-v2` page variants. Additive — classic is never restyled in place; toggled via the `data-ui` cookie.
-- **Ported to spec:** design tokens + fonts, shared components (PageShell, Card, Pill, BottomNav [5 items], SectionTitle, StatTile, Avatar, Header, SegmentedControl, LeaderboardRow, ScorePill, LivePill, SyncBanner), Home (§7.1), Stats "Board" tab (§7.3), Live Round Mode (§7.2 — gold header + live pill, sync banner, leaderboard rows, hole navigator, sticky scoring dock with steppers + Par quick-tap + score-type chips)
-- **Remaining:** Event / Golfapalooza (§7.4), Profile (§7.5); optional Stats podium
+### v2 design-system redesign (COMPLETE)
+Dark/gold mobile redesign (Fraunces serif + Outfit sans, gold-on-deep-green, translucent cards) — every screen ported, additive under `src/components/v2/` + `*-v2` page variants. Classic never restyled in place; toggled via the `data-ui` cookie, each route mode-gated in `page.tsx`.
+- **Shared components:** PageShell, Card, Pill, BottomNav (5 items), SectionTitle, StatTile, Avatar (player→tone map + silver/bronze/leader), Header, SegmentedControl, LeaderboardRow, ScorePill, LivePill, SyncBanner.
+- **Screens (all done):** Home (§7.1); Stats (§7.3 Board + top-3 podium, H2H, Player, Highlights); Live Round (§7.2); Profile (§7.5 — hills banner + 92px overlapping gold avatar); Events list; Event detail (§7.4 — gold banner, Play/Board/Games/$/Rules tabs, leaderboard, side-games, payouts); Event scorer (individual + scramble); Event scorecard (front/back/OUT/IN/TOT); Manage event; New-event form; Poker.
+- **Notes:** the global `V2BottomNav` (z-50) hides on `/rounds/live/...` and `/events/[id]/score/...` so it doesn't cover those pages' bottom docks. Each ported sub-page keeps its classic sibling (`classic-*.tsx`) intact; only `set-state-in-effect` lint findings remain, at exact parity with the classic versions.
+- **Still classic-styled in v2** (not in the mockups, lower priority): admin (`/admin`, `/courses/[id]/edit-holes`) and the scorecard-upload inner form components (`ScorecardRoundForm` / `ScorecardGrid` / `ScorecardUploader`).
 
 - **Leaderboard fairness rework** — groups that play more dominate; deferred pending direction (weighted scoring vs win-rate vs participation-adjusted)
 - **Twosome / sub-group leaderboards** — recurring 2-player groups distort global; deferred

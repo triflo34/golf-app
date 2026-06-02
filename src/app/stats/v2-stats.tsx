@@ -11,6 +11,7 @@ import { V2StatTile } from "@/components/v2/stat-tile";
 import { V2SectionTitle } from "@/components/v2/section-title";
 import { V2SegmentedControl } from "@/components/v2/segmented-control";
 import { V2LeaderboardRow } from "@/components/v2/leaderboard-row";
+import { V2Avatar } from "@/components/v2/avatar";
 import { useAuth } from "@/components/auth-provider";
 import type { H2HResult } from "@/app/api/h2h/route";
 import type { PlayerStats } from "@/app/api/player/route";
@@ -209,6 +210,9 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
         />
       </div>
 
+      {/* Podium — top 3 (spec §7.3, optional) */}
+      {display.length >= 3 && <Podium top={display.slice(0, 3)} metric={metric} />}
+
       {/* Ranked rows */}
       <div>
         {display.map((row) => {
@@ -272,6 +276,98 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
           </V2Card>
         </div>
       )}
+    </div>
+  );
+}
+
+type DisplayRow = LeaderboardRow & { rank: number; tied: boolean };
+
+function metricValue(row: LeaderboardRow, metric: Metric): React.ReactNode {
+  switch (metric) {
+    case "avg":
+      return row.avg_score || "—";
+    case "wins":
+      return row.wins;
+    case "best":
+      return row.best_score || "—";
+    case "points":
+      return row.points;
+  }
+}
+
+function metricLabel(metric: Metric): string {
+  return metric === "avg" ? "avg" : metric === "wins" ? "wins" : metric === "best" ? "best" : "pts";
+}
+
+function Podium({ top, metric }: { top: DisplayRow[]; metric: Metric }) {
+  const [first, second, third] = top;
+  const label = metricLabel(metric);
+  return (
+    <div className="mb-5 flex items-end justify-center gap-2">
+      {second && <PodiumSpot row={second} place={2} metric={metric} label={label} />}
+      {first && <PodiumSpot row={first} place={1} metric={metric} label={label} />}
+      {third && <PodiumSpot row={third} place={3} metric={metric} label={label} />}
+    </div>
+  );
+}
+
+function PodiumSpot({
+  row,
+  place,
+  metric,
+  label,
+}: {
+  row: DisplayRow;
+  place: 1 | 2 | 3;
+  metric: Metric;
+  label: string;
+}) {
+  const size = place === 1 ? 62 : 50;
+  const pedestalH = place === 1 ? "h-16" : place === 2 ? "h-12" : "h-10";
+  const pedestalBg =
+    place === 1
+      ? "from-[var(--v2-gold)]/30 to-[var(--v2-gold)]/5 border-[var(--v2-gold)]/40"
+      : place === 2
+        ? "from-[var(--v2-silver)]/25 to-transparent border-[var(--v2-silver)]/30"
+        : "from-[var(--v2-bronze)]/25 to-transparent border-[var(--v2-bronze)]/30";
+  const numColor =
+    place === 1
+      ? "text-[var(--v2-gold)]"
+      : place === 2
+        ? "text-[var(--v2-silver)]"
+        : "text-[var(--v2-bronze)]";
+  const initial = (row.name.charAt(0) || "?").toUpperCase();
+  return (
+    <div className="flex w-[30%] max-w-[120px] flex-col items-center">
+      {place === 1 ? (
+        <V2Avatar initial={initial} leader size={size} />
+      ) : (
+        <V2Avatar initial={initial} tone={place === 2 ? "silver" : "bronze"} size={size} />
+      )}
+      <div className="mt-1.5 w-full truncate text-center text-[11px] font-medium text-[var(--v2-text)]">
+        {row.name}
+      </div>
+      <div
+        className="leading-none text-[var(--v2-gold)]"
+        style={{
+          fontFamily: "var(--font-fraunces), Georgia, serif",
+          fontSize: place === 1 ? "20px" : "16px",
+          fontWeight: 600,
+        }}
+      >
+        {metricValue(row, metric)}
+      </div>
+      <div className="text-[8px] text-[var(--v2-text-faint)]">{label}</div>
+      <div
+        className={`mt-1.5 flex w-full items-start justify-center rounded-t-lg border-x border-t bg-gradient-to-b pt-1 ${pedestalBg} ${pedestalH}`}
+      >
+        <span
+          className={`text-base font-bold ${numColor}`}
+          style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+        >
+          {row.tied ? `T${row.rank}` : place}
+        </span>
+      </div>
     </div>
   );
 }

@@ -59,9 +59,12 @@ export function V2BottomNav() {
   const { user } = useAuth();
 
   if (!user) return null;
-  // The live scoring page has its own bottom dock; hide the global nav so it
-  // doesn't stack over the Finish button.
-  if (pathname.startsWith("/rounds/live/") && !pathname.endsWith("/new")) {
+  // The live scorer and the event scorer have their own bottom dock; hide the
+  // global nav so it doesn't stack over the scoring controls.
+  if (
+    (pathname.startsWith("/rounds/live/") && !pathname.endsWith("/new")) ||
+    /^\/events\/[^/]+\/score\//.test(pathname)
+  ) {
     return null;
   }
 
@@ -69,9 +72,9 @@ export function V2BottomNav() {
     <nav
       className="safe-area-bottom fixed bottom-0 left-0 right-0 z-50"
       style={{
-        background: "rgba(8, 13, 8, 0.96)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
+        // Solid (not translucent + backdrop-blur): blur on a fixed bar over
+        // scrolling content causes heavy repaint / scroll jank on phones.
+        background: "#080d08",
         borderTop: "0.5px solid rgba(212, 175, 55, 0.15)",
       }}
     >

@@ -120,7 +120,9 @@ html[data-ui="v2"] body {
 
 html[data-ui="v2"] .v2-bg {
   background: linear-gradient(180deg, var(--v2-bg-1) 0%, var(--v2-bg-2) 100%);
-  background-attachment: fixed;
+  /* No `background-attachment: fixed` — it forces a full-viewport repaint on
+     every scroll frame on mobile (major scroll jank). The gradient scrolling
+     with content is imperceptible at these near-black stops. */
   min-height: 100vh;
 }
 
