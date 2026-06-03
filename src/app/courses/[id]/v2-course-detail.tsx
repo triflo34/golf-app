@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
@@ -9,6 +9,7 @@ import { V2Card } from "@/components/v2/card";
 import { V2StatTile } from "@/components/v2/stat-tile";
 import { V2SectionTitle } from "@/components/v2/section-title";
 import type { CourseDetail } from "@/app/api/courses/[id]/route";
+import type { CourseSearchResult } from "@/app/api/courses/search/route";
 
 export function V2CourseDetail() {
   const params = useParams<{ id: string }>();
@@ -172,22 +173,371 @@ export function V2CourseDetail() {
       {user?.is_admin && (
         <div className="mt-4">
           <V2SectionTitle>Admin tools</V2SectionTitle>
-          <V2Card>
-            <div className="text-xs text-[var(--v2-muted)]">
-              Switch to the classic UI from your{" "}
-              <Link
-                href="/profile"
-                className="text-[var(--v2-accent)] hover:underline"
-              >
-                Profile
-              </Link>{" "}
-              for the full admin panel on this course (rename, refresh from
-              GolfCourseAPI, re-link).
-            </div>
-          </V2Card>
+          <div className="mt-2 space-y-3">
+            <V2AdminRenamePanel
+              courseId={c.id}
+              initialName={c.name}
+              initialCity={c.city}
+              initialState={c.state}
+              onChanged={load}
+            />
+            <V2AdminApiPanel
+              courseId={c.id}
+              externalId={c.external_id ?? null}
+              lastFetchedAt={c.last_fetched_at ?? null}
+              courseName={c.name}
+              onChanged={load}
+            />
+            <Link
+              href={`/courses/${c.id}/edit-holes`}
+              className="block rounded-xl border border-[var(--v2-border)] bg-[var(--v2-surface)] px-4 py-3 text-center text-sm font-medium text-[var(--v2-text)] hover:border-[var(--v2-gold)]/30"
+            >
+              Edit per-hole pars / yardages →
+            </Link>
+          </div>
         </div>
       )}
     </V2PageShell>
+  );
+}
+
+const v2Input =
+  "w-full rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 text-sm text-[var(--v2-text)] placeholder-[var(--v2-text-dim)]";
+
+function V2AdminRenamePanel({
+  courseId,
+  initialName,
+  initialCity,
+  initialState,
+  onChanged,
+}: {
+  courseId: number;
+  initialName: string;
+  initialCity: string;
+  initialState: string;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(initialName);
+  const [city, setCity] = useState(initialCity);
+  const [state, setState] = useState(initialState);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setName(initialName);
+    setCity(initialCity);
+    setState(initialState);
+  }, [initialName, initialCity, initialState]);
+
+  const dirty =
+    name.trim() !== initialName ||
+    city.trim() !== initialCity ||
+    state.trim() !== initialState;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/courses/${courseId}/rename`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), city: city.trim(), state: state.trim() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Save failed");
+      onChanged();
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <V2Card className="flex items-center justify-between">
+        <span className="text-xs text-[var(--v2-text-dim)]">Course basics</span>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface)] px-3 py-1 text-xs font-medium text-[var(--v2-gold)]"
+        >
+          Rename / edit
+        </button>
+      </V2Card>
+    );
+  }
+
+  return (
+    <V2Card>
+      <h2 className="mb-3 text-sm font-semibold text-[var(--v2-text)]">Rename / edit course basics</h2>
+      <div className="space-y-2">
+        <div>
+          <label className="mb-1 block text-xs text-[var(--v2-text-dim)]">Name</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={v2Input} />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <label className="mb-1 block text-xs text-[var(--v2-text-dim)]">City</label>
+            <input type="text" value={city} onChange={(e) => setCity(e.target.value)} className={v2Input} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[var(--v2-text-dim)]">State</label>
+            <input type="text" value={state} onChange={(e) => setState(e.target.value)} className={v2Input} />
+          </div>
+        </div>
+      </div>
+      {error && (
+        <div className="mt-2 rounded border border-red-800 bg-red-950/60 px-2 py-1 text-xs text-red-300">
+          {error}
+        </div>
+      )}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setName(initialName);
+            setCity(initialCity);
+            setState(initialState);
+            setError(null);
+          }}
+          disabled={busy}
+          className="flex-1 rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface)] py-2 text-sm font-medium text-[var(--v2-text)] disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy || !dirty}
+          className="flex-1 rounded-lg bg-[var(--v2-gold)] py-2 text-sm font-semibold text-[var(--v2-green-deep)] disabled:opacity-50"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-[var(--v2-text-dim)]">
+        Renaming doesn&rsquo;t affect existing rounds or scorecards — they reference this course by id.
+      </p>
+    </V2Card>
+  );
+}
+
+function V2AdminApiPanel({
+  courseId,
+  externalId,
+  lastFetchedAt,
+  courseName,
+  onChanged,
+}: {
+  courseId: number;
+  externalId: string | null;
+  lastFetchedAt: string | null;
+  courseName: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showLink, setShowLink] = useState(false);
+
+  async function refresh() {
+    setBusy(true);
+    setStatus(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/courses/${courseId}/refresh`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Refresh failed");
+      setStatus(`Refreshed — ${body.holes ?? "?"} holes loaded.`);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const btn =
+    "rounded-lg border border-[var(--v2-gold)]/35 bg-[var(--v2-gold)]/10 px-3 py-1.5 text-xs font-medium text-[var(--v2-gold)] disabled:opacity-50";
+
+  return (
+    <V2Card variant="gold">
+      <h2 className="mb-1 text-sm font-semibold text-[var(--v2-gold)]">GolfCourseAPI link</h2>
+      {externalId ? (
+        <>
+          <p className="text-xs text-[var(--v2-text-dim)]">
+            Linked to <code className="font-mono text-[var(--v2-text)]">{externalId}</code>
+            {lastFetchedAt && <> · last refreshed {new Date(lastFetchedAt).toLocaleString()}</>}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={refresh} disabled={busy} className={btn}>
+              {busy ? "Refreshing…" : "Refresh per-hole pars"}
+            </button>
+            <button type="button" onClick={() => setShowLink((v) => !v)} disabled={busy} className={btn}>
+              {showLink ? "Cancel re-link" : "Re-link to different API course"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-[var(--v2-text-dim)]">
+            This course was created manually — per-hole pars likely default to 4. Search the
+            GolfCourseAPI to attach real per-hole data.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowLink(true)}
+            disabled={busy || showLink}
+            className={`mt-2 ${btn}`}
+          >
+            Re-link to GolfCourseAPI
+          </button>
+        </>
+      )}
+
+      {status && (
+        <div className="mt-2 rounded border border-[var(--v2-sage)]/40 bg-[var(--v2-sage)]/12 px-2 py-1 text-xs text-[var(--v2-sage)]">
+          {status}
+        </div>
+      )}
+      {error && (
+        <div className="mt-2 rounded border border-red-800 bg-red-950/60 px-2 py-1 text-xs text-red-300">
+          {error}
+        </div>
+      )}
+
+      {showLink && (
+        <V2RelinkSearch
+          courseId={courseId}
+          defaultQuery={courseName}
+          onCancel={() => setShowLink(false)}
+          onLinked={(holes) => {
+            setShowLink(false);
+            setStatus(`Linked — ${holes} holes loaded.`);
+            setError(null);
+            onChanged();
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+    </V2Card>
+  );
+}
+
+function V2RelinkSearch({
+  courseId,
+  defaultQuery,
+  onCancel,
+  onLinked,
+  onError,
+}: {
+  courseId: number;
+  defaultQuery: string;
+  onCancel: () => void;
+  onLinked: (holes: number) => void;
+  onError: (msg: string) => void;
+}) {
+  const [query, setQuery] = useState(defaultQuery);
+  const [results, setResults] = useState<CourseSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const seqRef = useRef(0);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      const seq = ++seqRef.current;
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/courses/search?q=${encodeURIComponent(q)}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (seq !== seqRef.current) return;
+        if (!res.ok) throw new Error(data.error ?? "Search failed");
+        const hits: CourseSearchResult[] = (data.results ?? []).filter(
+          (r: CourseSearchResult) => r.source === "external",
+        );
+        setResults(hits);
+      } catch (e) {
+        if (seq !== seqRef.current) return;
+        onError(e instanceof Error ? e.message : "Search failed");
+        setResults([]);
+      } finally {
+        if (seq === seqRef.current) setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [query, onError]);
+
+  async function link(externalId: string) {
+    setLinkingId(externalId);
+    try {
+      const res = await fetch(`/api/admin/courses/${courseId}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ external_id: externalId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Link failed");
+      onLinked(body.holes ?? 0);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Link failed");
+    } finally {
+      setLinkingId(null);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search GolfCourseAPI…"
+        className={v2Input}
+      />
+      {searching && <div className="text-xs text-[var(--v2-text-dim)]">Searching…</div>}
+      {!searching && query.trim().length >= 2 && results.length === 0 && (
+        <div className="text-xs text-[var(--v2-text-dim)]">No API matches.</div>
+      )}
+      {results.length > 0 && (
+        <ul className="max-h-64 divide-y divide-[var(--v2-border)] overflow-y-auto rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface-2)]">
+          {results.map((r) => {
+            if (r.source !== "external") return null;
+            const busy = linkingId === r.external_id;
+            return (
+              <li key={r.external_id}>
+                <button
+                  type="button"
+                  disabled={Boolean(linkingId)}
+                  onClick={() => link(r.external_id)}
+                  className="w-full px-3 py-2 text-left hover:bg-[var(--v2-surface)] disabled:opacity-50"
+                >
+                  <div className="truncate text-sm font-medium text-[var(--v2-text)]">{r.name}</div>
+                  <div className="truncate text-xs text-[var(--v2-text-dim)]">
+                    {[r.city, r.state, r.country].filter(Boolean).join(", ") || "—"}
+                    {" · "}
+                    <code className="font-mono">{r.external_id}</code>
+                  </div>
+                  {busy && <div className="mt-0.5 text-[10px] text-[var(--v2-gold)]">Linking…</div>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <button type="button" onClick={onCancel} className="text-xs text-[var(--v2-text-dim)] hover:text-[var(--v2-text)]">
+        Cancel
+      </button>
+    </div>
   );
 }
 

@@ -97,6 +97,7 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
   const [metric, setMetric] = useState<Metric>("points");
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [showPointsHelp, setShowPointsHelp] = useState(false);
 
   useEffect(() => {
     setRows(null);
@@ -198,18 +199,44 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
       </div>
 
       {/* Metric sort */}
-      <div className="mb-4">
-        <V2SegmentedControl
-          value={metric}
-          onChange={setMetric}
-          options={[
-            { value: "points", label: "Points" },
-            { value: "avg", label: "Avg" },
-            { value: "wins", label: "Wins" },
-            { value: "best", label: "Best" },
-          ]}
-        />
+      <div className="mb-2 flex items-center gap-2">
+        <div className="flex-1">
+          <V2SegmentedControl
+            value={metric}
+            onChange={setMetric}
+            options={[
+              { value: "points", label: "Points" },
+              { value: "avg", label: "Avg" },
+              { value: "wins", label: "Wins" },
+              { value: "best", label: "Best" },
+            ]}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPointsHelp((v) => !v)}
+          aria-label="How points work"
+          aria-expanded={showPointsHelp}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition ${
+            showPointsHelp
+              ? "bg-[var(--v2-gold)]/20 text-[var(--v2-gold)]"
+              : "bg-[var(--v2-surface-2)] text-[var(--v2-text-dim)]"
+          }`}
+        >
+          ?
+        </button>
       </div>
+      {showPointsHelp && (
+        <div className="mb-4 rounded-lg border border-[var(--v2-gold)]/20 bg-[var(--v2-gold)]/8 px-3 py-2 text-xs leading-relaxed text-[var(--v2-text-dim)]">
+          <strong className="text-[var(--v2-text)]">Points</strong>: each round of N
+          players awards N pts for 1st, N−1 for 2nd, … 1 for last. Solo rounds award
+          nothing.
+          <br />
+          <strong className="text-[var(--v2-text)]">Ties</strong>: tied players share the
+          higher place (e.g. two tied for 1st both get N pts; next player is 3rd).{" "}
+          <em>(Nt)</em> next to a place count means N of those finishes were ties.
+        </div>
+      )}
 
       {/* Podium — top 3 (spec §7.3, optional) */}
       {display.length >= 3 && <Podium top={display.slice(0, 3)} metric={metric} />}

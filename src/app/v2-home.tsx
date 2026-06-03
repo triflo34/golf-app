@@ -333,6 +333,33 @@ function ActivityRow({ round }: { round: RoundListItem }) {
               <V2ScorePill tone={headlineTone}>{lowest}</V2ScorePill>
             )}
           </div>
+          {round.scores.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {round.scores.map((s, i) => {
+                const isWinner = s.gross_score === lowest;
+                return (
+                  <span
+                    key={`${i}-${s.name}`}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 ${
+                      isWinner
+                        ? "border border-[var(--v2-gold)]/30 bg-[var(--v2-gold)]/12"
+                        : "bg-[var(--v2-surface-2)]"
+                    }`}
+                  >
+                    <span className="max-w-[7rem] truncate text-[11px] text-[var(--v2-text-dim)]">
+                      {s.name}
+                      {s.is_guest && <span className="ml-0.5 text-[var(--v2-gold)]">★</span>}
+                    </span>
+                    <span
+                      className={`text-[11px] font-bold ${isWinner ? "text-[var(--v2-gold)]" : "text-[var(--v2-text)]"}`}
+                    >
+                      {s.gross_score}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </V2Card>
       </Link>
     </li>
