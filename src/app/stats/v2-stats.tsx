@@ -248,6 +248,8 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
                 : metric === "best"
                   ? "best"
                   : "pts";
+          const hasPlacements =
+            row.firsts > 0 || row.seconds > 0 || row.thirds > 0 || row.fourths > 0;
           return (
             <V2LeaderboardRow
               key={row.key}
@@ -257,6 +259,7 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
               isLeader={isLeader}
               name={row.name}
               meta={meta}
+              chips={hasPlacements ? <PlacementChips row={row} /> : undefined}
               primaryValue={primaryValue}
               primaryLabel={primaryLabel}
               primaryTone={primaryTone}
@@ -383,6 +386,31 @@ function metricKey(row: LeaderboardRow, metric: Metric): string {
     case "points":
       return String(row.points);
   }
+}
+
+function PlacementChips({ row }: { row: LeaderboardRow }) {
+  const items = [
+    { label: "1st", n: row.firsts, tied: row.firsts_tied, cls: "bg-[var(--v2-gold)]/20 text-[var(--v2-gold)]" },
+    { label: "2nd", n: row.seconds, tied: row.seconds_tied, cls: "bg-[var(--v2-silver)]/22 text-[var(--v2-silver)]" },
+    { label: "3rd", n: row.thirds, tied: row.thirds_tied, cls: "bg-[var(--v2-bronze)]/22 text-[var(--v2-bronze)]" },
+    { label: "💩", n: row.fourths, tied: row.fourths_tied, cls: "bg-[var(--v2-amber-warn)]/15 text-[var(--v2-amber-warn)]" },
+  ];
+  return (
+    <>
+      {items
+        .filter((i) => i.n > 0)
+        .map((i) => (
+          <span
+            key={i.label}
+            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${i.cls}`}
+            style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+          >
+            {i.label} {i.n}
+            {i.tied > 0 ? ` (${i.tied}t)` : ""}
+          </span>
+        ))}
+    </>
+  );
 }
 
 function SeasonFilter({

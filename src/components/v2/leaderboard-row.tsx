@@ -14,6 +14,8 @@ type Props = {
   initial?: string;
   /** Meta line under the name: "6 rounds · 4 wins · best 76". Pass null/undefined to omit. */
   meta?: ReactNode;
+  /** Optional wrap-friendly chip row under the meta (e.g. placement counts). */
+  chips?: ReactNode;
   /** Average score (or any "primary stat" number). Serif 18. */
   primaryValue: ReactNode;
   primaryLabel?: string;
@@ -45,6 +47,7 @@ export function V2LeaderboardRow({
   name,
   initial,
   meta,
+  chips,
   primaryValue,
   primaryLabel = "avg",
   primaryTone = "white",
@@ -117,6 +120,7 @@ export function V2LeaderboardRow({
             {meta}
           </div>
         )}
+        {chips && <div className="mt-1 flex flex-wrap gap-1">{chips}</div>}
       </div>
       <div className="w-11 text-right">
         <div

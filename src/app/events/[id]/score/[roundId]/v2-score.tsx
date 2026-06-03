@@ -393,6 +393,12 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
           </Link>
           <div className="flex items-center gap-2">
             <Link
+              href={`/events/${id}/poker`}
+              className="inline-flex items-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface)] px-2.5 py-1 text-xs font-medium text-[var(--v2-gold)]"
+            >
+              ♠ Poker
+            </Link>
+            <Link
               href={`/events/${id}/scorecard/${roundId}`}
               className="inline-flex items-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface)] px-2.5 py-1 text-xs font-medium text-[var(--v2-gold)]"
             >

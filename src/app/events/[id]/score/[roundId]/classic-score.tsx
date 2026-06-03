@@ -402,6 +402,12 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
           </Link>
           <div className="flex items-center gap-2">
             <Link
+              href={`/events/${id}/poker`}
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-green-700 hover:border-green-400"
+            >
+              ♠ Poker
+            </Link>
+            <Link
               href={`/events/${id}/scorecard/${roundId}`}
               className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-green-700 hover:border-green-400"
             >

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import type { EventStatus, SideGame, SideGameKind, User } from "@/lib/types";
@@ -199,6 +199,9 @@ export function V2EventManage({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [picker, setPicker] = useState("");
+  // Debounce side-game saves so ticking a box / typing a pot is instant and
+  // doesn't fire a network save + full reload on every keystroke.
+  const sideSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOrganizer = useMemo(
     () => Boolean(user) && participants.some((p) => p.user_id === user?.id && p.is_organizer),
@@ -349,24 +352,37 @@ export function V2EventManage({ id }: { id: string }) {
     }
   }
 
-  async function toggleSideGame(kind: SideGameKind) {
+  function scheduleSideGameSave(entries: { kind: SideGameKind; pot_cents: number }[]) {
+    if (sideSaveTimer.current) clearTimeout(sideSaveTimer.current);
+    sideSaveTimer.current = setTimeout(() => {
+      sideSaveTimer.current = null;
+      void saveSideGames(entries);
+    }, 400);
+  }
+
+  function toggleSideGame(kind: SideGameKind) {
     if (locked) return;
     const next = enabledKinds.has(kind)
       ? sideGames.filter((g) => g.kind !== kind)
       : [...sideGames, { id: 0, event_id: event!.id, kind, pot_cents: 0, config: null }];
-    await saveSideGames(next.map((g) => ({ kind: g.kind, pot_cents: g.pot_cents })));
+    setSideGames(next); // optimistic — UI updates instantly
+    setError(null);
+    scheduleSideGameSave(next.map((g) => ({ kind: g.kind, pot_cents: g.pot_cents })));
   }
 
-  async function updatePot(kind: SideGameKind, dollars: number) {
+  function updatePot(kind: SideGameKind, dollars: number) {
     if (locked) return;
     const next = sideGames.map((g) =>
       g.kind === kind ? { ...g, pot_cents: Math.max(0, Math.round(dollars * 100)) } : g,
     );
-    await saveSideGames(next.map((g) => ({ kind: g.kind, pot_cents: g.pot_cents })));
+    setSideGames(next); // optimistic — typing stays responsive
+    setError(null);
+    scheduleSideGameSave(next.map((g) => ({ kind: g.kind, pot_cents: g.pot_cents })));
   }
 
+  // Persists in the background; no full reload on success (the optimistic state
+  // is already authoritative). Only resync from the server if the save fails.
   async function saveSideGames(entries: { kind: SideGameKind; pot_cents: number }[]) {
-    setError(null);
     try {
       const res = await fetch(`/api/events/${id}/side-games`, {
         method: "PUT",
@@ -375,9 +391,9 @@ export function V2EventManage({ id }: { id: string }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Save failed");
-      await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
+      await reload();
     }
   }
 
