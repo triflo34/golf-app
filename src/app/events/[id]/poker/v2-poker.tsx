@@ -70,7 +70,7 @@ function CardFace({ card }: { card: PokerCard }) {
   );
 }
 
-export function V2Poker({ id }: { id: string }) {
+export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<LoadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -243,8 +243,11 @@ export function V2Poker({ id }: { id: string }) {
   return (
     <div className="v2-bg min-h-screen text-[var(--v2-text)]">
       <div className="mx-auto max-w-lg space-y-5 px-4 py-4 pb-28">
-        <Link href={`/events/${id}`} className="text-sm text-[var(--v2-gold)]">
-          ← Event
+        <Link
+          href={backRound ? `/events/${id}/score/${backRound}` : `/events/${id}`}
+          className="text-sm text-[var(--v2-gold)]"
+        >
+          ← {backRound ? "Back to scoring" : "Event"}
         </Link>
 
         <h1 className="text-[22px] font-medium text-[var(--v2-gold)]" style={serif}>

@@ -58,7 +58,7 @@ function CardFace({ card }: { card: PokerCard }) {
   );
 }
 
-export function ClassicPoker({ id }: { id: string }) {
+export function ClassicPoker({ id, backRound }: { id: string; backRound?: string }) {
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<LoadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -231,8 +231,11 @@ export function ClassicPoker({ id }: { id: string }) {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-4 pb-24 space-y-5">
-      <Link href={`/events/${id}`} className="text-sm text-green-700">
-        ← Event
+      <Link
+        href={backRound ? `/events/${id}/score/${backRound}` : `/events/${id}`}
+        className="text-sm text-green-700"
+      >
+        ← {backRound ? "Back to scoring" : "Event"}
       </Link>
 
       {error && (

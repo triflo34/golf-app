@@ -96,6 +96,7 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
   const [holes, setHoles] = useState<"18" | "9" | "all">("18");
   const [metric, setMetric] = useState<Metric>("points");
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   useEffect(() => {
     setRows(null);
@@ -250,22 +251,28 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
                   : "pts";
           const hasPlacements =
             row.firsts > 0 || row.seconds > 0 || row.thirds > 0 || row.fourths > 0;
+          const expanded = expandedKey === row.key;
           return (
-            <V2LeaderboardRow
-              key={row.key}
-              rank={row.rank}
-              tied={tiedRow}
-              isYou={isYou}
-              isLeader={isLeader}
-              name={row.name}
-              meta={meta}
-              chips={hasPlacements ? <PlacementChips row={row} /> : undefined}
-              primaryValue={primaryValue}
-              primaryLabel={primaryLabel}
-              primaryTone={primaryTone}
-              secondaryValue={metric === "points" ? row.avg_score || "—" : row.points}
-              secondaryLabel={metric === "points" ? "avg" : "pts"}
-            />
+            <div key={row.key}>
+              <V2LeaderboardRow
+                rank={row.rank}
+                tied={tiedRow}
+                isYou={isYou}
+                isLeader={isLeader}
+                name={row.name}
+                meta={meta}
+                chips={hasPlacements ? <PlacementChips row={row} /> : undefined}
+                primaryValue={primaryValue}
+                primaryLabel={primaryLabel}
+                primaryTone={primaryTone}
+                secondaryValue={metric === "points" ? row.avg_score || "—" : row.points}
+                secondaryLabel={metric === "points" ? "avg" : "pts"}
+                expandable
+                expanded={expanded}
+                onClick={() => setExpandedKey((k) => (k === row.key ? null : row.key))}
+              />
+              {expanded && <HoleStatsPanel row={row} />}
+            </div>
           );
         })}
       </div>
@@ -410,6 +417,39 @@ function PlacementChips({ row }: { row: LeaderboardRow }) {
           </span>
         ))}
     </>
+  );
+}
+
+function HoleStatsPanel({ row }: { row: LeaderboardRow }) {
+  const hs = row.hole_stats;
+  if (!hs || hs.holes_scored === 0) {
+    return (
+      <div className="-mt-1 mb-2 px-1">
+        <div className="v2-card text-xs text-[var(--v2-text-dim)]">
+          No hole-by-hole data this season.{" "}
+          <Link href="/rounds/new" className="text-[var(--v2-gold)] hover:underline">
+            Upload a scorecard
+          </Link>{" "}
+          to track birdies, pars, and more.
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="-mt-1 mb-2 px-1">
+      <div className="v2-card">
+        <div className="mb-1.5 text-[10px] uppercase tracking-wide text-[var(--v2-text-dim)]">
+          Hole stats · {hs.holes_scored} holes
+        </div>
+        <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+          <span className="rounded bg-[var(--v2-gold)]/20 px-2 py-0.5 text-[var(--v2-gold-bright)]">🦅 {hs.eagles}</span>
+          <span className="rounded bg-red-500/20 px-2 py-0.5 text-red-300">Birdies {hs.birdies}</span>
+          <span className="rounded bg-[var(--v2-sage)]/18 px-2 py-0.5 text-[var(--v2-score-soft)]">Pars {hs.pars}</span>
+          <span className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-300">Bogeys {hs.bogeys}</span>
+          <span className="rounded bg-blue-700/35 px-2 py-0.5 text-blue-200">2+ {hs.doubles_plus}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 

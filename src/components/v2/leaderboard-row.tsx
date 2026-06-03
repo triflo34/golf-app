@@ -26,6 +26,9 @@ type Props = {
   secondaryLabel?: string;
   /** Optional onClick to make the whole row a button. */
   onClick?: () => void;
+  /** Show a ▾ chevron affordance (rotates when `expanded`). */
+  expandable?: boolean;
+  expanded?: boolean;
   className?: string;
 };
 
@@ -54,6 +57,8 @@ export function V2LeaderboardRow({
   secondaryValue,
   secondaryLabel = "pts",
   onClick,
+  expandable = false,
+  expanded = false,
   className = "",
 }: Props) {
   const tone = isLeader ? "gold" : toneForName(name);
@@ -109,6 +114,14 @@ export function V2LeaderboardRow({
               }}
             >
               You
+            </span>
+          )}
+          {expandable && (
+            <span
+              className={`ml-auto shrink-0 text-[10px] text-[var(--v2-text-dim)] transition-transform ${expanded ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            >
+              ▾
             </span>
           )}
         </div>
