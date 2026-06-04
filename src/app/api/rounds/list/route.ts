@@ -18,33 +18,60 @@ export type RoundListItem = {
   }[];
 };
 
+export type RoundListCursor = { before_at: string; before_id: number };
+
+export type RoundListResponse = {
+  rounds: RoundListItem[];
+  next_cursor: RoundListCursor | null;
+};
+
 export async function GET(request: Request) {
   const me = await getCurrentUser();
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const url = new URL(request.url);
   const limit = Math.min(
-    Math.max(parseInt(url.searchParams.get("limit") ?? "5", 10) || 5, 1),
-    50,
+    Math.max(parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 1),
+    100,
   );
+  // Keyset pagination cursor: the (played_at, id) of the last row the client
+  // already has. Ordering is played_at DESC, id DESC, so "older" = strictly
+  // less than the cursor. Lets the All Rounds page page through everything.
+  const beforeAt = url.searchParams.get("before_at");
+  const beforeId = url.searchParams.get("before_id");
+  const hasCursor = Boolean(beforeAt && beforeId);
 
-  const rounds = await db
-    .prepare(
-      `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes, r.excluded
-       FROM rounds r JOIN courses c ON c.id = r.course_id
-       ORDER BY r.played_at DESC, r.id DESC
-       LIMIT ?`,
-    )
-    .all<{
-      id: number;
-      played_at: string;
-      course_id: number;
-      course_name: string;
-      notes: string | null;
-      excluded: boolean;
-    }>(limit);
+  type Row = {
+    id: number;
+    played_at: string;
+    course_id: number;
+    course_name: string;
+    notes: string | null;
+    excluded: boolean;
+  };
 
-  if (rounds.length === 0) return NextResponse.json({ rounds: [] });
+  const rounds = hasCursor
+    ? await db
+        .prepare(
+          `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes, r.excluded
+           FROM rounds r JOIN courses c ON c.id = r.course_id
+           WHERE r.played_at < ? OR (r.played_at = ? AND r.id < ?)
+           ORDER BY r.played_at DESC, r.id DESC
+           LIMIT ?`,
+        )
+        .all<Row>(beforeAt, beforeAt, Number(beforeId), limit)
+    : await db
+        .prepare(
+          `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes, r.excluded
+           FROM rounds r JOIN courses c ON c.id = r.course_id
+           ORDER BY r.played_at DESC, r.id DESC
+           LIMIT ?`,
+        )
+        .all<Row>(limit);
+
+  if (rounds.length === 0) {
+    return NextResponse.json({ rounds: [], next_cursor: null });
+  }
 
   const ids = rounds.map((r) => r.id);
   const placeholders = ids.map(() => "?").join(",");
@@ -82,5 +109,12 @@ export async function GET(request: Request) {
     scores: byRound.get(r.id) ?? [],
   }));
 
-  return NextResponse.json({ rounds: result });
+  // If we filled the page there may be more — hand back a cursor to continue.
+  const last = rounds[rounds.length - 1];
+  const next_cursor =
+    rounds.length === limit
+      ? { before_at: last.played_at, before_id: last.id }
+      : null;
+
+  return NextResponse.json({ rounds: result, next_cursor });
 }

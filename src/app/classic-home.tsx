@@ -360,7 +360,12 @@ export function ClassicHome() {
       )}
 
       <div className="card">
-        <h2 className="text-lg font-bold text-gray-800 mb-3">Recent Rounds</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-800">Recent Rounds</h2>
+          <Link href="/rounds" className="text-sm font-medium text-green-700 hover:underline">
+            See all →
+          </Link>
+        </div>
         {recent === null ? (
           <div className="text-center py-6 text-gray-400 text-sm">Loading...</div>
         ) : recent.length === 0 ? (

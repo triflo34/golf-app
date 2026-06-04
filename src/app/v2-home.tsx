@@ -75,7 +75,7 @@ export function V2Home() {
       </div>
 
       <div className="mt-7 v2-reveal" style={{ animationDelay: "0.04s" }}>
-        <V2SectionTitle right={<Link href="/stats">See all ›</Link>}>
+        <V2SectionTitle right={<Link href="/rounds">See all ›</Link>}>
           Activity
         </V2SectionTitle>
         {recent === null ? (

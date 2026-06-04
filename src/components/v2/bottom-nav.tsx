@@ -25,7 +25,7 @@ const navItems = [
   },
   {
     key: "rounds",
-    href: "/rounds/new",
+    href: "/rounds",
     label: "Rounds",
     icon: RoundsIcon,
     match: (p: string) =>
