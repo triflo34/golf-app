@@ -23,6 +23,8 @@ export type RoundListCursor = { before_at: string; before_id: number };
 export type RoundListResponse = {
   rounds: RoundListItem[];
   next_cursor: RoundListCursor | null;
+  /** Count of rounds matching the search (ignores pagination). */
+  total: number;
 };
 
 export async function GET(request: Request) {
@@ -34,6 +36,8 @@ export async function GET(request: Request) {
     Math.max(parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 1),
     100,
   );
+  // Optional search across course name + player/guest names.
+  const q = (url.searchParams.get("q") ?? "").trim();
   // Keyset pagination cursor: the (played_at, id) of the last row the client
   // already has. Ordering is played_at DESC, id DESC, so "older" = strictly
   // less than the cursor. Lets the All Rounds page page through everything.
@@ -50,27 +54,50 @@ export async function GET(request: Request) {
     excluded: boolean;
   };
 
-  const rounds = hasCursor
-    ? await db
-        .prepare(
-          `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes, r.excluded
-           FROM rounds r JOIN courses c ON c.id = r.course_id
-           WHERE r.played_at < ? OR (r.played_at = ? AND r.id < ?)
-           ORDER BY r.played_at DESC, r.id DESC
-           LIMIT ?`,
-        )
-        .all<Row>(beforeAt, beforeAt, Number(beforeId), limit)
-    : await db
-        .prepare(
-          `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes, r.excluded
-           FROM rounds r JOIN courses c ON c.id = r.course_id
-           ORDER BY r.played_at DESC, r.id DESC
-           LIMIT ?`,
-        )
-        .all<Row>(limit);
+  // Search filter — match the course name OR any player/guest in the round.
+  // EXISTS avoids the row multiplication a join on `scores` would cause.
+  const searchSql = q
+    ? `(c.name ILIKE ? OR EXISTS (
+         SELECT 1 FROM scores s LEFT JOIN users u ON u.id = s.player_id
+         WHERE s.round_id = r.id AND (u.display_name ILIKE ? OR s.guest_name ILIKE ?)
+       ))`
+    : "";
+  const searchArgs = q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [];
+
+  // Total matching the search (ignores pagination) — for the count header.
+  const totalRow = await db
+    .prepare(
+      `SELECT COUNT(*)::int AS n
+         FROM rounds r JOIN courses c ON c.id = r.course_id
+         ${searchSql ? `WHERE ${searchSql}` : ""}`,
+    )
+    .get<{ n: number }>(...searchArgs);
+  const total = totalRow?.n ?? 0;
+
+  const conds: string[] = [];
+  const params: (string | number)[] = [];
+  if (searchSql) {
+    conds.push(searchSql);
+    params.push(...searchArgs);
+  }
+  if (hasCursor) {
+    conds.push(`(r.played_at < ? OR (r.played_at = ? AND r.id < ?))`);
+    params.push(beforeAt as string, beforeAt as string, Number(beforeId));
+  }
+  const whereSql = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+  const rounds = await db
+    .prepare(
+      `SELECT r.id, r.played_at, r.course_id, c.name as course_name, r.notes, r.excluded
+         FROM rounds r JOIN courses c ON c.id = r.course_id
+         ${whereSql}
+         ORDER BY r.played_at DESC, r.id DESC
+         LIMIT ?`,
+    )
+    .all<Row>(...params, limit);
 
   if (rounds.length === 0) {
-    return NextResponse.json({ rounds: [], next_cursor: null });
+    return NextResponse.json({ rounds: [], next_cursor: null, total });
   }
 
   const ids = rounds.map((r) => r.id);
@@ -116,5 +143,5 @@ export async function GET(request: Request) {
       ? { before_at: last.played_at, before_id: last.id }
       : null;
 
-  return NextResponse.json({ rounds: result, next_cursor });
+  return NextResponse.json({ rounds: result, next_cursor, total });
 }

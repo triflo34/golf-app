@@ -1,58 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { V2PageShell } from "@/components/v2/page-shell";
 import { V2Card } from "@/components/v2/card";
-import type {
-  RoundListItem,
-  RoundListCursor,
-  RoundListResponse,
-} from "@/app/api/rounds/list/route";
-
-const PAGE = 20;
+import { useRoundList } from "./use-round-list";
+import type { RoundListItem } from "@/app/api/rounds/list/route";
 
 export function V2Rounds() {
   const { user, loading: authLoading } = useAuth();
-  const [rounds, setRounds] = useState<RoundListItem[]>([]);
-  const [cursor, setCursor] = useState<RoundListCursor | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [done, setDone] = useState(false);
-  const started = useRef(false);
-
-  const fetchPage = useCallback(async (c: RoundListCursor | null) => {
-    const qs = new URLSearchParams({ limit: String(PAGE) });
-    if (c) {
-      qs.set("before_at", c.before_at);
-      qs.set("before_id", String(c.before_id));
-    }
-    const res = await fetch(`/api/rounds/list?${qs}`, { cache: "no-store" });
-    if (!res.ok) return { rounds: [], next_cursor: null } as RoundListResponse;
-    return (await res.json()) as RoundListResponse;
-  }, []);
-
+  const [q, setQ] = useState("");
+  const [dq, setDq] = useState("");
   useEffect(() => {
-    if (!user || started.current) return;
-    started.current = true;
-    fetchPage(null).then((d) => {
-      setRounds(d.rounds);
-      setCursor(d.next_cursor);
-      setDone(d.next_cursor == null);
-      setLoading(false);
-    });
-  }, [user, fetchPage]);
+    const t = setTimeout(() => setDq(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
 
-  async function loadMore() {
-    if (!cursor || loadingMore) return;
-    setLoadingMore(true);
-    const d = await fetchPage(cursor);
-    setRounds((prev) => [...prev, ...d.rounds]);
-    setCursor(d.next_cursor);
-    setDone(d.next_cursor == null);
-    setLoadingMore(false);
-  }
+  const enabled = !authLoading && !!user;
+  const { rounds, total, loading, loadingMore, done, loadMore } = useRoundList(dq, enabled);
 
   if (authLoading || !user) {
     return (
@@ -64,15 +30,27 @@ export function V2Rounds() {
     );
   }
 
+  const countLabel =
+    total == null
+      ? ""
+      : dq
+        ? `${total} match${total === 1 ? "" : "es"}`
+        : `${total} round${total === 1 ? "" : "s"}`;
+
   return (
     <V2PageShell>
-      <header className="mb-4 flex items-center justify-between gap-2 py-1">
-        <h1
-          className="text-[20px] font-medium text-[var(--v2-gold)]"
-          style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
-        >
-          All Rounds
-        </h1>
+      <header className="mb-3 flex items-center justify-between gap-2 py-1">
+        <div>
+          <h1
+            className="text-[20px] font-medium leading-tight text-[var(--v2-gold)]"
+            style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+          >
+            All Rounds
+          </h1>
+          {countLabel && (
+            <div className="text-[11px] text-[var(--v2-text-dim)]">{countLabel}</div>
+          )}
+        </div>
         <Link
           href="/rounds/new"
           className="inline-flex items-center gap-1 rounded-full border border-[var(--v2-gold)]/40 px-3 py-1.5 text-xs font-medium text-[var(--v2-gold)] hover:bg-[var(--v2-gold)]/10"
@@ -81,6 +59,26 @@ export function V2Rounds() {
         </Link>
       </header>
 
+      <div className="relative mb-3">
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by course or player…"
+          className="w-full rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-3 py-2 pr-8 text-sm text-[var(--v2-text)] placeholder-[var(--v2-text-dim)]"
+        />
+        {q && (
+          <button
+            type="button"
+            onClick={() => setQ("")}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--v2-text-dim)] hover:text-[var(--v2-text)]"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <V2Card>
           <div className="py-6 text-center text-[var(--v2-text-dim)]">Loading…</div>
@@ -88,10 +86,16 @@ export function V2Rounds() {
       ) : rounds.length === 0 ? (
         <V2Card>
           <div className="py-8 text-center text-sm text-[var(--v2-text-dim)]">
-            No rounds logged yet.{" "}
-            <Link href="/rounds/new" className="font-medium text-[var(--v2-gold)] hover:underline">
-              Log your first →
-            </Link>
+            {dq ? (
+              <>No rounds match &ldquo;{dq}&rdquo;.</>
+            ) : (
+              <>
+                No rounds logged yet.{" "}
+                <Link href="/rounds/new" className="font-medium text-[var(--v2-gold)] hover:underline">
+                  Log your first →
+                </Link>
+              </>
+            )}
           </div>
         </V2Card>
       ) : (
@@ -116,7 +120,7 @@ export function V2Rounds() {
               </button>
             ) : (
               <span className="text-xs text-[var(--v2-text-faint)]">
-                That&rsquo;s all {rounds.length} round{rounds.length === 1 ? "" : "s"}.
+                Showing all {rounds.length} round{rounds.length === 1 ? "" : "s"}.
               </span>
             )}
           </div>
