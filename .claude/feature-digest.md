@@ -36,6 +36,7 @@ A private golf scoring + competition web app for ~40 Oakland County (Michigan) p
 - **9-hole OR 18-hole** rounds, with Front 9 / Back 9 selector for 9-hole
 - Round detail page (view / edit / delete — creator or admin only)
 - Recent rounds feed on home
+- **All Rounds page** (`/rounds`) — full history, keyset-paginated ("Load more"), search by course/player, total-count header, all player scores inline
 
 ### Live Round Mode (just shipped 2026-05-28)
 - Dedicated `/rounds/live/[id]` hole-by-hole scorer
@@ -145,7 +146,7 @@ Dark/gold mobile redesign (Fraunces serif + Outfit sans, gold-on-deep-green, tra
 ## Planned / on the wishlist (`feature intake3.md`)
 
 ### Social / engagement
-- **QR-code event joining** — unique invite codes, expiring tokens, mobile camera scan, deep-link / web fallback, admin revoke
+- ~~**QR-code event joining**~~ ✅ **SHIPPED** — `events.invite_token` (+expiry/revoke), `/api/events/[id]/invite` (GET/POST/DELETE, organizer), `/api/invite/[token]` (preview) + `/join` (one-tap join), `InvitePanel` (locally-generated QR via `qrcode`) on event detail, `/join/[token]` page (classic+v2), login/register honor `?next=`
 - **Social activity feed** — auto-generated events (round wins, birdies, career-best, CTP wins, leaderboard changes, win streaks, rivalry updates, mini-game results, event victories); infinite scroll; time-grouped; filter by group / friends / events; optional reactions + comments
 - **AI round recaps** — hole-by-hole + leaderboard + weather + player names → "sports media + friendly trash talk" tone; multiple styles (dramatic, comedic); cached after generation; async post-completion; shareable
 
