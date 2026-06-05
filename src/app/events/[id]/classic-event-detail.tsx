@@ -9,8 +9,11 @@ import type { EventStatus } from "@/lib/types";
 import type {
   Best18Entry,
   EventStandings,
+  LeaderboardEntry,
   MostSameEntry,
+  PokerStandings,
   ScrambleWinners,
+  Settlement,
   SideGameSummary,
   Worst18Entry,
 } from "@/lib/standings";
@@ -273,6 +276,7 @@ export function ClassicEventDetail({ id }: { id: string }) {
             eventId={event.id}
             isOrganizer={isOrganizer}
             standings={standings}
+            reload={loadStandings}
           />
         )}
         {tab === "leaderboard" && <LeaderboardView standings={standings} />}
@@ -529,50 +533,109 @@ const SIDE_GAME_LABEL: Record<SideGameSummary["kind"], string> = {
   scramble_winners: "3-Man Scramble Winners",
 };
 
+function vsParTone(vsPar: number, through: number): string {
+  if (through === 0) return "text-gray-500";
+  if (vsPar < 0) return "text-red-600";
+  if (vsPar > 0) return "text-gray-600";
+  return "text-green-700";
+}
+
 function LeaderboardView({ standings }: { standings: EventStandings | null }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.leaderboard.length === 0) {
     return <EmptyHint text="Leaderboard appears once scoring starts." />;
   }
+  const ranks = computeRanks(standings.leaderboard);
   return (
     <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
-      {standings.leaderboard.map((row, idx) => (
-        <li key={row.player_id} className="px-3 py-2 flex items-center gap-3">
-          <span className="w-5 text-xs text-gray-400 text-right">{idx + 1}</span>
-          <span className="flex-1 text-sm text-gray-900 truncate">
-            {row.display_name}
-          </span>
-          <span className="text-xs text-gray-500">
-            {row.through > 0 ? `thru ${row.through}` : "—"}
-          </span>
-          <span className="text-sm font-semibold text-gray-900 w-10 text-right">
-            {row.strokes || "–"}
-          </span>
-          <span
-            className={`w-10 text-right text-xs ${row.vs_par < 0 ? "text-red-600" : row.vs_par > 0 ? "text-gray-600" : "text-green-700"}`}
-          >
-            {row.through === 0
-              ? ""
-              : row.vs_par === 0
-                ? "E"
-                : row.vs_par > 0
-                  ? `+${row.vs_par}`
-                  : row.vs_par}
-          </span>
-        </li>
-      ))}
+      {standings.leaderboard.map((row, idx) => {
+        const { rank, tied } = ranks[idx];
+        const isLeader = rank === 1 && row.through > 0;
+        const isOpen = expanded === row.player_id;
+        return (
+          <li key={row.player_id}>
+            <button
+              type="button"
+              onClick={() => setExpanded(isOpen ? null : row.player_id)}
+              className="w-full px-3 py-2 flex items-center gap-3 text-left hover:bg-green-50"
+            >
+              <span
+                className={`w-6 text-xs text-right ${isLeader ? "text-green-700" : "text-gray-400"}`}
+              >
+                {isLeader ? "👑" : row.through > 0 && tied ? `T${rank}` : rank}
+              </span>
+              <span className="flex-1 text-sm text-gray-900 truncate">
+                {row.display_name}
+              </span>
+              <span className="text-xs text-gray-500">
+                {row.through > 0 ? `thru ${row.through}` : "—"}
+              </span>
+              <span className="text-sm font-semibold text-gray-900 w-10 text-right">
+                {row.strokes || "–"}
+              </span>
+              <span className={`w-10 text-right text-xs ${vsParTone(row.vs_par, row.through)}`}>
+                {row.through === 0 ? "" : vsParLabel(row.vs_par)}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="border-t border-gray-100 bg-gray-50 px-3 py-2">
+                {row.per_round.map((pr) => (
+                  <div
+                    key={pr.round_id}
+                    className="flex items-center gap-3 py-0.5 text-xs text-gray-600"
+                  >
+                    <span className="flex-1">Round {pr.round_number}</span>
+                    <span>{pr.through > 0 ? `thru ${pr.through}` : "—"}</span>
+                    <span className="w-10 text-right text-gray-900">{pr.strokes || "–"}</span>
+                    <span className={`w-10 text-right font-semibold ${vsParTone(pr.vs_par, pr.through)}`}>
+                      {pr.through === 0 ? "" : vsParLabel(pr.vs_par)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
+}
+
+/**
+ * Competition ranks (ties share a rank, next rank skips) over the already-sorted
+ * leaderboard. Two rows tie when they share both strokes and holes-through.
+ */
+function computeRanks(
+  rows: LeaderboardEntry[],
+): { rank: number; tied: boolean }[] {
+  const rankNums: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (
+      i > 0 &&
+      rows[i].strokes === rows[i - 1].strokes &&
+      rows[i].through === rows[i - 1].through
+    ) {
+      rankNums.push(rankNums[i - 1]);
+    } else {
+      rankNums.push(i + 1);
+    }
+  }
+  const counts = new Map<number, number>();
+  for (const r of rankNums) counts.set(r, (counts.get(r) ?? 0) + 1);
+  return rankNums.map((rank) => ({ rank, tied: (counts.get(rank) ?? 0) > 1 }));
 }
 
 function SideGamesView({
   eventId,
   isOrganizer,
   standings,
+  reload,
 }: {
   eventId: number;
   isOrganizer: boolean;
   standings: EventStandings | null;
+  reload: () => void;
 }) {
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.side_games.length === 0) {
@@ -593,12 +656,13 @@ function SideGamesView({
             {g.kind === "worst18" && <Worst18Block rows={standings.worst18} />}
             {g.kind === "most_same" && <MostSameBlock rows={standings.most_same} />}
             {g.kind === "poker" && (
-              <Link
-                href={`/events/${eventId}/poker`}
-                className="inline-block text-sm font-medium text-green-700 hover:underline"
-              >
-                Open poker hand →
-              </Link>
+              <PokerWinnerBlock
+                eventId={eventId}
+                isOrganizer={isOrganizer}
+                data={standings.poker}
+                potCents={g.pot_cents}
+                reload={reload}
+              />
             )}
             {g.kind === "scramble_winners" && (
               <ScrambleWinnersBlock
@@ -606,11 +670,100 @@ function SideGamesView({
                 isOrganizer={isOrganizer}
                 data={standings.scramble_winners}
                 potCents={g.pot_cents}
+                reload={reload}
               />
             )}
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+function PokerWinnerBlock({
+  eventId,
+  isOrganizer,
+  data,
+  potCents,
+  reload,
+}: {
+  eventId: number;
+  isOrganizer: boolean;
+  data: PokerStandings | null;
+  potCents: number;
+  reload: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function pick(playerId: string | null) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/side-games/poker/winner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_id: playerId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Failed");
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <Link
+        href={`/events/${eventId}/poker`}
+        className="inline-block text-sm font-medium text-green-700 hover:underline"
+      >
+        Open poker hand →
+      </Link>
+      {err && (
+        <div className="mt-2 rounded-md bg-red-50 border border-red-200 px-2 py-1 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+      {!data || data.players.length === 0 ? (
+        <p className="mt-2 text-xs text-gray-500">No poker hands dealt yet.</p>
+      ) : (
+        <ul className="mt-2 text-sm">
+          {data.players.map((p) => {
+            const isWinner = data.winner_player_id === p.player_id;
+            return (
+              <li
+                key={p.player_id}
+                className={`flex items-center gap-2 py-1 ${isWinner ? "bg-green-50 -mx-2 px-2 rounded" : ""}`}
+              >
+                <span className="flex-1 truncate text-gray-900">
+                  {p.display_name} {isWinner && "🏆"}
+                </span>
+                <span className="text-xs text-gray-500">{p.card_count} cards</span>
+                {isOrganizer && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => pick(isWinner ? null : p.player_id)}
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300 hover:border-green-500 disabled:opacity-50"
+                  >
+                    {isWinner ? "Unset" : "Win"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {data?.winner_player_id != null && data.payout_cents != null && (
+        <div className="mt-2 text-xs text-gray-600">
+          Payout: {formatMoney(data.payout_cents)}
+          {potCents > 0 ? ` (pot ${formatMoney(potCents)})` : ""}
+        </div>
+      )}
     </div>
   );
 }
@@ -658,11 +811,13 @@ function ScrambleWinnersBlock({
   isOrganizer,
   data,
   potCents,
+  reload,
 }: {
   eventId: number;
   isOrganizer: boolean;
   data: ScrambleWinners | null;
   potCents: number;
+  reload: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -692,6 +847,7 @@ function ScrambleWinnersBlock({
       );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Failed");
+      reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -824,11 +980,63 @@ function PayoutsView({
         </div>
       )}
 
+      {completed && standings?.settlement && (
+        <SettlementBlock settlement={standings.settlement} />
+      )}
+
       {!completed && (
         <p className="text-xs text-gray-500">
           Final payout summary lands when the event is marked completed.
         </p>
       )}
+    </div>
+  );
+}
+
+function SettlementBlock({ settlement }: { settlement: Settlement }) {
+  if (settlement.total_pot_cents <= 0) return null;
+  const net = (cents: number) =>
+    cents > 0 ? `+${formatMoney(cents)}` : formatMoney(cents);
+  return (
+    <div className="rounded-md bg-white border border-gray-200 px-3 py-3">
+      <div className="text-sm font-semibold text-gray-900 mb-1">Settle up</div>
+      <p className="text-[11px] text-gray-500 mb-2">
+        Assumes everyone bought into each side game equally and the low score takes the entry pot.
+      </p>
+
+      {settlement.transfers.length > 0 ? (
+        <ul className="space-y-1.5">
+          {settlement.transfers.map((t, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm">
+              <span className="truncate text-gray-900">{t.from_name}</span>
+              <span className="text-gray-400">→</span>
+              <span className="flex-1 truncate text-gray-900">{t.to_name}</span>
+              <span className="font-semibold text-green-700">{formatMoney(t.amount_cents)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-gray-500">Everyone&rsquo;s square — no payments needed.</p>
+      )}
+
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs text-green-700">Per-player net</summary>
+        <ul className="mt-2 space-y-1 text-xs">
+          {settlement.players.map((p) => (
+            <li key={p.player_id} className="flex items-center gap-2">
+              <span className="flex-1 truncate text-gray-900">{p.display_name}</span>
+              <span className="text-gray-400">
+                in {formatMoney(p.paid_cents)} · won {formatMoney(p.won_cents)}
+              </span>
+              <span
+                className={`w-16 text-right font-semibold ${p.net_cents > 0 ? "text-green-700" : p.net_cents < 0 ? "text-red-600" : "text-gray-500"}`}
+              >
+                {net(p.net_cents)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
     </div>
   );
 }
@@ -897,10 +1105,21 @@ function FinalPayoutWinner({
     );
   }
   if (kind === "poker") {
+    const p = standings.poker;
+    if (!p || p.winner_player_id == null) {
+      return (
+        <p className="text-xs text-amber-700">
+          No winner picked yet. Set one in the Side Games tab.
+        </p>
+      );
+    }
+    const winner = p.players.find((x) => x.player_id === p.winner_player_id);
     return (
-      <p className="text-xs text-amber-700">
-        Poker winner picked manually (not yet in MVP). Pay out from the pot total.
-      </p>
+      <PayoutWinnerLine
+        name={winner?.display_name ?? "Winner"}
+        detail="Best poker hand"
+        amount={p.payout_cents ?? potCents}
+      />
     );
   }
   return <p className="text-xs text-gray-500">No data.</p>;

@@ -11,8 +11,11 @@ import type { EventStatus } from "@/lib/types";
 import type {
   Best18Entry,
   EventStandings,
+  LeaderboardEntry,
   MostSameEntry,
+  PokerStandings,
   ScrambleWinners,
+  Settlement,
   SideGameSummary,
   Worst18Entry,
 } from "@/lib/standings";
@@ -272,7 +275,12 @@ export function V2EventDetail({ id }: { id: string }) {
           )}
           {tab === "leaderboard" && <LeaderboardView standings={standings} />}
           {tab === "side" && (
-            <SideGamesView eventId={event.id} isOrganizer={isOrganizer} standings={standings} />
+            <SideGamesView
+              eventId={event.id}
+              isOrganizer={isOrganizer}
+              standings={standings}
+              reload={loadStandings}
+            />
           )}
           {tab === "payouts" && (
             <PayoutsView
@@ -496,44 +504,101 @@ const SIDE_GAME_LABEL: Record<SideGameSummary["kind"], string> = {
 };
 
 function LeaderboardView({ standings }: { standings: EventStandings | null }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.leaderboard.length === 0) {
     return <EmptyHint text="Leaderboard appears once scoring starts." />;
   }
+  const ranks = computeRanks(standings.leaderboard);
   return (
     <ul className="v2-card divide-y divide-[var(--v2-border)] !p-0">
-      {standings.leaderboard.map((row, idx) => (
-        <li key={row.player_id} className="flex items-center gap-3 px-3.5 py-2.5">
-          <span
-            className={`w-5 text-right text-[15px] ${idx === 0 ? "text-[var(--v2-gold)]" : "text-[var(--v2-text-dim)]"}`}
-            style={serif}
-          >
-            {idx + 1}
-          </span>
-          <span className="flex-1 truncate text-sm text-[var(--v2-text)]">{row.display_name}</span>
-          <span className="text-xs text-[var(--v2-text-dim)]">
-            {row.through > 0 ? `thru ${row.through}` : "—"}
-          </span>
-          <span className="w-10 text-right text-sm font-semibold text-[var(--v2-text)]" style={serif}>
-            {row.strokes || "–"}
-          </span>
-          <span className={`w-10 text-right text-xs font-semibold ${vsParTone(row.vs_par, row.through)}`}>
-            {row.through === 0 ? "" : vsParLabel(row.vs_par)}
-          </span>
-        </li>
-      ))}
+      {standings.leaderboard.map((row, idx) => {
+        const { rank, tied } = ranks[idx];
+        const isLeader = rank === 1 && row.through > 0;
+        const isOpen = expanded === row.player_id;
+        return (
+          <li key={row.player_id}>
+            <button
+              type="button"
+              onClick={() => setExpanded(isOpen ? null : row.player_id)}
+              className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
+            >
+              <span
+                className={`w-6 text-right text-[15px] ${isLeader ? "text-[var(--v2-gold)]" : "text-[var(--v2-text-dim)]"}`}
+                style={serif}
+              >
+                {isLeader ? "👑" : row.through > 0 && tied ? `T${rank}` : rank}
+              </span>
+              <span className="flex-1 truncate text-sm text-[var(--v2-text)]">{row.display_name}</span>
+              <span className="text-xs text-[var(--v2-text-dim)]">
+                {row.through > 0 ? `thru ${row.through}` : "—"}
+              </span>
+              <span className="w-10 text-right text-sm font-semibold text-[var(--v2-text)]" style={serif}>
+                {row.strokes || "–"}
+              </span>
+              <span className={`w-10 text-right text-xs font-semibold ${vsParTone(row.vs_par, row.through)}`}>
+                {row.through === 0 ? "" : vsParLabel(row.vs_par)}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="border-t border-[var(--v2-border)] bg-[var(--v2-surface-2)]/40 px-3.5 py-2">
+                {row.per_round.map((pr) => (
+                  <div
+                    key={pr.round_id}
+                    className="flex items-center gap-3 py-0.5 text-xs text-[var(--v2-text-dim)]"
+                  >
+                    <span className="flex-1">Round {pr.round_number}</span>
+                    <span>{pr.through > 0 ? `thru ${pr.through}` : "—"}</span>
+                    <span className="w-10 text-right text-[var(--v2-text)]">{pr.strokes || "–"}</span>
+                    <span className={`w-10 text-right font-semibold ${vsParTone(pr.vs_par, pr.through)}`}>
+                      {pr.through === 0 ? "" : vsParLabel(pr.vs_par)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
+}
+
+/**
+ * Assigns competition ranks (ties share a rank, next rank skips) keyed off the
+ * already-sorted leaderboard. Two rows tie when they share both strokes and
+ * holes-through, matching how the board is sorted.
+ */
+function computeRanks(
+  rows: LeaderboardEntry[],
+): { rank: number; tied: boolean }[] {
+  const rankNums: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (
+      i > 0 &&
+      rows[i].strokes === rows[i - 1].strokes &&
+      rows[i].through === rows[i - 1].through
+    ) {
+      rankNums.push(rankNums[i - 1]);
+    } else {
+      rankNums.push(i + 1);
+    }
+  }
+  const counts = new Map<number, number>();
+  for (const r of rankNums) counts.set(r, (counts.get(r) ?? 0) + 1);
+  return rankNums.map((rank) => ({ rank, tied: (counts.get(rank) ?? 0) > 1 }));
 }
 
 function SideGamesView({
   eventId,
   isOrganizer,
   standings,
+  reload,
 }: {
   eventId: number;
   isOrganizer: boolean;
   standings: EventStandings | null;
+  reload: () => void;
 }) {
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.side_games.length === 0) {
@@ -552,12 +617,13 @@ function SideGamesView({
             {g.kind === "worst18" && <RankNumberList rows={mapWorst(standings.worst18)} />}
             {g.kind === "most_same" && <MostSameBlock rows={standings.most_same} />}
             {g.kind === "poker" && (
-              <Link
-                href={`/events/${eventId}/poker`}
-                className="inline-block text-sm font-medium text-[var(--v2-gold)] hover:underline"
-              >
-                Open poker hand →
-              </Link>
+              <PokerWinnerBlock
+                eventId={eventId}
+                isOrganizer={isOrganizer}
+                data={standings.poker}
+                potCents={g.pot_cents}
+                reload={reload}
+              />
             )}
             {g.kind === "scramble_winners" && (
               <ScrambleWinnersBlock
@@ -565,11 +631,107 @@ function SideGamesView({
                 isOrganizer={isOrganizer}
                 data={standings.scramble_winners}
                 potCents={g.pot_cents}
+                reload={reload}
               />
             )}
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+function PokerWinnerBlock({
+  eventId,
+  isOrganizer,
+  data,
+  potCents,
+  reload,
+}: {
+  eventId: number;
+  isOrganizer: boolean;
+  data: PokerStandings | null;
+  potCents: number;
+  reload: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function pick(playerId: string | null) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/side-games/poker/winner`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ player_id: playerId }),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Failed");
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <Link
+        href={`/events/${eventId}/poker`}
+        className="inline-block text-sm font-medium text-[var(--v2-gold)] hover:underline"
+      >
+        Open poker hand →
+      </Link>
+      {err && (
+        <div className="mt-2 rounded-md border border-red-800 bg-red-950/60 px-2 py-1 text-xs text-red-300">
+          {err}
+        </div>
+      )}
+      {!data || data.players.length === 0 ? (
+        <p className="mt-2 text-xs text-[var(--v2-text-dim)]">
+          No poker hands dealt yet.
+        </p>
+      ) : (
+        <ul className="mt-2 text-sm">
+          {data.players.map((p) => {
+            const isWinner = data.winner_player_id === p.player_id;
+            return (
+              <li
+                key={p.player_id}
+                className={`flex items-center gap-2 py-1 ${isWinner ? "-mx-2 rounded bg-[var(--v2-gold)]/12 px-2" : ""}`}
+              >
+                <span className="flex-1 truncate text-[var(--v2-text)]">
+                  {p.display_name} {isWinner && "🏆"}
+                </span>
+                <span className="text-xs text-[var(--v2-text-dim)]">
+                  {p.card_count} cards
+                </span>
+                {isOrganizer && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => pick(isWinner ? null : p.player_id)}
+                    className="rounded border border-[var(--v2-border)] px-1.5 py-0.5 text-[10px] text-[var(--v2-text)] hover:border-[var(--v2-gold)]/50 disabled:opacity-50"
+                  >
+                    {isWinner ? "Unset" : "Win"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {data?.winner_player_id != null && data.payout_cents != null && (
+        <div className="mt-2 text-xs text-[var(--v2-text-dim)]">
+          Payout: {formatMoney(data.payout_cents)}
+          {potCents > 0 ? ` (pot ${formatMoney(potCents)})` : ""}
+        </div>
+      )}
     </div>
   );
 }
@@ -635,11 +797,13 @@ function ScrambleWinnersBlock({
   isOrganizer,
   data,
   potCents,
+  reload,
 }: {
   eventId: number;
   isOrganizer: boolean;
   data: ScrambleWinners | null;
   potCents: number;
+  reload: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -669,6 +833,7 @@ function ScrambleWinnersBlock({
       );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Failed");
+      reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -786,11 +951,63 @@ function PayoutsView({
         </div>
       )}
 
+      {completed && standings?.settlement && (
+        <SettlementBlock settlement={standings.settlement} />
+      )}
+
       {!completed && (
         <p className="text-xs text-[var(--v2-text-faint)]">
           Final payout summary lands when the event is marked completed.
         </p>
       )}
+    </div>
+  );
+}
+
+function SettlementBlock({ settlement }: { settlement: Settlement }) {
+  if (settlement.total_pot_cents <= 0) return null;
+  const net = (cents: number) =>
+    cents > 0 ? `+${formatMoney(cents)}` : formatMoney(cents);
+  return (
+    <div className="v2-card">
+      <div className="mb-1 text-sm font-semibold text-[var(--v2-text)]">Settle up</div>
+      <p className="mb-2 text-[11px] text-[var(--v2-text-faint)]">
+        Assumes everyone bought into each side game equally and the low score takes the entry pot.
+      </p>
+
+      {settlement.transfers.length > 0 ? (
+        <ul className="space-y-1.5">
+          {settlement.transfers.map((t, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm">
+              <span className="truncate text-[var(--v2-text)]">{t.from_name}</span>
+              <span className="text-[var(--v2-text-faint)]">→</span>
+              <span className="flex-1 truncate text-[var(--v2-text)]">{t.to_name}</span>
+              <span className="font-semibold text-[var(--v2-gold)]">{formatMoney(t.amount_cents)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-[var(--v2-text-dim)]">Everyone&rsquo;s square — no payments needed.</p>
+      )}
+
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs text-[var(--v2-gold)]">Per-player net</summary>
+        <ul className="mt-2 space-y-1 text-xs">
+          {settlement.players.map((p) => (
+            <li key={p.player_id} className="flex items-center gap-2">
+              <span className="flex-1 truncate text-[var(--v2-text)]">{p.display_name}</span>
+              <span className="text-[var(--v2-text-faint)]">
+                in {formatMoney(p.paid_cents)} · won {formatMoney(p.won_cents)}
+              </span>
+              <span
+                className={`w-16 text-right font-semibold ${p.net_cents > 0 ? "text-[var(--v2-sage)]" : p.net_cents < 0 ? "text-red-300" : "text-[var(--v2-text-dim)]"}`}
+              >
+                {net(p.net_cents)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
     </div>
   );
 }
@@ -855,10 +1072,21 @@ function FinalPayoutWinner({
     );
   }
   if (kind === "poker") {
+    const p = standings.poker;
+    if (!p || p.winner_player_id == null) {
+      return (
+        <p className="text-xs text-[var(--v2-amber-warn)]">
+          No winner picked yet. Set one in the Games tab.
+        </p>
+      );
+    }
+    const winner = p.players.find((x) => x.player_id === p.winner_player_id);
     return (
-      <p className="text-xs text-[var(--v2-amber-warn)]">
-        Poker winner picked manually (not yet in MVP). Pay out from the pot total.
-      </p>
+      <PayoutWinnerLine
+        name={winner?.display_name ?? "Winner"}
+        detail="Best poker hand"
+        amount={p.payout_cents ?? potCents}
+      />
     );
   }
   return <p className="text-xs text-[var(--v2-text-dim)]">No data.</p>;
