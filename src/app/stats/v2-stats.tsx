@@ -109,13 +109,38 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
       .then((d) => setRows(d.leaderboard ?? []));
   }, [season, scope, holes]);
 
+  const holesLabel = holes === "all" ? "" : `${holes}-hole `;
+
+  // The scope + holes filter pills stay mounted in every state (loading, empty,
+  // populated) so an empty filter — e.g. 9H with no 9-hole rounds — never strands
+  // the user without a way to switch back. Only the list area below swaps out.
+  const filterChips = (
+    <div className="no-scrollbar mb-3 flex items-center gap-2 overflow-x-auto">
+      <V2Pill active={scope === "mine"} onClick={() => setScope("mine")}>
+        My circle
+      </V2Pill>
+      <V2Pill active={scope === "all"} onClick={() => setScope("all")}>
+        Everyone
+      </V2Pill>
+      <span aria-hidden="true" className="mx-1 h-4 w-px bg-[var(--v2-gold)]/15" />
+      {(["18", "9", "all"] as const).map((h) => (
+        <V2Pill key={h} active={holes === h} onClick={() => setHoles(h)}>
+          {h === "all" ? "All" : `${h}H`}
+        </V2Pill>
+      ))}
+    </div>
+  );
+
   if (rows === null) {
     return (
-      <V2Card>
-        <div className="py-6 text-center text-[var(--v2-text-dim)]">
-          Loading…
-        </div>
-      </V2Card>
+      <div>
+        {filterChips}
+        <V2Card>
+          <div className="py-6 text-center text-[var(--v2-text-dim)]">
+            Loading…
+          </div>
+        </V2Card>
+      </div>
     );
   }
   if (
@@ -123,13 +148,16 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
     (rows.length === 1 && rows[0].rounds_played === 0)
   ) {
     return (
-      <V2Card>
-        <div className="py-6 text-center text-sm text-[var(--v2-text-dim)]">
-          {scope === "mine"
-            ? "You haven't played a round in this filter yet."
-            : "No rounds logged in this filter yet."}
-        </div>
-      </V2Card>
+      <div>
+        {filterChips}
+        <V2Card>
+          <div className="py-6 text-center text-sm text-[var(--v2-text-dim)]">
+            {scope === "mine"
+              ? `You haven't played a ${holesLabel}round in this filter yet.`
+              : `No ${holesLabel}rounds logged in this filter yet.`}
+          </div>
+        </V2Card>
+      </div>
     );
   }
 
@@ -179,24 +207,7 @@ function LeaderboardTab({ season }: { season: number | "all" }) {
 
   return (
     <div>
-      {/* Filter chips: scope + holes, divided by hairline */}
-      <div className="no-scrollbar mb-3 flex items-center gap-2 overflow-x-auto">
-        <V2Pill active={scope === "mine"} onClick={() => setScope("mine")}>
-          My circle
-        </V2Pill>
-        <V2Pill active={scope === "all"} onClick={() => setScope("all")}>
-          Everyone
-        </V2Pill>
-        <span
-          aria-hidden="true"
-          className="mx-1 h-4 w-px bg-[var(--v2-gold)]/15"
-        />
-        {(["18", "9", "all"] as const).map((h) => (
-          <V2Pill key={h} active={holes === h} onClick={() => setHoles(h)}>
-            {h === "all" ? "All" : `${h}H`}
-          </V2Pill>
-        ))}
-      </div>
+      {filterChips}
 
       {/* Metric sort */}
       <div className="mb-2 flex items-center gap-2">
