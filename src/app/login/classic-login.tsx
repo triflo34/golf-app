@@ -32,7 +32,8 @@ export function ClassicLogin() {
     }
 
     await refresh();
-    router.push("/");
+    const next = new URLSearchParams(window.location.search).get("next");
+    router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
   }
 
   return (

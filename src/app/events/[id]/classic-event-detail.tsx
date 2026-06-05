@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { CopyLinkButton } from "@/components/copy-link-button";
+import { InvitePanel } from "@/components/invite-panel";
 import type { EventStatus } from "@/lib/types";
 import type {
   Best18Entry,
@@ -232,6 +233,12 @@ export function ClassicEventDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      {isOrganizer && (event.status === "draft" || event.status === "open") && (
+        <div className="mt-4">
+          <InvitePanel eventId={event.id} variant="classic" />
+        </div>
+      )}
 
       <nav className="mt-5 -mx-4 border-b border-gray-200 overflow-x-auto">
         <div className="flex px-4 gap-1 min-w-max">

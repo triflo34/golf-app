@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { CopyLinkButton } from "@/components/copy-link-button";
+import { InvitePanel } from "@/components/invite-panel";
 import { V2LivePill } from "@/components/v2/live-pill";
 import { V2SegmentedControl } from "@/components/v2/segmented-control";
 import type { EventStatus } from "@/lib/types";
@@ -255,6 +256,12 @@ export function V2EventDetail({ id }: { id: string }) {
         </div>
 
         {/* Tabs */}
+        {isOrganizer && (event.status === "draft" || event.status === "open") && (
+          <div className="mt-3">
+            <InvitePanel eventId={event.id} variant="v2" />
+          </div>
+        )}
+
         <div className="mt-4">
           <V2SegmentedControl value={tab} onChange={setTab} options={TAB_OPTIONS} />
         </div>

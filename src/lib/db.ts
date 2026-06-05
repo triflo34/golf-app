@@ -185,6 +185,18 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureEventParticipantSeqColumn(sql);
   console.log("[db] ensureCriticalColumns: rounds_excluded");
   await ensureRoundsExcludedColumn(sql);
+  console.log("[db] ensureCriticalColumns: event_invite");
+  await ensureEventInviteColumns(sql);
+}
+
+async function ensureEventInviteColumns(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS invite_token      TEXT;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMPTZ;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS invite_revoked    BOOLEAN NOT NULL DEFAULT FALSE;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_events_invite_token
+      ON events(invite_token) WHERE invite_token IS NOT NULL;
+  `);
 }
 
 function ensureInit(): Promise<void> {
@@ -321,9 +333,14 @@ const SCHEMA_SQL = `
                               CHECK (status IN ('draft','open','in_progress','completed','archived')),
     exclude_from_leaderboard BOOLEAN NOT NULL DEFAULT FALSE,
     created_by               TEXT NOT NULL REFERENCES users(id),
-    created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    invite_token             TEXT,
+    invite_expires_at        TIMESTAMPTZ,
+    invite_revoked           BOOLEAN NOT NULL DEFAULT FALSE
   );
   CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_events_invite_token
+    ON events(invite_token) WHERE invite_token IS NOT NULL;
 
   CREATE TABLE IF NOT EXISTS event_participants (
     event_id     INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
