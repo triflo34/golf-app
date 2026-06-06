@@ -480,7 +480,9 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
     const handRows = await db
       .prepare(
         `SELECT ph.player_id, u.display_name,
-                COALESCE(jsonb_array_length(ph.cards), 0) AS card_count
+                CASE WHEN jsonb_typeof(ph.cards) = 'array'
+                     THEN jsonb_array_length(ph.cards)
+                     ELSE 0 END AS card_count
          FROM poker_hands ph JOIN users u ON u.id = ph.player_id
          WHERE ph.event_id = ?
          ORDER BY u.display_name ASC`,
