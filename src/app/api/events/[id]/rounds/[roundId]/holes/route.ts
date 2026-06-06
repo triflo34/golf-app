@@ -85,6 +85,22 @@ export async function POST(
     return NextResponse.json({ error: "Player is not in this event" }, { status: 400 });
   }
 
+  // Permission: organizers can edit any score; everyone else may only edit
+  // their own row.
+  const myParticipant = await db
+    .prepare(
+      `SELECT is_organizer FROM event_participants
+       WHERE event_id = ? AND user_id = ?`,
+    )
+    .get<{ is_organizer: boolean }>(eventId, me.id);
+  const isOrganizer = myParticipant?.is_organizer === true;
+  if (!isOrganizer && me.id !== playerId) {
+    return NextResponse.json(
+      { error: "Only the event organizer can edit other players' scores" },
+      { status: 403 },
+    );
+  }
+
   const holes = await ensureCourseHoles(round.course_id);
   const holeMeta = holes.find((h) => h.hole_number === holeNumber);
   const par = holeMeta?.par ?? 4;

@@ -62,6 +62,8 @@ type RoundLoad = {
   scores: ScoreInfo[];
   teams: TeamInfo[];
   team_scores: TeamScoreInfo[];
+  viewer_id: string;
+  viewer_is_organizer: boolean;
 };
 
 function classify(strokes: number, par: number): { label: string; tone: string } {
@@ -318,6 +320,10 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
   }
 
   const { round, holes, players, teams } = data;
+  // Organizers can edit every row; everyone else only their own (or a scramble
+  // team they belong to). Enforced server-side too — this just hides controls.
+  const canEditAll = data.viewer_is_organizer;
+  const myId = user.id;
   const currentHole = holes.find((h) => h.hole_number === hole);
   const currentPar = currentHole?.par ?? 4;
   const currentYardage = currentHole?.yardage ?? null;
@@ -605,7 +611,11 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
 
         <p className="mt-3 text-[11px] text-gray-400">
           {isScramble ? "Team scores. " : ""}
-          Anyone in the event can edit any score. Edits are logged.
+          {canEditAll
+            ? "As organizer you can edit every score. Edits are logged."
+            : isScramble
+              ? "You can score your own team. Only the organizer can edit other teams. Edits are logged."
+              : "You can score your own row. Only the organizer can edit others. Edits are logged."}
         </p>
       </div>
 
@@ -651,10 +661,11 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
             ? teams.map((tm) => {
                 const score = teamStrokes.get(`${tm.id}:${hole}`) ?? null;
                 const cls = score != null ? classify(score, currentPar) : null;
+                const editable = canEditAll || tm.members.some((m) => m.user_id === myId);
                 return (
                   <div
                     key={tm.id}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-3"
+                    className={`rounded-xl border border-gray-200 px-3 py-3 ${editable ? "bg-white" : "bg-gray-50"}`}
                   >
                     <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
@@ -672,55 +683,66 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setTeamStrokes(tm.id, currentPar)}
-                          className={
-                            score === currentPar
-                              ? "h-11 px-3 rounded-md border border-green-600 bg-green-600 text-xs font-semibold text-white"
-                              : "h-11 px-3 rounded-md border border-green-300 bg-green-50 text-xs font-semibold text-green-800"
-                          }
-                        >
-                          Par
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setTeamStrokes(
-                              tm.id,
-                              Math.max(1, (score ?? currentPar) - 1),
-                            )
-                          }
-                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
-                        >
-                          −
-                        </button>
-                        <div className="w-14 text-center">
-                          <div className="text-3xl font-bold text-gray-900 leading-none">
-                            {score ?? "–"}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setTeamStrokes(tm.id, (score ?? currentPar) + 1)
-                          }
-                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
-                        >
-                          +
-                        </button>
-                        {score != null && (
+                      {editable ? (
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => setTeamStrokes(tm.id, null)}
-                            className="ml-1 text-xs text-gray-400 hover:text-red-600"
-                            title="Clear"
+                            onClick={() => setTeamStrokes(tm.id, currentPar)}
+                            className={
+                              score === currentPar
+                                ? "h-11 px-3 rounded-md border border-green-600 bg-green-600 text-xs font-semibold text-white"
+                                : "h-11 px-3 rounded-md border border-green-300 bg-green-50 text-xs font-semibold text-green-800"
+                            }
                           >
-                            ×
+                            Par
                           </button>
-                        )}
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTeamStrokes(
+                                tm.id,
+                                Math.max(1, (score ?? currentPar) - 1),
+                              )
+                            }
+                            className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                          >
+                            −
+                          </button>
+                          <div className="w-14 text-center">
+                            <div className="text-3xl font-bold text-gray-900 leading-none">
+                              {score ?? "–"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTeamStrokes(tm.id, (score ?? currentPar) + 1)
+                            }
+                            className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                          >
+                            +
+                          </button>
+                          {score != null && (
+                            <button
+                              type="button"
+                              onClick={() => setTeamStrokes(tm.id, null)}
+                              className="ml-1 text-xs text-gray-400 hover:text-red-600"
+                              title="Clear"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 pr-1">
+                          <span className="text-3xl font-bold text-gray-900 leading-none">
+                            {score ?? "–"}
+                          </span>
+                          <span className="text-gray-400" title="Read only" aria-label="Read only">
+                            🔒
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -729,10 +751,11 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
                 const score = playerStrokes.get(`${p.user_id}:${hole}`) ?? null;
                 const cls = score != null ? classify(score, currentPar) : null;
                 const meta = scoreMeta.get(`${p.user_id}:${hole}`);
+                const editable = canEditAll || p.user_id === myId;
                 return (
                   <div
                     key={p.user_id}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-3"
+                    className={`rounded-xl border border-gray-200 px-3 py-3 ${editable ? "bg-white" : "bg-gray-50"}`}
                   >
                     <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
@@ -753,55 +776,66 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
                             </div>
                           )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setStrokes(p.user_id, currentPar)}
-                          className={
-                            score === currentPar
-                              ? "h-11 px-3 rounded-md border border-green-600 bg-green-600 text-xs font-semibold text-white"
-                              : "h-11 px-3 rounded-md border border-green-300 bg-green-50 text-xs font-semibold text-green-800"
-                          }
-                        >
-                          Par
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setStrokes(
-                              p.user_id,
-                              Math.max(1, (score ?? currentPar) - 1),
-                            )
-                          }
-                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
-                        >
-                          −
-                        </button>
-                        <div className="w-14 text-center">
-                          <div className="text-3xl font-bold text-gray-900 leading-none">
-                            {score ?? "–"}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setStrokes(p.user_id, (score ?? currentPar) + 1)
-                          }
-                          className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
-                        >
-                          +
-                        </button>
-                        {score != null && (
+                      {editable ? (
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => setStrokes(p.user_id, null)}
-                            className="ml-1 text-xs text-gray-400 hover:text-red-600"
-                            title="Clear"
+                            onClick={() => setStrokes(p.user_id, currentPar)}
+                            className={
+                              score === currentPar
+                                ? "h-11 px-3 rounded-md border border-green-600 bg-green-600 text-xs font-semibold text-white"
+                                : "h-11 px-3 rounded-md border border-green-300 bg-green-50 text-xs font-semibold text-green-800"
+                            }
                           >
-                            ×
+                            Par
                           </button>
-                        )}
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setStrokes(
+                                p.user_id,
+                                Math.max(1, (score ?? currentPar) - 1),
+                              )
+                            }
+                            className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                          >
+                            −
+                          </button>
+                          <div className="w-14 text-center">
+                            <div className="text-3xl font-bold text-gray-900 leading-none">
+                              {score ?? "–"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setStrokes(p.user_id, (score ?? currentPar) + 1)
+                            }
+                            className="w-11 h-11 rounded-md border border-gray-300 bg-white text-2xl leading-none text-gray-800"
+                          >
+                            +
+                          </button>
+                          {score != null && (
+                            <button
+                              type="button"
+                              onClick={() => setStrokes(p.user_id, null)}
+                              className="ml-1 text-xs text-gray-400 hover:text-red-600"
+                              title="Clear"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 pr-1">
+                          <span className="text-3xl font-bold text-gray-900 leading-none">
+                            {score ?? "–"}
+                          </span>
+                          <span className="text-gray-400" title="Read only" aria-label="Read only">
+                            🔒
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

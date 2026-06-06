@@ -74,6 +74,15 @@ export async function GET(
     return NextResponse.json({ error: "Round not found" }, { status: 404 });
   }
 
+  // Is the viewer an organizer? Drives who can edit which rows in the scorer.
+  const myParticipant = await db
+    .prepare(
+      `SELECT is_organizer FROM event_participants
+       WHERE event_id = ? AND user_id = ?`,
+    )
+    .get<{ is_organizer: boolean }>(eventId, me.id);
+  const viewerIsOrganizer = myParticipant?.is_organizer === true;
+
   const holes = await ensureCourseHoles(round.course_id);
 
   const players = await db
@@ -144,5 +153,7 @@ export async function GET(
     scores,
     teams,
     team_scores: teamScores,
+    viewer_id: me.id,
+    viewer_is_organizer: viewerIsOrganizer,
   });
 }

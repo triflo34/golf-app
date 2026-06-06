@@ -68,7 +68,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>
-          <main className="flex-1 pb-nav">{children}</main>
+          <main className="flex-1 pb-nav pt-safe">{children}</main>
           <OfflineBanner />
           {uiMode === "v2" ? <V2BottomNav /> : <BottomNav />}
         </AuthProvider>

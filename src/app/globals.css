@@ -73,6 +73,16 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Safe area at the TOP. We ship viewport-fit=cover + a black-translucent
+   iOS status bar, so on notched / Dynamic Island iPhones the web view draws
+   edge-to-edge UNDER the clock & battery. Without this, page headers (and the
+   buttons in their top corners) sit beneath the status bar and can't be
+   tapped. env() is 0 on devices/browsers without a top inset, so this is a
+   no-op elsewhere. Applied to the app shell <main> so every screen clears it. */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 /* Ensure content doesn't hide behind bottom nav */
 .pb-nav {
   padding-bottom: 5rem;
@@ -116,6 +126,9 @@ body {
 html[data-ui="v2"] body {
   font-family: var(--font-outfit), system-ui, -apple-system, sans-serif;
   color: var(--v2-text);
+  /* Match the .v2-bg gradient's top stop so the safe-area inset strip above
+     padded content reads as part of the page, not a light gap. */
+  background: var(--v2-bg-1);
 }
 
 html[data-ui="v2"] .v2-bg {
