@@ -203,6 +203,9 @@ export function V2EventDetail({ id }: { id: string }) {
   );
   const players = participants;
   const progress = progressLabel(rounds, standings);
+  const canScoreNow = event.status === "open" || event.status === "in_progress";
+  const scoringRound = canScoreNow ? pickScoringRound(rounds, standings) : null;
+  const scoringStarted = scoringRound ? roundMaxThrough(scoringRound, standings) > 0 : false;
 
   return (
     <div className="v2-bg min-h-screen text-[var(--v2-text)]">
@@ -262,6 +265,21 @@ export function V2EventDetail({ id }: { id: string }) {
               </span>
             )}
           </div>
+
+          {/* Primary scoring CTA — jumps straight into the live round so you
+              don't have to dig through tabs / the scorecard to start. */}
+          {scoringRound && (
+            <Link
+              href={`/events/${event.id}/score/${scoringRound.id}`}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--v2-gold)] py-2.5 text-sm font-bold text-[var(--v2-green-deep)]"
+              style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+            >
+              {scoringStarted
+                ? `Resume scoring · R${scoringRound.round_number}`
+                : `Start scoring · R${scoringRound.round_number}`}
+              <span aria-hidden="true">→</span>
+            </Link>
+          )}
         </div>
 
         {/* Tabs */}
@@ -488,16 +506,61 @@ function RoundCard({
           </ul>
         )}
       </Link>
-      <div className="flex items-center justify-end border-t border-[var(--v2-border)] px-3.5 py-2">
+      <div className="flex items-center justify-between gap-2 border-t border-[var(--v2-border)] px-3.5 py-2.5">
         <Link
           href={`/events/${eventId}/scorecard/${round.id}`}
-          className="text-xs font-medium text-[var(--v2-gold)] hover:underline"
+          className="text-xs font-medium text-[var(--v2-text-dim)] hover:text-[var(--v2-gold)]"
         >
-          View scorecard →
+          View scorecard
+        </Link>
+        <Link
+          href={`/events/${eventId}/score/${round.id}`}
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--v2-gold)] px-3 py-1.5 text-xs font-bold text-[var(--v2-green-deep)]"
+        >
+          Score <span aria-hidden="true">→</span>
         </Link>
       </div>
     </li>
   );
+}
+
+/** Holes-through the field has reached in a round (max across players). */
+function roundMaxThrough(round: EventRound, standings: EventStandings | null): number {
+  if (!standings) return 0;
+  let m = 0;
+  for (const p of standings.leaderboard) {
+    const pr = p.per_round.find((x) => x.round_id === round.id);
+    if (pr) m = Math.max(m, pr.through);
+  }
+  return m;
+}
+
+/** Has anyone fully finished this round? (every scored player through all holes) */
+function roundComplete(round: EventRound, standings: EventStandings | null): boolean {
+  if (!standings) return false;
+  const entries = standings.leaderboard
+    .map((p) => p.per_round.find((x) => x.round_id === round.id))
+    .filter((x): x is NonNullable<typeof x> => Boolean(x));
+  return entries.length > 0 && entries.every((e) => e.through >= round.hole_count);
+}
+
+/**
+ * Which round the "Resume / Start scoring" CTA should jump into: the round
+ * that's underway but unfinished, else the first unfinished round, else the
+ * first round. Keeps the banner button pointed at the relevant scorecard.
+ */
+function pickScoringRound(
+  rounds: EventRound[],
+  standings: EventStandings | null,
+): EventRound | null {
+  if (rounds.length === 0) return null;
+  for (const r of rounds) {
+    if (roundMaxThrough(r, standings) > 0 && !roundComplete(r, standings)) return r;
+  }
+  for (const r of rounds) {
+    if (!roundComplete(r, standings)) return r;
+  }
+  return rounds[0];
 }
 
 function progressLabel(
