@@ -47,12 +47,17 @@ const SUIT_COLOR: Record<PokerCard["suit"], string> = {
   C: "text-gray-900",
 };
 
+// Poker shorthand stores ten as "T"; show players the familiar "10".
+function rankLabel(rank: PokerCard["rank"]): string {
+  return rank === "T" ? "10" : rank;
+}
+
 function CardFace({ card }: { card: PokerCard }) {
   return (
     <span
       className={`inline-flex flex-col items-center justify-center w-12 h-16 rounded-md border border-gray-300 bg-white ${SUIT_COLOR[card.suit]}`}
     >
-      <span className="text-base font-semibold leading-none">{card.rank}</span>
+      <span className="text-base font-semibold leading-none">{rankLabel(card.rank)}</span>
       <span className="text-xl leading-none">{SUIT_GLYPH[card.suit]}</span>
     </span>
   );
@@ -276,7 +281,7 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
                         onClick={() => resolveSwap(s, "swap", idx)}
                         className="px-2 py-1 rounded border border-gray-300 text-xs hover:border-amber-500 disabled:opacity-50"
                       >
-                        Swap with {c.rank}
+                        Swap with {rankLabel(c.rank)}
                         {SUIT_GLYPH[c.suit]}
                       </button>
                     ))}
@@ -304,7 +309,7 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
                         onClick={() => resolveSwap(s, "discard", idx)}
                         className="px-2 py-1 rounded border border-gray-300 text-xs hover:border-red-500 disabled:opacity-50"
                       >
-                        Discard {c.rank}
+                        Discard {rankLabel(c.rank)}
                         {SUIT_GLYPH[c.suit]}
                       </button>
                     ))}

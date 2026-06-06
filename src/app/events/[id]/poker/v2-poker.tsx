@@ -59,12 +59,17 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Poker shorthand stores ten as "T"; show players the familiar "10".
+function rankLabel(rank: PokerCard["rank"]): string {
+  return rank === "T" ? "10" : rank;
+}
+
 function CardFace({ card }: { card: PokerCard }) {
   return (
     <span
       className={`inline-flex h-16 w-12 flex-col items-center justify-center rounded-md border border-black/10 bg-[#f5f5f0] shadow-sm ${SUIT_COLOR[card.suit]}`}
     >
-      <span className="text-base font-semibold leading-none">{card.rank}</span>
+      <span className="text-base font-semibold leading-none">{rankLabel(card.rank)}</span>
       <span className="text-xl leading-none">{SUIT_GLYPH[card.suit]}</span>
     </span>
   );
@@ -483,7 +488,7 @@ function SwapDecision({
                 disabled={busy}
                 onClick={() => onResolve(swap, "swap", idx)}
                 className="rounded-md transition hover:-translate-y-0.5 hover:ring-2 hover:ring-[var(--v2-red)] focus:outline-none disabled:opacity-50"
-                aria-label={`Replace ${c.rank}${SUIT_GLYPH[c.suit]} with the new card`}
+                aria-label={`Replace ${rankLabel(c.rank)}${SUIT_GLYPH[c.suit]} with the new card`}
               >
                 <CardFace card={c} />
               </button>
@@ -511,7 +516,7 @@ function SwapDecision({
                 disabled={busy}
                 onClick={() => onResolve(swap, "discard", idx)}
                 className="rounded-md transition hover:-translate-y-0.5 hover:ring-2 hover:ring-[var(--v2-red)] focus:outline-none disabled:opacity-50"
-                aria-label={`Discard ${c.rank}${SUIT_GLYPH[c.suit]}`}
+                aria-label={`Discard ${rankLabel(c.rank)}${SUIT_GLYPH[c.suit]}`}
               >
                 <CardFace card={c} />
               </button>
