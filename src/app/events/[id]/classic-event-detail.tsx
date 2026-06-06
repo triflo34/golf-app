@@ -87,6 +87,7 @@ export function ClassicEventDetail({ id }: { id: string }) {
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<LoadResult | null>(null);
   const [standings, setStandings] = useState<EventStandings | null>(null);
+  const [standingsError, setStandingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("live");
 
@@ -103,7 +104,12 @@ export function ClassicEventDetail({ id }: { id: string }) {
 
   const loadStandings = useCallback(async () => {
     const res = await fetch(`/api/events/${id}/standings`, { cache: "no-store" });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setStandingsError(body.error ?? "Failed to load standings");
+      return;
+    }
+    setStandingsError(null);
     setStandings(await res.json());
   }, [id]);
 
@@ -263,31 +269,39 @@ export function ClassicEventDetail({ id }: { id: string }) {
       </nav>
 
       <section className="mt-4">
-        {tab === "live" && (
-          <LiveTab
-            eventId={event.id}
-            players={players}
-            rounds={rounds}
-            standings={standings}
-          />
+        {/* Board / Games / Payouts all need standings. If that endpoint failed,
+            show the reason + a retry instead of hanging on "Loading…". */}
+        {tab !== "live" && tab !== "rules" && standingsError && !standings ? (
+          <StandingsError message={standingsError} onRetry={loadStandings} />
+        ) : (
+          <>
+            {tab === "live" && (
+              <LiveTab
+                eventId={event.id}
+                players={players}
+                rounds={rounds}
+                standings={standings}
+              />
+            )}
+            {tab === "side" && (
+              <SideGamesView
+                eventId={event.id}
+                isOrganizer={isOrganizer}
+                standings={standings}
+                reload={loadStandings}
+              />
+            )}
+            {tab === "leaderboard" && <LeaderboardView standings={standings} />}
+            {tab === "payouts" && (
+              <PayoutsView
+                entryPotCents={event.entry_fee_cents * players.length}
+                standings={standings}
+                completed={event.status === "completed" || event.status === "archived"}
+              />
+            )}
+            {tab === "rules" && <RulesView description={event.description} />}
+          </>
         )}
-        {tab === "side" && (
-          <SideGamesView
-            eventId={event.id}
-            isOrganizer={isOrganizer}
-            standings={standings}
-            reload={loadStandings}
-          />
-        )}
-        {tab === "leaderboard" && <LeaderboardView standings={standings} />}
-        {tab === "payouts" && (
-          <PayoutsView
-            entryPotCents={event.entry_fee_cents * players.length}
-            standings={standings}
-            completed={event.status === "completed" || event.status === "archived"}
-          />
-        )}
-        {tab === "rules" && <RulesView description={event.description} />}
       </section>
     </div>
   );
@@ -1150,6 +1164,22 @@ function EmptyHint({ text }: { text: string }) {
   return (
     <div className="rounded-md bg-gray-50 border border-gray-200 px-3 py-4 text-sm text-gray-600">
       {text}
+    </div>
+  );
+}
+
+function StandingsError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-md bg-red-50 border border-red-200 px-3 py-4">
+      <div className="text-sm font-medium text-red-700">Couldn&apos;t load standings</div>
+      <div className="mt-1 text-xs text-red-600 break-words">{message}</div>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:border-green-400"
+      >
+        Retry
+      </button>
     </div>
   );
 }

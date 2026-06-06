@@ -187,6 +187,12 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureRoundsExcludedColumn(sql);
   console.log("[db] ensureCriticalColumns: event_invite");
   await ensureEventInviteColumns(sql);
+  // Standings selects hole_scores.par / team_hole_scores.par (snapshotted at
+  // write time). Without these columns that endpoint 500s — the event Board,
+  // Games and Payouts tabs then hang on "Loading…" — even though scoring and
+  // the event page work. Guarantee them here so SKIP_DB_BOOTSTRAP prod is safe.
+  console.log("[db] ensureCriticalColumns: hole_score_snapshots");
+  await ensureHoleScoreSnapshotColumns(sql);
 }
 
 async function ensureEventInviteColumns(sql: postgres.Sql): Promise<void> {

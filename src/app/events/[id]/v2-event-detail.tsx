@@ -104,6 +104,7 @@ export function V2EventDetail({ id }: { id: string }) {
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<LoadResult | null>(null);
   const [standings, setStandings] = useState<EventStandings | null>(null);
+  const [standingsError, setStandingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("live");
 
@@ -120,7 +121,12 @@ export function V2EventDetail({ id }: { id: string }) {
 
   const loadStandings = useCallback(async () => {
     const res = await fetch(`/api/events/${id}/standings`, { cache: "no-store" });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setStandingsError(body.error ?? "Failed to load standings");
+      return;
+    }
+    setStandingsError(null);
     setStandings(await res.json());
   }, [id]);
 
@@ -270,26 +276,34 @@ export function V2EventDetail({ id }: { id: string }) {
         </div>
 
         <section className="mt-4">
-          {tab === "live" && (
-            <LiveTab eventId={event.id} players={players} rounds={rounds} standings={standings} />
+          {/* Board / Games / Payouts all need standings. If that endpoint
+              failed, show the reason + a retry instead of hanging forever. */}
+          {tab !== "live" && tab !== "rules" && standingsError && !standings ? (
+            <StandingsError message={standingsError} onRetry={loadStandings} />
+          ) : (
+            <>
+              {tab === "live" && (
+                <LiveTab eventId={event.id} players={players} rounds={rounds} standings={standings} />
+              )}
+              {tab === "leaderboard" && <LeaderboardView standings={standings} />}
+              {tab === "side" && (
+                <SideGamesView
+                  eventId={event.id}
+                  isOrganizer={isOrganizer}
+                  standings={standings}
+                  reload={loadStandings}
+                />
+              )}
+              {tab === "payouts" && (
+                <PayoutsView
+                  entryPotCents={event.entry_fee_cents * players.length}
+                  standings={standings}
+                  completed={event.status === "completed" || event.status === "archived"}
+                />
+              )}
+              {tab === "rules" && <RulesView description={event.description} />}
+            </>
           )}
-          {tab === "leaderboard" && <LeaderboardView standings={standings} />}
-          {tab === "side" && (
-            <SideGamesView
-              eventId={event.id}
-              isOrganizer={isOrganizer}
-              standings={standings}
-              reload={loadStandings}
-            />
-          )}
-          {tab === "payouts" && (
-            <PayoutsView
-              entryPotCents={event.entry_fee_cents * players.length}
-              standings={standings}
-              completed={event.status === "completed" || event.status === "archived"}
-            />
-          )}
-          {tab === "rules" && <RulesView description={event.description} />}
         </section>
       </div>
     </div>
@@ -307,6 +321,22 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function EmptyHint({ text }: { text: string }) {
   return (
     <div className="v2-card text-sm text-[var(--v2-text-dim)]">{text}</div>
+  );
+}
+
+function StandingsError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="v2-card">
+      <div className="text-sm font-medium text-red-300">Couldn&apos;t load standings</div>
+      <div className="mt-1 text-xs text-[var(--v2-text-dim)] break-words">{message}</div>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 rounded-md border border-[var(--v2-gold)]/40 px-3 py-1.5 text-xs font-medium text-[var(--v2-gold)] hover:bg-[var(--v2-gold)]/10"
+      >
+        Retry
+      </button>
+    </div>
   );
 }
 
