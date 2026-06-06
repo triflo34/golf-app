@@ -64,6 +64,8 @@ type RoundLoad = {
   scores: ScoreInfo[];
   teams: TeamInfo[];
   team_scores: TeamScoreInfo[];
+  viewer_id: string;
+  viewer_is_organizer: boolean;
 };
 
 /** Score-type label + tinted chip (traditional golf coloring, matching the
@@ -319,6 +321,10 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
   }
 
   const { round, holes, players, teams } = data;
+  // Organizers can edit every row; everyone else only their own (or a scramble
+  // team they belong to). Enforced server-side too — this just hides controls.
+  const canEditAll = data.viewer_is_organizer;
+  const myId = user.id;
   const currentHole = holes.find((h) => h.hole_number === hole);
   const currentPar = currentHole?.par ?? 4;
   const currentYardage = currentHole?.yardage ?? null;
@@ -557,7 +563,11 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
 
         <p className="mt-3 text-[11px] text-[var(--v2-text-faint)]">
           {isScramble ? "Team scores. " : ""}
-          Anyone in the event can edit any score. Edits are logged.
+          {canEditAll
+            ? "As organizer you can edit every score. Edits are logged."
+            : isScramble
+              ? "You can score your own team. Only the organizer can edit other teams. Edits are logged."
+              : "You can score your own row. Only the organizer can edit others. Edits are logged."}
         </p>
       </div>
 
@@ -607,6 +617,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
               ? teams.map((tm) => {
                   const score = teamStrokes.get(`${tm.id}:${hole}`) ?? null;
                   const type = score != null ? scoreType(score, currentPar) : null;
+                  const editable = canEditAll || tm.members.some((m) => m.user_id === myId);
                   return (
                     <ScoreRow
                       key={tm.id}
@@ -615,6 +626,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
                       avatarTone={toneForName(tm.name)}
                       score={score}
                       type={type}
+                      readOnly={!editable}
                       onPar={() => setTeamStrokes(tm.id, currentPar)}
                       onMinus={() => setTeamStrokes(tm.id, Math.max(1, (score ?? currentPar) - 1))}
                       onPlus={() => setTeamStrokes(tm.id, (score ?? currentPar) + 1)}
@@ -631,6 +643,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
                     meta?.updated_by_name && meta.updated_by !== p.user_id
                       ? `last edit by ${meta.updated_by_name}`
                       : null;
+                  const editable = canEditAll || p.user_id === myId;
                   return (
                     <ScoreRow
                       key={p.user_id}
@@ -639,6 +652,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
                       avatarTone={toneForName(p.display_name)}
                       score={score}
                       type={type}
+                      readOnly={!editable}
                       onPar={() => setStrokes(p.user_id, currentPar)}
                       onMinus={() => setStrokes(p.user_id, Math.max(1, (score ?? currentPar) - 1))}
                       onPlus={() => setStrokes(p.user_id, (score ?? currentPar) + 1)}
@@ -661,6 +675,7 @@ function ScoreRow({
   score,
   type,
   isPar,
+  readOnly = false,
   onPar,
   onMinus,
   onPlus,
@@ -672,13 +687,18 @@ function ScoreRow({
   score: number | null;
   type: { label: string; chip: string } | null;
   isPar: boolean;
+  readOnly?: boolean;
   onPar: () => void;
   onMinus: () => void;
   onPlus: () => void;
   onClear: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-[var(--v2-border)] bg-[var(--v2-surface)] px-2.5 py-1.5">
+    <div
+      className={`flex items-center gap-2 rounded-lg border border-[var(--v2-border)] px-2.5 py-1.5 ${
+        readOnly ? "bg-[var(--v2-surface)]/50 opacity-80" : "bg-[var(--v2-surface)]"
+      }`}
+    >
       <V2Avatar initial={(title.charAt(0) || "?").toUpperCase()} tone={avatarTone} size={28} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -691,6 +711,31 @@ function ScoreRow({
         </div>
         {subtitle && <div className="truncate text-[10px] text-[var(--v2-text-dim)]">{subtitle}</div>}
       </div>
+      {readOnly ? (
+        <div className="flex items-center gap-2 pr-1">
+          <span
+            className="w-7 text-center text-xl font-bold leading-none text-[var(--v2-text)]"
+            style={serif}
+          >
+            {score ?? "–"}
+          </span>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-[var(--v2-text-faint)]"
+            aria-label="Read only"
+          >
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0110 0v4" />
+          </svg>
+        </div>
+      ) : (
       <div className="flex items-center gap-1">
         <button
           type="button"
@@ -731,6 +776,7 @@ function ScoreRow({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

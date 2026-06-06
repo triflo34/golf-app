@@ -84,6 +84,29 @@ export async function POST(
     return NextResponse.json({ error: "Team not found for this round" }, { status: 404 });
   }
 
+  // Permission: organizers can edit any team; everyone else may only edit a
+  // team they belong to.
+  const myParticipant = await db
+    .prepare(
+      `SELECT is_organizer FROM event_participants
+       WHERE event_id = ? AND user_id = ?`,
+    )
+    .get<{ is_organizer: boolean }>(eventId, me.id);
+  const isOrganizer = myParticipant?.is_organizer === true;
+  if (!isOrganizer) {
+    const membership = await db
+      .prepare(
+        `SELECT 1 AS ok FROM scramble_team_members WHERE team_id = ? AND user_id = ?`,
+      )
+      .get<{ ok: number }>(teamId, me.id);
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Only the event organizer or a team member can edit this team's score" },
+        { status: 403 },
+      );
+    }
+  }
+
   const holes = await ensureCourseHoles(round.course_id);
   const holeMeta = holes.find((h) => h.hole_number === holeNumber);
   const par = holeMeta?.par ?? 4;
