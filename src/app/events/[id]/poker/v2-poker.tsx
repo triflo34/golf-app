@@ -33,6 +33,7 @@ type LoadResult = {
   } | null;
   viewer_is_organizer: boolean;
   winner_player_id: string | null;
+  event_completed: boolean;
 };
 
 const SUIT_GLYPH: Record<PokerCard["suit"], string> = {
@@ -73,6 +74,22 @@ function CardFace({ card }: { card: PokerCard }) {
     >
       <span className="text-base font-semibold leading-none">{rankLabel(card.rank)}</span>
       <span className="text-xl leading-none">{SUIT_GLYPH[card.suit]}</span>
+    </span>
+  );
+}
+
+// Face-down card — other players' hands stay hidden until the event finishes.
+function CardBack() {
+  return (
+    <span
+      className="inline-flex h-16 w-12 items-center justify-center rounded-md border border-[var(--v2-gold)]/30 text-[var(--v2-gold)]/50"
+      style={{
+        background:
+          "repeating-linear-gradient(45deg, rgba(212,175,55,0.12) 0 4px, rgba(212,175,55,0.04) 4px 8px)",
+      }}
+      aria-label="Hidden card"
+    >
+      ♠
     </span>
   );
 }
@@ -381,8 +398,15 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
 
         <section>
           <SectionLabel>
-            {data.viewer_is_organizer ? "All hands · pick the winner" : "All hands"}
+            {data.event_completed && data.viewer_is_organizer
+              ? "All hands · pick the winner"
+              : "All hands"}
           </SectionLabel>
+          {!data.event_completed && (
+            <p className="mb-2 text-[11px] text-[var(--v2-text-dim)]">
+              Other players&rsquo; cards stay face-down until the event is finished.
+            </p>
+          )}
           <ul className="space-y-2">
             {data.hands.map((h) => {
               const pendingForPlayer = data.pending_swaps.filter(
@@ -390,6 +414,8 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
               ).length;
               const isWinner = data.winner_player_id === h.player_id;
               const isMe = h.player_id === user.id;
+              // Reveal face-up only once the event is over (or for your own hand).
+              const revealed = data.event_completed || isMe;
               return (
                 <li
                   key={h.player_id}
@@ -407,7 +433,7 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                         {pendingForPlayer} pending
                       </span>
                     )}
-                    {data.viewer_is_organizer && (
+                    {data.viewer_is_organizer && data.event_completed && (
                       <button
                         type="button"
                         disabled={busy}
@@ -425,8 +451,10 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {h.cards.length === 0 ? (
                       <span className="text-xs text-[var(--v2-text-faint)]">No cards yet</span>
-                    ) : (
+                    ) : revealed ? (
                       h.cards.map((c, i) => <CardFace key={i} card={c} />)
+                    ) : (
+                      h.cards.map((_, i) => <CardBack key={i} />)
                     )}
                   </div>
                 </li>

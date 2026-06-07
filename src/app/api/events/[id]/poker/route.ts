@@ -101,9 +101,10 @@ export async function GET(
     )
     .get<DeckRowRaw>(eventId);
 
-  // Viewer role + current winner — the poker page now reveals all hands for
-  // judging and lets the organizer pick the winner inline.
-  const [meOrg, winnerRow] = await Promise.all([
+  // Viewer role + current winner + event status. Hands stay hidden until the
+  // event is finished (only your own is face-up before then); judging reveals
+  // everyone once the event is completed.
+  const [meOrg, winnerRow, eventRow] = await Promise.all([
     db
       .prepare(
         `SELECT 1 AS ok FROM event_participants
@@ -118,7 +119,10 @@ export async function GET(
          ORDER BY r.rank ASC NULLS LAST LIMIT 1`,
       )
       .get<{ player_id: string }>(eventId),
+    db.prepare("SELECT status FROM events WHERE id = ?").get<{ status: string }>(eventId),
   ]);
+  const eventCompleted =
+    eventRow?.status === "completed" || eventRow?.status === "archived";
 
   const hands = handsRaw.map((h) => ({
     ...h,
@@ -143,5 +147,6 @@ export async function GET(
     deck,
     viewer_is_organizer: Boolean(meOrg),
     winner_player_id: winnerRow?.player_id ?? null,
+    event_completed: eventCompleted,
   });
 }
