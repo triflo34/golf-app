@@ -55,13 +55,20 @@ function rankLabel(rank: PokerCard["rank"]): string {
   return rank === "T" ? "10" : rank;
 }
 
-function CardFace({ card }: { card: PokerCard }) {
+function CardFace({ card, wild = false }: { card: PokerCard; wild?: boolean }) {
   return (
     <span
-      className={`inline-flex flex-col items-center justify-center w-12 h-16 rounded-md border border-gray-300 bg-white ${SUIT_COLOR[card.suit]}`}
+      className={`relative inline-flex flex-col items-center justify-center w-12 h-16 rounded-md bg-white ${SUIT_COLOR[card.suit]} ${
+        wild ? "ring-2 ring-amber-500 ring-offset-1" : "border border-gray-300"
+      }`}
     >
       <span className="text-base font-semibold leading-none">{rankLabel(card.rank)}</span>
       <span className="text-xl leading-none">{SUIT_GLYPH[card.suit]}</span>
+      {wild && (
+        <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 rounded bg-amber-500 px-1 text-[8px] font-bold leading-tight text-white">
+          WILD
+        </span>
+      )}
     </span>
   );
 }
@@ -373,8 +380,15 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
               </span>
             )}
             <p className="text-xs text-amber-900 leading-snug">
-              Shared by all players as a 6th card when judging hands. Re-rolls
-              randomly on every birdie or eagle.
+              {data.deck.wild_card ? (
+                <>
+                  Every <span className="font-semibold">{rankLabel(data.deck.wild_card.rank)}</span> is
+                  wild — any {rankLabel(data.deck.wild_card.rank)} in a hand can stand in for any card.
+                  Re-rolls randomly on every birdie or eagle.
+                </>
+              ) : (
+                <>The wild rank re-rolls randomly on every birdie or eagle.</>
+              )}
             </p>
           </div>
         </section>
@@ -412,7 +426,7 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
                     aria-pressed={selected}
                     aria-label={`Card ${i + 1}${selected ? " (selected)" : ""}`}
                   >
-                    <CardFace card={c} />
+                    <CardFace card={c} wild={c.rank === data.deck?.wild_card?.rank} />
                   </button>
                 );
               })}
@@ -485,7 +499,9 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
                   {h.cards.length === 0 ? (
                     <span className="text-xs text-gray-400">No cards yet</span>
                   ) : revealed ? (
-                    h.cards.map((c, i) => <CardFace key={i} card={c} />)
+                    h.cards.map((c, i) => (
+                      <CardFace key={i} card={c} wild={c.rank === data.deck?.wild_card?.rank} />
+                    ))
                   ) : (
                     h.cards.map((_, i) => <CardBack key={i} />)
                   )}
