@@ -9,6 +9,7 @@ const VALID_KINDS: SideGameKind[] = [
   "worst18",
   "most_same",
   "scramble_winners",
+  "stableford",
 ];
 
 async function isOrganizer(eventId: number, userId: string): Promise<boolean> {

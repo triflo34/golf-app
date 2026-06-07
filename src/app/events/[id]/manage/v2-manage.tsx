@@ -184,8 +184,9 @@ const SIDE_GAME_LABELS: Record<SideGameKind, string> = {
   worst18: "Worst 18",
   most_same: "Most Same Number (R1)",
   scramble_winners: "3-Man Scramble Winners",
+  stableford: "Stableford",
 };
-const ALL_KINDS: SideGameKind[] = ["poker", "best18", "worst18", "most_same", "scramble_winners"];
+const ALL_KINDS: SideGameKind[] = ["poker", "best18", "worst18", "most_same", "scramble_winners", "stableford"];
 
 export function V2EventManage({ id }: { id: string }) {
   const router = useRouter();
