@@ -50,6 +50,15 @@ export type PlayerStats = {
     placement: number | null;
     field_size: number;
   }[];
+  /** Head-to-head vs the `vs` player, across shared non-excluded rounds.
+      wins/losses are from THIS player's perspective. Only present when ?vs=. */
+  head_to_head: {
+    vs_key: string;
+    rounds: number;
+    wins: number;
+    losses: number;
+    ties: number;
+  } | null;
 };
 
 export async function GET(request: Request) {
@@ -61,6 +70,8 @@ export async function GET(request: Request) {
   const seasonParam = url.searchParams.get("season");
   const season = seasonParam ? Number(seasonParam) : null;
   const wantDetails = url.searchParams.get("details") === "1";
+  const vsParam = url.searchParams.get("vs");
+  const vsRef = vsParam ? parseKey(vsParam) : null;
   const ref = parseKey(key);
   if (!ref) return NextResponse.json({ error: "Bad key" }, { status: 400 });
   if (season != null && (!Number.isInteger(season) || season < 2000 || season > 2100)) {
@@ -141,6 +152,7 @@ export async function GET(request: Request) {
       handicap_rounds: null,
       by_course: [],
       recent: [],
+      head_to_head: null,
     };
     return NextResponse.json(empty);
   }
@@ -183,6 +195,33 @@ export async function GET(request: Request) {
     ref.kind === "user"
       ? r.player_id === ref.id
       : (r.guest_name ?? "").toLowerCase() === ref.name;
+
+  // Head-to-head vs the viewer (or any `vs` player): compare gross scores on
+  // rounds where both appear. wins/losses are from THIS player's perspective.
+  let head_to_head: PlayerStats["head_to_head"] = null;
+  const sameAsTarget =
+    vsRef != null &&
+    ((vsRef.kind === "user" && ref.kind === "user" && vsRef.id === ref.id) ||
+      (vsRef.kind === "guest" && ref.kind === "guest" && vsRef.name === ref.name));
+  if (vsRef && !sameAsTarget) {
+    const matchesVs = (r: (typeof fieldRows)[number]) =>
+      vsRef.kind === "user"
+        ? r.player_id === vsRef.id
+        : (r.guest_name ?? "").toLowerCase() === vsRef.name;
+    let wins = 0;
+    let losses = 0;
+    let ties = 0;
+    for (const [, field] of byRound) {
+      const mine = field.find(matchesMe);
+      const theirs = field.find(matchesVs);
+      if (!mine || !theirs) continue;
+      if (mine.gross_score < theirs.gross_score) wins += 1;
+      else if (mine.gross_score > theirs.gross_score) losses += 1;
+      else ties += 1;
+    }
+    const rounds = wins + losses + ties;
+    if (rounds > 0) head_to_head = { vs_key: vsParam!, rounds, wins, losses, ties };
+  }
 
   const recent: PlayerStats["recent"] = [];
   for (const sr of scoreRows) {
@@ -268,6 +307,7 @@ export async function GET(request: Request) {
     handicap_rounds: hcRounds,
     by_course,
     recent,
+    head_to_head,
   };
   return NextResponse.json(result);
 }
