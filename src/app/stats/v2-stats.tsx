@@ -767,7 +767,7 @@ function H2HTab({ season }: { season: number | "all" }) {
                         {data.a.name}: {h.a_score}
                       </div>
                       <div className="px-2 text-xs text-[var(--v2-muted)]">
-                        {aWon ? "▶" : bWon ? "◀" : "tie"}
+                        {aWon ? "◀" : bWon ? "▶" : "tie"}
                       </div>
                       <div
                         className={
