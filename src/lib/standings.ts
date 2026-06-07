@@ -347,13 +347,15 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
     worst18.sort((a, b) => b.total - a.total);
   }
 
-  // ---- Stableford ---- points by score-to-par across every round; most wins.
+  // ---- Stableford ---- points by score-to-par; individual rounds only (a
+  // scramble is a team score, not a personal one), most points wins.
   let stableford: StablefordEntry[] | null = null;
   if (enabledSet.has("stableford")) {
+    const indivRounds = rounds.filter((r) => r.round_format === "individual");
     stableford = players.map((p) => {
       let points = 0;
       let full = true;
-      for (const r of rounds) {
+      for (const r of indivRounds) {
         const rs = scoresByPlayerRound.get(p.user_id)?.get(r.id) ?? [];
         for (const s of rs) {
           const par = s.par ?? parByHole.get(s.hole_number) ?? 4;
