@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrQueue } from "@/lib/offline-queue";
 import { V2LivePill } from "@/components/v2/live-pill";
 import { V2Avatar, toneForName } from "@/components/v2/avatar";
 import type { ScoreEditEntry } from "@/app/api/events/[id]/rounds/[roundId]/edits/route";
+
+// Coalesce a burst of taps on one cell into a single save this long after the
+// last tap. Tapping +/- up to a double bogey no longer fires a POST per tap.
+const SAVE_DEBOUNCE_MS = 650;
 
 type RoundInfo = {
   id: number;
@@ -165,6 +169,37 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
     setEdits(body.edits ?? []);
   }, [id, roundId]);
 
+  // Debounced score saves. Each cell's pending save (keyed by player/team +
+  // hole) is held briefly so a fast burst of taps becomes one request instead
+  // of several racing POSTs (which is what surfaced "Save failed").
+  const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingSave = useRef<Map<string, () => void>>(new Map());
+
+  const flushSaves = useCallback(() => {
+    for (const [key, timer] of saveTimers.current) {
+      clearTimeout(timer);
+      const run = pendingSave.current.get(key);
+      pendingSave.current.delete(key);
+      run?.();
+    }
+    saveTimers.current.clear();
+  }, []);
+
+  const scheduleSave = useCallback((key: string, run: () => void) => {
+    pendingSave.current.set(key, run);
+    const existing = saveTimers.current.get(key);
+    if (existing) clearTimeout(existing);
+    saveTimers.current.set(
+      key,
+      setTimeout(() => {
+        saveTimers.current.delete(key);
+        const fn = pendingSave.current.get(key);
+        pendingSave.current.delete(key);
+        fn?.();
+      }, SAVE_DEBOUNCE_MS),
+    );
+  }, []);
+
   useEffect(() => {
     if (user) load();
   }, [user, load]);
@@ -172,6 +207,21 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
   useEffect(() => {
     if (user && showEdits) loadEdits();
   }, [user, showEdits, loadEdits]);
+
+  // Never strand a queued save: flush before the tab is hidden/closed and on
+  // unmount.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushSaves();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flushSaves);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flushSaves);
+      flushSaves();
+    };
+  }, [flushSaves]);
 
   useEffect(() => {
     if (!user) return;
@@ -335,58 +385,67 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
   const currentYardage = currentHole?.yardage ?? null;
   const currentHandicap = currentHole?.handicap_index ?? null;
 
+  // On a failed save the server kept the old value, so drop the optimistic
+  // overlay (rather than restoring a number that never persisted).
+  function rollback(key: string) {
+    setPendingScores((m) => {
+      const next = new Map(m);
+      next.delete(key);
+      return next;
+    });
+  }
+
   function setStrokes(playerId: string, strokes: number | null) {
     const key = `${playerId}:${hole}`;
-    const prev = pendingScores.get(key);
-    const hadPrev = pendingScores.has(key);
+    const holeAtEdit = hole;
     setPendingScores((m) => new Map(m).set(key, strokes));
     setError(null);
-    fetchOrQueue(`/api/events/${id}/rounds/${roundId}/holes`, {
-      method: "POST",
-      body: { player_id: playerId, hole_number: hole, strokes },
-      label: `hole ${hole} for ${playerId.slice(0, 8)}`,
-    })
-      .then(async (res) => {
-        if (res === null) return;
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error ?? "Save failed");
+    scheduleSave(key, () => {
+      fetchOrQueue(`/api/events/${id}/rounds/${roundId}/holes`, {
+        method: "POST",
+        body: { player_id: playerId, hole_number: holeAtEdit, strokes },
+        label: `hole ${holeAtEdit} for ${playerId.slice(0, 8)}`,
       })
-      .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Save failed");
-        setPendingScores((m) => {
-          const next = new Map(m);
-          if (hadPrev) next.set(key, prev as number | null);
-          else next.delete(key);
-          return next;
+        .then(async (res) => {
+          if (res === null) return;
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.error ?? "Save failed");
+        })
+        .catch((e: unknown) => {
+          setError(e instanceof Error ? e.message : "Save failed");
+          rollback(key);
         });
-      });
+    });
   }
 
   function setTeamStrokes(teamId: number, strokes: number | null) {
     const key = `team:${teamId}:${hole}`;
-    const prev = pendingScores.get(key);
-    const hadPrev = pendingScores.has(key);
+    const holeAtEdit = hole;
     setPendingScores((m) => new Map(m).set(key, strokes));
     setError(null);
-    fetchOrQueue(`/api/events/${id}/rounds/${roundId}/team-holes`, {
-      method: "POST",
-      body: { team_id: teamId, hole_number: hole, strokes },
-      label: `hole ${hole} for team ${teamId}`,
-    })
-      .then(async (res) => {
-        if (res === null) return;
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error ?? "Save failed");
+    scheduleSave(key, () => {
+      fetchOrQueue(`/api/events/${id}/rounds/${roundId}/team-holes`, {
+        method: "POST",
+        body: { team_id: teamId, hole_number: holeAtEdit, strokes },
+        label: `hole ${holeAtEdit} for team ${teamId}`,
       })
-      .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Save failed");
-        setPendingScores((m) => {
-          const next = new Map(m);
-          if (hadPrev) next.set(key, prev as number | null);
-          else next.delete(key);
-          return next;
+        .then(async (res) => {
+          if (res === null) return;
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.error ?? "Save failed");
+        })
+        .catch((e: unknown) => {
+          setError(e instanceof Error ? e.message : "Save failed");
+          rollback(key);
         });
-      });
+    });
+  }
+
+  // Changing holes flushes any pending save immediately so the move never
+  // outraces the network write.
+  function goToHole(n: number) {
+    flushSaves();
+    setHole(n);
   }
 
   const minHole = holes[0]?.hole_number ?? 1;
@@ -399,6 +458,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
     data.event_status === "completed" || data.event_status === "archived";
 
   async function finishEvent() {
+    flushSaves();
     setFinishing(true);
     setError(null);
     try {
@@ -578,7 +638,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
                 <button
                   key={h.hole_number}
                   type="button"
-                  onClick={() => setHole(h.hole_number)}
+                  onClick={() => goToHole(h.hole_number)}
                   className={`h-9 min-w-[2.1rem] rounded-lg text-xs font-semibold transition-colors ${tone}`}
                 >
                   {h.hole_number}
@@ -659,7 +719,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
           <div className="flex items-center gap-2 border-b border-[var(--v2-border)] px-4 py-2">
             <button
               type="button"
-              onClick={() => setHole((h) => Math.max(minHole, h - 1))}
+              onClick={() => goToHole(Math.max(minHole, hole - 1))}
               disabled={hole <= minHole}
               className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface)] text-lg text-[var(--v2-text)] disabled:opacity-30"
             >
@@ -679,7 +739,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
             </div>
             <button
               type="button"
-              onClick={() => setHole((h) => Math.min(maxHole, h + 1))}
+              onClick={() => goToHole(Math.min(maxHole, hole + 1))}
               disabled={hole >= maxHole}
               className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface)] text-lg text-[var(--v2-text)] disabled:opacity-30"
             >
