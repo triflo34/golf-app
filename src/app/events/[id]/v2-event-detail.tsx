@@ -718,7 +718,7 @@ function SideGamesView({
           <div className="px-3.5 py-2.5">
             {g.kind === "best18" && <RankNumberList rows={mapBest(standings.best18)} />}
             {g.kind === "worst18" && <RankNumberList rows={mapWorst(standings.worst18)} />}
-            {g.kind === "stableford" && <RankNumberList rows={mapStableford(standings.stableford)} />}
+            {g.kind === "stableford" && <RankNumberList rows={mapStableford(standings.stableford)} unit="pts" />}
             {g.kind === "most_same" && <MostSameBlock rows={standings.most_same} />}
             {g.kind === "poker" && (
               <PokerWinnerBlock
@@ -870,7 +870,7 @@ function mapStableford(rows: StablefordEntry[] | null): RankRow[] | null {
   }));
 }
 
-function RankNumberList({ rows }: { rows: RankRow[] | null }) {
+function RankNumberList({ rows, unit }: { rows: RankRow[] | null; unit?: string }) {
   if (!rows || rows.length === 0)
     return <p className="text-xs text-[var(--v2-text-dim)]">No scores yet.</p>;
   return (
@@ -880,7 +880,9 @@ function RankNumberList({ rows }: { rows: RankRow[] | null }) {
           <span className="w-5 text-right text-xs text-[var(--v2-text-faint)]">{idx + 1}</span>
           <span className="flex-1 truncate text-[var(--v2-text)]">{r.display_name}</span>
           {r.partial && <span className="text-[10px] text-[var(--v2-amber-warn)]">partial</span>}
-          <span className="font-semibold text-[var(--v2-text)]">{r.value || "–"}</span>
+          <span className="font-semibold text-[var(--v2-text)]">
+            {r.value ? `${r.value}${unit ? ` ${unit}` : ""}` : "–"}
+          </span>
         </li>
       ))}
     </ul>
