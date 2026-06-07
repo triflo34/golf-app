@@ -31,6 +31,9 @@ type LoadResult = {
     drawn: PokerCard[];
     wild_card: PokerCard | null;
   } | null;
+  viewer_is_organizer: boolean;
+  winner_player_id: string | null;
+  event_completed: boolean;
 };
 
 const SUIT_GLYPH: Record<PokerCard["suit"], string> = {
@@ -59,6 +62,22 @@ function CardFace({ card }: { card: PokerCard }) {
     >
       <span className="text-base font-semibold leading-none">{rankLabel(card.rank)}</span>
       <span className="text-xl leading-none">{SUIT_GLYPH[card.suit]}</span>
+    </span>
+  );
+}
+
+// Face-down card — other players' hands stay hidden until the event finishes.
+function CardBack() {
+  return (
+    <span
+      className="inline-flex items-center justify-center w-12 h-16 rounded-md border border-gray-300 text-gray-400"
+      style={{
+        background:
+          "repeating-linear-gradient(45deg, #e5e7eb 0 4px, #f3f4f6 4px 8px)",
+      }}
+      aria-label="Hidden card"
+    >
+      ♠
     </span>
   );
 }
@@ -206,6 +225,25 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
     const from = reorderPick;
     setReorderPick(null);
     void reorderSwap(from, idx);
+  }
+
+  async function pickWinner(playerId: string | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}/side-games/poker/winner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_id: playerId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Failed");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function resolveSwap(
@@ -392,25 +430,66 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
       )}
 
       <section>
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">All players</h2>
-        <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">
+          {data.event_completed && data.viewer_is_organizer
+            ? "All hands · pick the winner"
+            : "All hands"}
+        </h2>
+        {!data.event_completed && (
+          <p className="mb-2 text-[11px] text-gray-500">
+            Other players&rsquo; cards stay face-down until the event is finished.
+          </p>
+        )}
+        <ul className="space-y-2">
           {data.hands.map((h) => {
             const pendingForPlayer = data.pending_swaps.filter(
               (s) => s.player_id === h.player_id,
             ).length;
+            const isWinner = data.winner_player_id === h.player_id;
+            const isMe = h.player_id === user.id;
+            // Reveal face-up only once the event is over (or for your own hand).
+            const revealed = data.event_completed || isMe;
             return (
-              <li key={h.player_id} className="px-3 py-2 flex items-center gap-2">
-                <span className="flex-1 text-sm text-gray-900 truncate">
-                  {h.display_name}
-                </span>
-                <span className="text-xs text-gray-600">
-                  {h.cards.length}/5 cards
-                </span>
-                {pendingForPlayer > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                    {pendingForPlayer} pending
+              <li
+                key={h.player_id}
+                className={`rounded-lg border p-3 ${isWinner ? "border-yellow-400 bg-yellow-50" : "border-gray-200 bg-white"}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-sm font-medium text-gray-900 truncate">
+                    {isWinner && "🏆 "}
+                    {h.display_name}
+                    {isMe && <span className="ml-1 text-[10px] text-gray-400">you</span>}
                   </span>
-                )}
+                  <span className="text-xs text-gray-600">{h.cards.length}/5</span>
+                  {pendingForPlayer > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                      {pendingForPlayer} pending
+                    </span>
+                  )}
+                  {data.viewer_is_organizer && data.event_completed && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => pickWinner(isWinner ? null : h.player_id)}
+                      className={
+                        isWinner
+                          ? "rounded border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-600 disabled:opacity-50"
+                          : "rounded bg-green-700 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                      }
+                    >
+                      {isWinner ? "Unset" : "Win"}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {h.cards.length === 0 ? (
+                    <span className="text-xs text-gray-400">No cards yet</span>
+                  ) : revealed ? (
+                    h.cards.map((c, i) => <CardFace key={i} card={c} />)
+                  ) : (
+                    h.cards.map((_, i) => <CardBack key={i} />)
+                  )}
+                </div>
               </li>
             );
           })}
