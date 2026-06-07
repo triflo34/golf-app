@@ -101,6 +101,25 @@ export async function GET(
     )
     .get<DeckRowRaw>(eventId);
 
+  // Viewer role + current winner — the poker page now reveals all hands for
+  // judging and lets the organizer pick the winner inline.
+  const [meOrg, winnerRow] = await Promise.all([
+    db
+      .prepare(
+        `SELECT 1 AS ok FROM event_participants
+         WHERE event_id = ? AND user_id = ? AND is_organizer = TRUE`,
+      )
+      .get<{ ok: number }>(eventId, me.id),
+    db
+      .prepare(
+        `SELECT r.player_id
+         FROM side_game_results r JOIN side_games sg ON sg.id = r.side_game_id
+         WHERE sg.event_id = ? AND sg.kind = 'poker' AND r.player_id IS NOT NULL
+         ORDER BY r.rank ASC NULLS LAST LIMIT 1`,
+      )
+      .get<{ player_id: string }>(eventId),
+  ]);
+
   const hands = handsRaw.map((h) => ({
     ...h,
     cards: asJson<PokerCard[]>(h.cards, []),
@@ -122,5 +141,7 @@ export async function GET(
     hands,
     pending_swaps,
     deck,
+    viewer_is_organizer: Boolean(meOrg),
+    winner_player_id: winnerRow?.player_id ?? null,
   });
 }

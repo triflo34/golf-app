@@ -31,6 +31,8 @@ type LoadResult = {
     drawn: PokerCard[];
     wild_card: PokerCard | null;
   } | null;
+  viewer_is_organizer: boolean;
+  winner_player_id: string | null;
 };
 
 const SUIT_GLYPH: Record<PokerCard["suit"], string> = {
@@ -220,6 +222,25 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
     void reorderSwap(from, idx);
   }
 
+  async function pickWinner(playerId: string | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}/side-games/poker/winner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_id: playerId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Failed");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function resolveSwap(
     swap: SwapRow,
     action: "swap" | "skip" | "discard",
@@ -359,27 +380,65 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
         )}
 
         <section>
-          <SectionLabel>All players</SectionLabel>
-          <ul className="v2-card divide-y divide-[var(--v2-border)] !p-0">
+          <SectionLabel>
+            {data.viewer_is_organizer ? "All hands · pick the winner" : "All hands"}
+          </SectionLabel>
+          <ul className="space-y-2">
             {data.hands.map((h) => {
               const pendingForPlayer = data.pending_swaps.filter(
                 (s) => s.player_id === h.player_id,
               ).length;
+              const isWinner = data.winner_player_id === h.player_id;
+              const isMe = h.player_id === user.id;
               return (
-                <li key={h.player_id} className="flex items-center gap-2 px-3.5 py-2.5">
-                  <span className="flex-1 truncate text-sm text-[var(--v2-text)]">
-                    {h.display_name}
-                  </span>
-                  <span className="text-xs text-[var(--v2-text-dim)]">{h.cards.length}/5 cards</span>
-                  {pendingForPlayer > 0 && (
-                    <span className="rounded bg-[var(--v2-gold)]/20 px-1.5 py-0.5 text-[10px] text-[var(--v2-gold)]">
-                      {pendingForPlayer} pending
+                <li
+                  key={h.player_id}
+                  className={`v2-card ${isWinner ? "border-[var(--v2-gold)]/55 bg-[var(--v2-gold)]/[0.06]" : ""}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 truncate text-sm font-medium text-[var(--v2-text)]">
+                      {isWinner && "🏆 "}
+                      {h.display_name}
+                      {isMe && <span className="ml-1 text-[10px] text-[var(--v2-text-faint)]">you</span>}
                     </span>
-                  )}
+                    <span className="text-xs text-[var(--v2-text-dim)]">{h.cards.length}/5</span>
+                    {pendingForPlayer > 0 && (
+                      <span className="rounded bg-[var(--v2-gold)]/20 px-1.5 py-0.5 text-[10px] text-[var(--v2-gold)]">
+                        {pendingForPlayer} pending
+                      </span>
+                    )}
+                    {data.viewer_is_organizer && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => pickWinner(isWinner ? null : h.player_id)}
+                        className={`rounded px-2 py-1 text-[11px] font-semibold disabled:opacity-50 ${
+                          isWinner
+                            ? "border border-[var(--v2-border)] text-[var(--v2-text-dim)]"
+                            : "bg-[var(--v2-gold)] text-[var(--v2-green-deep)]"
+                        }`}
+                      >
+                        {isWinner ? "Unset" : "Win"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {h.cards.length === 0 ? (
+                      <span className="text-xs text-[var(--v2-text-faint)]">No cards yet</span>
+                    ) : (
+                      h.cards.map((c, i) => <CardFace key={i} card={c} />)
+                    )}
+                  </div>
                 </li>
               );
             })}
           </ul>
+          {data.deck?.wild_card && (
+            <p className="mt-2 text-[11px] text-[var(--v2-text-dim)]">
+              Remember the community wild ({rankLabel(data.deck.wild_card.rank)}
+              {SUIT_GLYPH[data.deck.wild_card.suit]}) counts as a shared 6th card for everyone.
+            </p>
+          )}
         </section>
 
         <p className="text-[11px] text-[var(--v2-text-faint)]">
