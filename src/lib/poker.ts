@@ -103,9 +103,14 @@ async function loadHand(
 }
 
 async function loadDeck(tx: DbApi, eventId: number): Promise<DeckRow | null> {
+  // FOR UPDATE serializes card grants for this event. Hole saves each run in
+  // their own transaction; without the lock two that commit close together
+  // both read the same `drawn` snapshot and can draw the *same* card, dealing
+  // a visual duplicate. The lock forces the second txn to wait and re-read the
+  // first's committed draws.
   const row = await tx
     .prepare(
-      `SELECT num_decks, drawn FROM poker_deck_state WHERE event_id = ?`,
+      `SELECT num_decks, drawn FROM poker_deck_state WHERE event_id = ? FOR UPDATE`,
     )
     .get<{ num_decks: number; drawn: unknown }>(eventId);
   if (!row) return null;

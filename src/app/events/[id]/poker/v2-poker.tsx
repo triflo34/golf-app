@@ -67,13 +67,20 @@ function rankLabel(rank: PokerCard["rank"]): string {
   return rank === "T" ? "10" : rank;
 }
 
-function CardFace({ card }: { card: PokerCard }) {
+function CardFace({ card, wild = false }: { card: PokerCard; wild?: boolean }) {
   return (
     <span
-      className={`inline-flex h-16 w-12 flex-col items-center justify-center rounded-md border border-black/10 bg-[#f5f5f0] shadow-sm ${SUIT_COLOR[card.suit]}`}
+      className={`relative inline-flex h-16 w-12 flex-col items-center justify-center rounded-md bg-[#f5f5f0] shadow-sm ${SUIT_COLOR[card.suit]} ${
+        wild ? "ring-2 ring-[var(--v2-gold)] ring-offset-1 ring-offset-[var(--v2-bg-0)]" : "border border-black/10"
+      }`}
     >
       <span className="text-base font-semibold leading-none">{rankLabel(card.rank)}</span>
       <span className="text-xl leading-none">{SUIT_GLYPH[card.suit]}</span>
+      {wild && (
+        <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 rounded bg-[var(--v2-gold)] px-1 text-[8px] font-bold leading-tight text-[var(--v2-green-deep)]">
+          WILD
+        </span>
+      )}
     </span>
   );
 }
@@ -336,8 +343,15 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                 </span>
               )}
               <p className="text-xs leading-snug text-[var(--v2-text-dim)]">
-                Shared by all players as a 6th card when judging hands. Re-rolls randomly on every
-                birdie or eagle.
+                {data.deck.wild_card ? (
+                  <>
+                    Every <span className="font-semibold text-[var(--v2-gold)]">{rankLabel(data.deck.wild_card.rank)}</span>{" "}
+                    is wild — any {rankLabel(data.deck.wild_card.rank)} in a hand can stand in for any
+                    card. Re-rolls randomly on every birdie or eagle.
+                  </>
+                ) : (
+                  <>The wild rank re-rolls randomly on every birdie or eagle.</>
+                )}
               </p>
             </div>
           </section>
@@ -375,7 +389,7 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                       aria-pressed={selected}
                       aria-label={`Card ${i + 1}${selected ? " (selected)" : ""}`}
                     >
-                      <CardFace card={c} />
+                      <CardFace card={c} wild={c.rank === data.deck?.wild_card?.rank} />
                     </button>
                   );
                 })}
@@ -452,7 +466,9 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                     {h.cards.length === 0 ? (
                       <span className="text-xs text-[var(--v2-text-faint)]">No cards yet</span>
                     ) : revealed ? (
-                      h.cards.map((c, i) => <CardFace key={i} card={c} />)
+                      h.cards.map((c, i) => (
+                        <CardFace key={i} card={c} wild={c.rank === data.deck?.wild_card?.rank} />
+                      ))
                     ) : (
                       h.cards.map((_, i) => <CardBack key={i} />)
                     )}
@@ -463,8 +479,8 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
           </ul>
           {data.deck?.wild_card && (
             <p className="mt-2 text-[11px] text-[var(--v2-text-dim)]">
-              Remember the community wild ({rankLabel(data.deck.wild_card.rank)}
-              {SUIT_GLYPH[data.deck.wild_card.suit]}) counts as a shared 6th card for everyone.
+              Every {rankLabel(data.deck.wild_card.rank)} is wild (gold-ringed) — it can stand in for
+              any card.
             </p>
           )}
         </section>
@@ -511,8 +527,8 @@ function RulesPanel() {
           and you choose to keep it (replacing a card) or decline.
         </p>
         <p>
-          <span className="text-[var(--v2-text)]">Community wild</span> is a shared 6th card everyone
-          may use; it re-rolls on every birdie or eagle.
+          <span className="text-[var(--v2-text)]">Community wild</span> sets a wild rank: any card of
+          that rank in your hand is wild and can be any card. It re-rolls on every birdie or eagle.
         </p>
         <p>
           <span className="text-[var(--v2-text)]">Best 5-card poker hand wins the pot</span> — the

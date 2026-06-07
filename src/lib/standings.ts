@@ -287,28 +287,25 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
   const enabledSet = new Set(sideGameRows.map((e) => e.kind));
 
   // ---- Best 18 / Worst 18 ----
-  function best9PerRound(playerId: string, roundId: number, holeCount: number, mode: "best" | "worst"): { total: number; full: boolean } {
-    const rs = scoresByPlayerRound.get(playerId)?.get(roundId) ?? [];
-    if (rs.length < Math.min(9, holeCount)) {
-      // not enough holes yet — sum whatever we have but flag incomplete
-      const strokes = rs.map((r) => r.strokes).sort((a, b) => (mode === "best" ? a - b : b - a));
-      return { total: strokes.reduce((a, b) => a + b, 0), full: false };
+  // Gross total across the round(s) actually played: Best 18 awards the lowest,
+  // Worst 18 the highest. (Earlier this cherry-picked the 9 lowest/highest holes
+  // per round, which produced a meaningless number when only one round had been
+  // played.) has_full_data is true only once every hole of every round is in.
+  function grossTotal(playerId: string): { total: number; full: boolean } {
+    let total = 0;
+    let full = true;
+    for (const r of rounds) {
+      const rs = scoresByPlayerRound.get(playerId)?.get(r.id) ?? [];
+      total += rs.reduce((a, s) => a + s.strokes, 0);
+      if (rs.length !== r.hole_count) full = false;
     }
-    const sorted = rs.map((r) => r.strokes).sort((a, b) => (mode === "best" ? a - b : b - a));
-    const pick = sorted.slice(0, 9);
-    return { total: pick.reduce((a, b) => a + b, 0), full: rs.length === holeCount };
+    return { total, full };
   }
 
   let best18: Best18Entry[] | null = null;
   if (enabledSet.has("best18")) {
     best18 = players.map((p) => {
-      let total = 0;
-      let full = true;
-      for (const r of rounds) {
-        const { total: t, full: f } = best9PerRound(p.user_id, r.id, r.hole_count, "best");
-        total += t;
-        if (!f) full = false;
-      }
+      const { total, full } = grossTotal(p.user_id);
       return {
         player_id: p.user_id,
         display_name: p.display_name,
@@ -322,13 +319,7 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
   let worst18: Worst18Entry[] | null = null;
   if (enabledSet.has("worst18")) {
     worst18 = players.map((p) => {
-      let total = 0;
-      let full = true;
-      for (const r of rounds) {
-        const { total: t, full: f } = best9PerRound(p.user_id, r.id, r.hole_count, "worst");
-        total += t;
-        if (!f) full = false;
-      }
+      const { total, full } = grossTotal(p.user_id);
       return {
         player_id: p.user_id,
         display_name: p.display_name,
