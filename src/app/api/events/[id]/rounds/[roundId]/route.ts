@@ -83,6 +83,15 @@ export async function GET(
     .get<{ is_organizer: boolean }>(eventId, me.id);
   const viewerIsOrganizer = myParticipant?.is_organizer === true;
 
+  // Event status + whether poker is on — the scorer uses these to offer the
+  // "round complete → finish event & review poker" flow.
+  const [eventRow, pokerRow] = await Promise.all([
+    db.prepare("SELECT status FROM events WHERE id = ?").get<{ status: string }>(eventId),
+    db
+      .prepare("SELECT 1 AS ok FROM side_games WHERE event_id = ? AND kind = 'poker'")
+      .get<{ ok: number }>(eventId),
+  ]);
+
   const holes = await ensureCourseHoles(round.course_id);
 
   const players = await db
@@ -155,5 +164,7 @@ export async function GET(
     team_scores: teamScores,
     viewer_id: me.id,
     viewer_is_organizer: viewerIsOrganizer,
+    event_status: eventRow?.status ?? null,
+    poker_enabled: Boolean(pokerRow),
   });
 }

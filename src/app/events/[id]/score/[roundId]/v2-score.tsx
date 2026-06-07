@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrQueue } from "@/lib/offline-queue";
@@ -66,6 +67,8 @@ type RoundLoad = {
   team_scores: TeamScoreInfo[];
   viewer_id: string;
   viewer_is_organizer: boolean;
+  event_status: string | null;
+  poker_enabled: boolean;
 };
 
 /** Score-type label + tinted chip (traditional golf coloring, matching the
@@ -107,9 +110,11 @@ type LeaderRow = {
 
 export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   const [data, setData] = useState<RoundLoad | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
   const [hole, setHole] = useState(1);
   const [edits, setEdits] = useState<ScoreEditEntry[] | null>(null);
   const [showEdits, setShowEdits] = useState(false);
@@ -389,6 +394,31 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
   const unitCount = isScramble ? teams.length : players.length;
   const totalCells = holes.length * unitCount;
   const filledCells = isScramble ? teamStrokes.size : playerStrokes.size;
+  const roundComplete = totalCells > 0 && filledCells >= totalCells;
+  const eventCompleted =
+    data.event_status === "completed" || data.event_status === "archived";
+
+  async function finishEvent() {
+    setFinishing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Failed to finish event");
+      router.push(
+        data!.poker_enabled
+          ? `/events/${id}/poker?round=${roundId}`
+          : `/events/${id}`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to finish event");
+      setFinishing(false);
+    }
+  }
 
   return (
     <div className="v2-bg min-h-screen text-[var(--v2-text)]">
@@ -418,6 +448,58 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
             </div>
           </div>
         </div>
+
+        {/* Round complete → finalize the event and head to poker judging.
+            Scores auto-save; this is the "done" affordance the scorer lacked. */}
+        {roundComplete && (
+          <div className="v2-card-gold mt-3 p-3.5">
+            <div className="flex items-center gap-2 text-[var(--v2-gold)]">
+              <span aria-hidden="true" className="text-base">✓</span>
+              <span className="text-sm font-semibold" style={serif}>
+                Round complete
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-[var(--v2-text-dim)]">
+              All {totalCells} scores are in.
+              {eventCompleted ? " This event is finalized." : ""}
+            </p>
+            {canEditAll && !eventCompleted ? (
+              <button
+                type="button"
+                onClick={finishEvent}
+                disabled={finishing}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--v2-gold)] py-2.5 text-sm font-bold text-[var(--v2-green-deep)] disabled:opacity-50"
+                style={{ fontFamily: "var(--font-outfit), system-ui, sans-serif" }}
+              >
+                {finishing
+                  ? "Finishing…"
+                  : data.poker_enabled
+                    ? "Finish event & review poker"
+                    : "Finish event"}
+                {!finishing && <span aria-hidden="true">→</span>}
+              </button>
+            ) : data.poker_enabled ? (
+              <Link
+                href={`/events/${id}/poker?round=${roundId}`}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--v2-gold)]/40 py-2.5 text-sm font-bold text-[var(--v2-gold)] hover:bg-[var(--v2-gold)]/10"
+              >
+                Review poker hands <span aria-hidden="true">→</span>
+              </Link>
+            ) : (
+              <Link
+                href={`/events/${id}`}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--v2-border)] py-2.5 text-sm font-medium text-[var(--v2-text)] hover:border-[var(--v2-gold)]/40"
+              >
+                Back to event <span aria-hidden="true">→</span>
+              </Link>
+            )}
+            {canEditAll && !eventCompleted && (
+              <p className="mt-2 text-center text-[10px] text-[var(--v2-text-faint)]">
+                Finishing locks scoring and computes final payouts.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Leaderboard */}
         <section className="v2-card mt-3 !p-0">
