@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import { UiModeToggle } from "@/components/ui-mode-toggle";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { V2PageShell } from "@/components/v2/page-shell";
 import { V2Card } from "@/components/v2/card";
 import { V2StatTile } from "@/components/v2/stat-tile";
@@ -460,6 +461,8 @@ export function V2Profile() {
             <UiModeToggle currentMode="v2" style="v2" />
           </div>
         </V2Card>
+
+        <ThemeToggle />
 
         {user.is_admin && (
           <Link

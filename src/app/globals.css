@@ -5,10 +5,14 @@
   --foreground: #14532d;
 }
 
-/* v2 design tokens. Only defined when <html data-ui="v2"> is set, but they do
-   NOT override --background / --foreground — that would dark-out every
-   unported classic page. Instead, v2 components / page wrappers reference
-   --v2-bg / --v2-surface explicitly. Classic pages stay untouched. */
+/* v2 design tokens. The DARK theme is the default (no data-theme, or
+   data-theme="dark"). The LIGHT theme overrides the same token names in a
+   second block below — every v2 component and .v2-* helper reads these tokens,
+   so a new feature that uses them works in BOTH themes automatically. Never
+   hardcode a dark rgba() in a component; reference a token here instead.
+
+   These do NOT override --background / --foreground (that would dark-out every
+   unported classic page). Classic pages stay untouched. */
 html[data-ui="v2"] {
   /* backgrounds */
   --v2-bg-0: #080d08;       /* deepest — nav bar, recessed wells */
@@ -41,14 +45,106 @@ html[data-ui="v2"] {
   --v2-text-faint: #5f6a5f;
   --v2-muted: #8a9a8a;          /* alias */
 
-  /* surfaces — used by legacy v2 callsites */
+  /* surfaces + borders — used by .v2-* helpers and component callsites */
   --v2-surface: rgba(20, 30, 20, 0.5);
   --v2-surface-2: #0d1a0d;
+  --v2-well: rgba(8, 13, 8, 0.6);              /* recessed track (seg control) */
   --v2-border: rgba(212, 175, 55, 0.1);
+  --v2-border-hover: rgba(212, 175, 55, 0.25);
+
+  /* composite accent fills/borders (kept as tokens so they flip per theme) */
+  --v2-gold-fill: rgba(212, 175, 55, 0.18);
+  --v2-gold-fill-strong: rgba(212, 175, 55, 0.2);
+  --v2-gold-border: rgba(212, 175, 55, 0.25);
+  --v2-gold-border-mid: rgba(212, 175, 55, 0.3);
+  --v2-gold-border-strong: rgba(212, 175, 55, 0.45);
+  --v2-gold-glow: rgba(212, 175, 55, 0.15);
+  --v2-gold-flash: rgba(212, 175, 55, 0.25);
+  --v2-sage-fill: rgba(151, 196, 89, 0.18);
+  --v2-sage-fill-soft: rgba(151, 196, 89, 0.12);
+  --v2-sage-border: rgba(151, 196, 89, 0.28);
+  --v2-red-fill: rgba(226, 75, 74, 0.15);
+  --v2-amber-fill: rgba(226, 133, 90, 0.12);
+  --v2-amber-border: rgba(226, 133, 90, 0.4);
+
+  /* semantic surfaces for inline danger/warn/success blocks (use these in
+     components instead of bg-red-950/border-red-800 so they theme correctly) */
+  --v2-danger-bg: rgba(226, 75, 74, 0.12);
+  --v2-danger-border: rgba(226, 75, 74, 0.4);
+  --v2-danger-text: #f0a3a2;
+
+  /* gradients */
+  --v2-card-grad: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(20, 30, 20, 0.6) 100%);
+  --v2-card-live-bg: linear-gradient(135deg, #1a2e1a 0%, #0f1f0f 100%);
+  --v2-lb-you-bg: linear-gradient(90deg, rgba(151, 196, 89, 0.1) 0%, rgba(20, 30, 20, 0.5) 70%);
 
   /* podium */
   --v2-silver: #b4b2a9;
   --v2-bronze: #d85a30;
+}
+
+/* ---- LIGHT theme: same token names, warm-paper palette that keeps the
+   gold + sage identity. Gold is deepened for text/border contrast on light;
+   bright gold is reserved for fills/highlights. Tune freely — every screen
+   reads from here. ---- */
+html[data-ui="v2"][data-theme="light"] {
+  --v2-bg-0: #e7ece1;
+  --v2-bg-1: #f6f8f2;
+  --v2-bg-2: #eef2e8;
+  --v2-bg: #f6f8f2;
+  --v2-green-deep: #1a2e1a;
+
+  --v2-gold: #9a7d1e;          /* deep gold reads on light */
+  --v2-gold-bright: #c79b22;
+  --v2-gold-deep: #806615;
+  --v2-accent: #9a7d1e;
+  --v2-accent-soft: #c79b22;
+
+  --v2-sage: #5f8a33;          /* deepened for text contrast */
+  --v2-coral: #c14a22;
+  --v2-pink: #c13d68;
+  --v2-purple: #5b53c4;
+  --v2-red: #c0392b;
+  --v2-amber-warn: #c2691f;
+  --v2-score: #5f8a33;
+  --v2-score-soft: #6f9b3f;
+
+  --v2-fg: #18241a;
+  --v2-text: #18241a;
+  --v2-text-dim: #566256;
+  --v2-text-faint: #8a978a;
+  --v2-muted: #566256;
+
+  --v2-surface: rgba(255, 255, 255, 0.88);
+  --v2-surface-2: #ffffff;
+  --v2-well: rgba(24, 36, 26, 0.06);
+  --v2-border: rgba(154, 125, 30, 0.22);
+  --v2-border-hover: rgba(154, 125, 30, 0.4);
+
+  --v2-gold-fill: rgba(212, 175, 55, 0.16);
+  --v2-gold-fill-strong: rgba(212, 175, 55, 0.22);
+  --v2-gold-border: rgba(154, 125, 30, 0.35);
+  --v2-gold-border-mid: rgba(154, 125, 30, 0.45);
+  --v2-gold-border-strong: rgba(154, 125, 30, 0.55);
+  --v2-gold-glow: rgba(212, 175, 55, 0.22);
+  --v2-gold-flash: rgba(212, 175, 55, 0.3);
+  --v2-sage-fill: rgba(111, 155, 63, 0.16);
+  --v2-sage-fill-soft: rgba(111, 155, 63, 0.1);
+  --v2-sage-border: rgba(111, 155, 63, 0.35);
+  --v2-red-fill: rgba(192, 57, 43, 0.12);
+  --v2-amber-fill: rgba(194, 105, 31, 0.12);
+  --v2-amber-border: rgba(194, 105, 31, 0.4);
+
+  --v2-danger-bg: rgba(192, 57, 43, 0.1);
+  --v2-danger-border: rgba(192, 57, 43, 0.35);
+  --v2-danger-text: #9a2820;
+
+  --v2-card-grad: linear-gradient(135deg, rgba(212, 175, 55, 0.14) 0%, rgba(255, 255, 255, 0.9) 100%);
+  --v2-card-live-bg: linear-gradient(135deg, #eaf3e2 0%, #f6f8f2 100%);
+  --v2-lb-you-bg: linear-gradient(90deg, rgba(111, 155, 63, 0.14) 0%, rgba(255, 255, 255, 0.85) 70%);
+
+  --v2-silver: #8a8880;
+  --v2-bronze: #b0532a;
 }
 
 @theme inline {
@@ -140,26 +236,26 @@ html[data-ui="v2"] .v2-bg {
 }
 
 html[data-ui="v2"] .v2-card {
-  background: rgba(20, 30, 20, 0.5);
-  border: 0.5px solid rgba(212, 175, 55, 0.1);
+  background: var(--v2-surface);
+  border: 0.5px solid var(--v2-border);
   border-radius: 13px;
   padding: 14px;
   transition: border-color 0.2s ease;
 }
 
 html[data-ui="v2"] .v2-card-hover:hover {
-  border-color: rgba(212, 175, 55, 0.25);
+  border-color: var(--v2-border-hover);
 }
 
 html[data-ui="v2"] .v2-card-gold {
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(20, 30, 20, 0.6) 100%);
-  border: 0.5px solid rgba(212, 175, 55, 0.25);
+  background: var(--v2-card-grad);
+  border: 0.5px solid var(--v2-gold-border);
   border-radius: 13px;
 }
 
 html[data-ui="v2"] .v2-card-live {
-  background: linear-gradient(135deg, #1a2e1a 0%, #0f1f0f 100%);
-  border: 0.5px solid rgba(212, 175, 55, 0.3);
+  background: var(--v2-card-live-bg);
+  border: 0.5px solid var(--v2-gold-border-mid);
   border-radius: 13px;
   position: relative;
   overflow: hidden;
@@ -171,7 +267,7 @@ html[data-ui="v2"] .v2-card-live::before {
   right: 0;
   width: 60%;
   height: 60%;
-  background: radial-gradient(circle at top right, rgba(212, 175, 55, 0.15), transparent 70%);
+  background: radial-gradient(circle at top right, var(--v2-gold-glow), transparent 70%);
   pointer-events: none;
 }
 
@@ -191,17 +287,17 @@ html[data-ui="v2"] .v2-chip {
   white-space: nowrap;
 }
 html[data-ui="v2"] .v2-chip-on {
-  background: rgba(212, 175, 55, 0.2);
-  border-color: rgba(212, 175, 55, 0.45);
+  background: var(--v2-gold-fill-strong);
+  border-color: var(--v2-gold-border-strong);
   color: var(--v2-gold);
 }
 html[data-ui="v2"] .v2-chip-off {
   background: transparent;
-  border-color: rgba(212, 175, 55, 0.15);
+  border-color: var(--v2-border);
   color: var(--v2-text-dim);
 }
 html[data-ui="v2"] .v2-chip-off:hover {
-  border-color: rgba(212, 175, 55, 0.35);
+  border-color: var(--v2-border-hover);
   color: var(--v2-text);
 }
 
@@ -209,7 +305,7 @@ html[data-ui="v2"] .v2-chip-off:hover {
 html[data-ui="v2"] .v2-seg-track {
   display: flex;
   gap: 4px;
-  background: rgba(8, 13, 8, 0.6);
+  background: var(--v2-well);
   border-radius: 9px;
   padding: 3px;
 }
@@ -227,7 +323,7 @@ html[data-ui="v2"] .v2-seg {
   transition: color 0.15s ease, background 0.15s ease;
 }
 html[data-ui="v2"] .v2-seg-on {
-  background: rgba(212, 175, 55, 0.18);
+  background: var(--v2-gold-fill);
   color: var(--v2-gold);
 }
 
@@ -238,32 +334,32 @@ html[data-ui="v2"] .v2-lb-row {
   gap: 12px;
   padding: 12px 14px;
   margin-bottom: 8px;
-  background: rgba(20, 30, 20, 0.5);
-  border: 0.5px solid rgba(212, 175, 55, 0.1);
+  background: var(--v2-surface);
+  border: 0.5px solid var(--v2-border);
   border-radius: 13px;
   transition: transform 0.15s ease, border-color 0.2s ease;
 }
 html[data-ui="v2"] .v2-lb-row:hover {
   transform: translateX(2px);
-  border-color: rgba(212, 175, 55, 0.25);
+  border-color: var(--v2-border-hover);
 }
 html[data-ui="v2"] .v2-lb-row-you {
-  background: linear-gradient(90deg, rgba(151, 196, 89, 0.1) 0%, rgba(20, 30, 20, 0.5) 70%);
-  border-color: rgba(151, 196, 89, 0.28);
+  background: var(--v2-lb-you-bg);
+  border-color: var(--v2-sage-border);
 }
 
 /* Score pills */
 html[data-ui="v2"] .v2-score-green {
-  background: rgba(151, 196, 89, 0.18);
-  color: #97c459;
+  background: var(--v2-sage-fill);
+  color: var(--v2-sage);
 }
 html[data-ui="v2"] .v2-score-gold {
-  background: rgba(212, 175, 55, 0.18);
-  color: #d4af37;
+  background: var(--v2-gold-fill);
+  color: var(--v2-gold);
 }
 html[data-ui="v2"] .v2-score-red {
-  background: rgba(226, 75, 74, 0.15);
-  color: #e24b4a;
+  background: var(--v2-red-fill);
+  color: var(--v2-red);
 }
 
 /* Live pill — pulsing red */
@@ -273,7 +369,7 @@ html[data-ui="v2"] .v2-live-pill {
   gap: 5px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #e24b4a;
+  background: var(--v2-red);
   color: #fff;
   font-family: var(--font-outfit), system-ui, sans-serif;
   font-size: 9px;
@@ -296,8 +392,8 @@ html[data-ui="v2"] .v2-live-dot {
 
 /* Sync banner */
 html[data-ui="v2"] .v2-sync-banner {
-  background: rgba(151, 196, 89, 0.12);
-  border: 0.5px solid rgba(151, 196, 89, 0.28);
+  background: var(--v2-sage-fill-soft);
+  border: 0.5px solid var(--v2-sage-border);
   color: var(--v2-sage);
   border-radius: 10px;
   padding: 8px 12px;
@@ -308,8 +404,8 @@ html[data-ui="v2"] .v2-sync-banner {
   gap: 8px;
 }
 html[data-ui="v2"] .v2-sync-banner-warn {
-  background: rgba(226, 133, 90, 0.12);
-  border-color: rgba(226, 133, 90, 0.4);
+  background: var(--v2-amber-fill);
+  border-color: var(--v2-amber-border);
   color: var(--v2-amber-warn);
 }
 
@@ -331,14 +427,14 @@ html[data-ui="v2"] .v2-rank-flash {
   animation: v2-rank-flash 1.4s ease-out;
 }
 @keyframes v2-rank-flash {
-  0% { background-color: rgba(212, 175, 55, 0.25); }
+  0% { background-color: var(--v2-gold-flash); }
   100% { background-color: transparent; }
 }
 
 /* Hairline gold divider */
 html[data-ui="v2"] .v2-hr-gold {
   height: 0.5px;
-  background: rgba(212, 175, 55, 0.15);
+  background: var(--v2-border);
   border: none;
   margin: 8px 0;
 }

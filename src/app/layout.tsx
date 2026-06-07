@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/nav";
 import { V2BottomNav } from "@/components/v2/bottom-nav";
 import { OfflineBanner } from "@/components/offline-banner";
 import { getUiMode } from "@/lib/ui-mode";
+import { getTheme } from "@/lib/theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -59,11 +60,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const uiMode = await getUiMode();
+  const [uiMode, theme] = await Promise.all([getUiMode(), getTheme()]);
   return (
     <html
       lang="en"
       data-ui={uiMode}
+      data-theme={theme}
       className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} ${outfit.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
