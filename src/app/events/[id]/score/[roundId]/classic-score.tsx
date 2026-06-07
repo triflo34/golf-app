@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrQueue } from "@/lib/offline-queue";
@@ -64,6 +65,8 @@ type RoundLoad = {
   team_scores: TeamScoreInfo[];
   viewer_id: string;
   viewer_is_organizer: boolean;
+  event_status: string | null;
+  poker_enabled: boolean;
 };
 
 function classify(strokes: number, par: number): { label: string; tone: string } {
@@ -94,9 +97,11 @@ type LeaderRow = {
 
 export function ClassicEventScore({ id, roundId }: { id: string; roundId: string }) {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   const [data, setData] = useState<RoundLoad | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
   const [hole, setHole] = useState(1);
   const [edits, setEdits] = useState<ScoreEditEntry[] | null>(null);
   const [showEdits, setShowEdits] = useState(false);
@@ -398,6 +403,31 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
   const filledCells = isScramble
     ? teamStrokes.size
     : playerStrokes.size;
+  const roundComplete = totalCells > 0 && filledCells >= totalCells;
+  const eventCompleted =
+    data.event_status === "completed" || data.event_status === "archived";
+
+  async function finishEvent() {
+    setFinishing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/events/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Failed to finish event");
+      router.push(
+        data!.poker_enabled
+          ? `/events/${id}/poker?round=${roundId}`
+          : `/events/${id}`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to finish event");
+      setFinishing(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -497,6 +527,50 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
             </div>
           )}
         </div>
+
+        {/* Round complete → finalize the event and head to poker judging. */}
+        {roundComplete && (
+          <div className="mt-3 rounded-xl border border-green-300 bg-green-50 p-3">
+            <div className="text-sm font-semibold text-green-800">✓ Round complete</div>
+            <p className="mt-0.5 text-xs text-green-700">
+              All {totalCells} scores are in.
+              {eventCompleted ? " This event is finalized." : ""}
+            </p>
+            {canEditAll && !eventCompleted ? (
+              <button
+                type="button"
+                onClick={finishEvent}
+                disabled={finishing}
+                className="mt-2 w-full rounded-md bg-green-700 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {finishing
+                  ? "Finishing…"
+                  : data.poker_enabled
+                    ? "Finish event & review poker →"
+                    : "Finish event →"}
+              </button>
+            ) : data.poker_enabled ? (
+              <Link
+                href={`/events/${id}/poker?round=${roundId}`}
+                className="mt-2 block w-full rounded-md border border-green-600 py-2 text-center text-sm font-semibold text-green-700 hover:bg-green-100"
+              >
+                Review poker hands →
+              </Link>
+            ) : (
+              <Link
+                href={`/events/${id}`}
+                className="mt-2 block w-full rounded-md border border-gray-300 py-2 text-center text-sm font-medium text-gray-700 hover:border-green-400"
+              >
+                Back to event →
+              </Link>
+            )}
+            {canEditAll && !eventCompleted && (
+              <p className="mt-1.5 text-center text-[10px] text-gray-500">
+                Finishing locks scoring and computes final payouts.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 -mx-4 overflow-x-auto">
           <div className="flex px-4 gap-1 min-w-max">
