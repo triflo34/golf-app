@@ -501,7 +501,13 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
               Scorecard
             </Link>
             <div className="flex items-center gap-1.5">
-              <V2LivePill />
+              {eventCompleted ? (
+                <span className="rounded-full bg-[var(--v2-purple)]/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-purple)]">
+                  Final
+                </span>
+              ) : (
+                <V2LivePill />
+              )}
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-text-dim)]">
                 R{round.round_number} · {round.round_format} · {round.hole_count}
               </span>

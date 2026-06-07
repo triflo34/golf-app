@@ -281,6 +281,7 @@ export function ClassicEventDetail({ id }: { id: string }) {
                 players={players}
                 rounds={rounds}
                 standings={standings}
+                eventStatus={event.status}
               />
             )}
             {tab === "side" && (
@@ -312,11 +313,13 @@ function LiveTab({
   players,
   rounds,
   standings,
+  eventStatus,
 }: {
   eventId: number;
   players: Participant[];
   rounds: EventRound[];
   standings: EventStandings | null;
+  eventStatus: EventStatus;
 }) {
   if (players.length === 0) {
     return (
@@ -358,6 +361,7 @@ function LiveTab({
             round={r}
             playerCount={players.length}
             standings={standings}
+            eventLive={eventStatus === "in_progress"}
           />
         ))}
       </ul>
@@ -385,11 +389,13 @@ function RoundCard({
   round,
   playerCount,
   standings,
+  eventLive,
 }: {
   eventId: number;
   round: EventRound;
   playerCount: number;
   standings: EventStandings | null;
+  eventLive: boolean;
 }) {
   // Per-round mini-leaderboard sourced from standings.leaderboard[*].per_round.
   type MiniRow = {
@@ -421,6 +427,9 @@ function RoundCard({
   });
   const top = miniRows.slice(0, 3);
   const anyStarted = miniRows.some((r) => r.through > 0);
+  // Only "live" while the event itself is in progress — a completed event's
+  // rounds are final, not live, even though they have scores.
+  const isLive = anyStarted && eventLive;
   const maxThrough = miniRows.reduce((m, r) => Math.max(m, r.through), 0);
   // Players present in mini rows count once each. For scramble, this fans
   // out across team members, so use those who've recorded any hole.
@@ -437,7 +446,7 @@ function RoundCard({
             Round {round.round_number}
           </div>
           <span className="flex items-center gap-1.5 text-xs">
-            {anyStarted && (
+            {isLive && (
               <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
                 LIVE

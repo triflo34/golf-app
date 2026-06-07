@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import type { EventStatus } from "@/lib/types";
 
@@ -145,6 +145,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Only organizers can update events" }, { status: 403 });
   }
 
+  const current = await db
+    .prepare("SELECT status, exclude_from_leaderboard FROM events WHERE id = ?")
+    .get<{ status: EventStatus; exclude_from_leaderboard: boolean }>(eventId);
+  if (!current) {
+    return NextResponse.json({ error: "Event not found" }, { status: 404 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -188,10 +195,62 @@ export async function PATCH(
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
+  // Resulting leaderboard-exclusion + status after this update.
+  const nextExclude =
+    typeof body.exclude_from_leaderboard === "boolean"
+      ? body.exclude_from_leaderboard
+      : current.exclude_from_leaderboard;
+  const statusAfter =
+    typeof body.status === "string" ? (body.status as EventStatus) : current.status;
+  // Materialize whenever the event is completed after this update — not only on
+  // the transition — so an already-completed event gets backfilled the next time
+  // it's touched (e.g. toggling its "count in stats" flag). Rebuild is idempotent.
+  const completedAfter = statusAfter === "completed";
+
   args.push(eventId);
-  await db
-    .prepare(`UPDATE events SET ${updates.join(", ")} WHERE id = ?`)
-    .run(...args);
+  await withTransaction(async (tx) => {
+    await tx
+      .prepare(`UPDATE events SET ${updates.join(", ")} WHERE id = ?`)
+      .run(...args);
+
+    // The season leaderboard/profile stats read the gross `scores` table and
+    // filter on `rounds.excluded` — neither of which events touch during play.
+    // So on completion we roll each individual round's per-hole scores up into
+    // a gross `scores` row, and keep `rounds.excluded` in sync with the event's
+    // "count in stats" flag (also when that flag is toggled on its own).
+    if (completedAfter) {
+      const rounds = await tx
+        .prepare(
+          `SELECT id FROM rounds WHERE event_id = ? AND round_format = 'individual'`,
+        )
+        .all<{ id: number }>(eventId);
+      for (const r of rounds) {
+        const totals = await tx
+          .prepare(
+            `SELECT player_id, SUM(strokes)::int AS total
+               FROM hole_scores
+              WHERE round_id = ? AND player_id IS NOT NULL
+              GROUP BY player_id`,
+          )
+          .all<{ player_id: string; total: number }>(r.id);
+        // Rebuild from scratch so re-completing after score edits stays correct.
+        await tx.prepare("DELETE FROM scores WHERE round_id = ?").run(r.id);
+        for (const t of totals) {
+          await tx
+            .prepare(
+              `INSERT INTO scores (round_id, player_id, gross_score) VALUES (?, ?, ?)`,
+            )
+            .run(r.id, t.player_id, t.total);
+        }
+      }
+    }
+
+    if (completedAfter || typeof body.exclude_from_leaderboard === "boolean") {
+      await tx
+        .prepare(`UPDATE rounds SET excluded = ? WHERE event_id = ?`)
+        .run(nextExclude, eventId);
+    }
+  });
 
   const fresh = await loadEvent(eventId);
   return NextResponse.json(fresh);

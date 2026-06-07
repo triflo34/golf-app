@@ -507,8 +507,14 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
               Scorecard
             </Link>
             <div className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
-              <span className="text-red-600">LIVE</span>
+              {eventCompleted ? (
+                <span className="text-purple-700">Final</span>
+              ) : (
+                <>
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                  <span className="text-red-600">LIVE</span>
+                </>
+              )}
               <span className="text-gray-400">
                 · R{round.round_number} · {round.round_format} · {round.hole_count}
               </span>
