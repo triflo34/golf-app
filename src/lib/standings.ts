@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { ensureCourseHoles } from "@/lib/events";
+import { stablefordPoints } from "@/lib/stableford";
 
 export type LeaderboardEntry = {
   player_id: string;
@@ -45,13 +46,6 @@ export type StablefordEntry = {
   has_full_data: boolean; // every hole of every round scored
 };
 
-// Points by score-to-par: double bogey or worse = 0, bogey 1, par 2, birdie 4,
-// eagle 8, albatross 16. Bad holes cap at zero so they don't sink the round.
-export function stablefordPoints(strokes: number, par: number): number {
-  const diff = strokes - par;
-  if (diff >= 2) return 0;
-  return 2 ** (1 - diff);
-}
 
 export type ScrambleTeamStanding = {
   team_id: number;
