@@ -21,7 +21,33 @@ type EventRow = {
   status: string;
   total_holes: number;
   second_course_id: number | null;
+  round_config: unknown;
 };
+
+type RoundConfigEntry = {
+  format: "individual" | "scramble";
+  hole_count: number;
+  teams: string[][];
+};
+
+function roundSkeleton(totalHoles: number): { hole_count: number }[] {
+  if (totalHoles === 36) return [{ hole_count: 18 }, { hole_count: 18 }];
+  if (totalHoles === 9) return [{ hole_count: 9 }];
+  return [{ hole_count: 18 }];
+}
+
+function parseRoundConfig(v: unknown): RoundConfigEntry[] | null {
+  if (v == null) return null;
+  let parsed: unknown = v;
+  if (typeof v === "string") {
+    try {
+      parsed = JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  return Array.isArray(parsed) ? (parsed as RoundConfigEntry[]) : null;
+}
 
 export async function POST(
   _request: Request,
@@ -43,7 +69,7 @@ export async function POST(
   const event = await db
     .prepare(
       `SELECT id, course_id, start_date, end_date, status,
-              total_holes, second_course_id
+              total_holes, second_course_id, round_config
        FROM events WHERE id = ?`,
     )
     .get<EventRow>(eventId);
@@ -82,44 +108,54 @@ export async function POST(
       .prepare("UPDATE events SET status = 'in_progress' WHERE id = ?")
       .run(eventId);
 
-    // Create rounds based on event.total_holes:
-    //   9  → R1 individual 9
-    //   18 → R1 individual 18
-    //   36 → R1 individual 18 + R2 scramble 18 (R2 uses second_course_id if set)
-    const total = event.total_holes ?? 18;
-    if (total === 9) {
-      await tx
+    // Create rounds from the organizer's per-round config (set in Manage),
+    // falling back to the historical default: a single individual round, or for
+    // 36 holes round 1 individual + round 2 scramble. Round 2 uses the second
+    // course if set. Scramble rounds get their teams materialized here too.
+    const skeleton = roundSkeleton(event.total_holes ?? 18);
+    const stored = parseRoundConfig(event.round_config);
+    for (let i = 0; i < skeleton.length; i++) {
+      const cfg = stored?.[i];
+      const format: "individual" | "scramble" =
+        cfg?.format === "scramble" ? "scramble" : i === 1 ? "scramble" : "individual";
+      const holeCount = skeleton[i].hole_count;
+      const courseId = i === 1 ? event.second_course_id ?? event.course_id : event.course_id;
+      const playedAt = i === 0 ? event.start_date : event.end_date;
+      const round = await tx
         .prepare(
           `INSERT INTO rounds
              (course_id, played_at, created_by, event_id, scoring_mode, round_number, round_format, hole_count)
-           VALUES (?, ?, ?, ?, 'hole_by_hole', 1, 'individual', 9)`,
+           VALUES (?, ?, ?, ?, 'hole_by_hole', ?, ?, ?)
+           RETURNING id`,
         )
-        .run(event.course_id, event.start_date, me.id, eventId);
-    } else if (total === 36) {
-      await tx
-        .prepare(
-          `INSERT INTO rounds
-             (course_id, played_at, created_by, event_id, scoring_mode, round_number, round_format, hole_count)
-           VALUES (?, ?, ?, ?, 'hole_by_hole', 1, 'individual', 18)`,
-        )
-        .run(event.course_id, event.start_date, me.id, eventId);
-      const round2Course = event.second_course_id ?? event.course_id;
-      await tx
-        .prepare(
-          `INSERT INTO rounds
-             (course_id, played_at, created_by, event_id, scoring_mode, round_number, round_format, hole_count)
-           VALUES (?, ?, ?, ?, 'hole_by_hole', 2, 'scramble', 18)`,
-        )
-        .run(round2Course, event.end_date, me.id, eventId);
-    } else {
-      // default 18
-      await tx
-        .prepare(
-          `INSERT INTO rounds
-             (course_id, played_at, created_by, event_id, scoring_mode, round_number, round_format, hole_count)
-           VALUES (?, ?, ?, ?, 'hole_by_hole', 1, 'individual', 18)`,
-        )
-        .run(event.course_id, event.start_date, me.id, eventId);
+        .get<{ id: number }>(
+          courseId,
+          playedAt,
+          me.id,
+          eventId,
+          i + 1,
+          format,
+          holeCount,
+        );
+      if (format === "scramble" && round && Array.isArray(cfg?.teams)) {
+        let n = 1;
+        for (const members of cfg.teams) {
+          if (!Array.isArray(members) || members.length === 0) continue;
+          const team = await tx
+            .prepare(
+              `INSERT INTO scramble_teams (round_id, name) VALUES (?, ?) RETURNING id`,
+            )
+            .get<{ id: number }>(round.id, `Team ${n}`);
+          for (const uid of members) {
+            await tx
+              .prepare(
+                `INSERT INTO scramble_team_members (team_id, user_id) VALUES (?, ?)`,
+              )
+              .run(team!.id, uid);
+          }
+          n += 1;
+        }
+      }
     }
 
     // Seed poker deck state + per-player hand rows for any enabled poker side game.

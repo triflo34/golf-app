@@ -85,10 +85,13 @@ export async function GET(
 
   // Event status + whether poker is on — the scorer uses these to offer the
   // "round complete → finish event & review poker" flow.
-  const [eventRow, pokerRow] = await Promise.all([
+  const [eventRow, pokerRow, stablefordRow] = await Promise.all([
     db.prepare("SELECT status FROM events WHERE id = ?").get<{ status: string }>(eventId),
     db
       .prepare("SELECT 1 AS ok FROM side_games WHERE event_id = ? AND kind = 'poker'")
+      .get<{ ok: number }>(eventId),
+    db
+      .prepare("SELECT 1 AS ok FROM side_games WHERE event_id = ? AND kind = 'stableford'")
       .get<{ ok: number }>(eventId),
   ]);
 
@@ -166,5 +169,6 @@ export async function GET(
     viewer_is_organizer: viewerIsOrganizer,
     event_status: eventRow?.status ?? null,
     poker_enabled: Boolean(pokerRow),
+    stableford_enabled: Boolean(stablefordRow),
   });
 }

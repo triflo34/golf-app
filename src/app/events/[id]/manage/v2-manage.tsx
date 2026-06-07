@@ -154,6 +154,181 @@ function ScrambleTeamsSection({
   );
 }
 
+type RCPlayer = { user_id: string; display_name: string };
+type UIRound = { format: "individual" | "scramble"; hole_count: number };
+
+function buildTeams(map: Record<string, number | null>): string[][] {
+  const byNum = new Map<number, string[]>();
+  for (const [uid, n] of Object.entries(map)) {
+    if (n == null) continue;
+    if (!byNum.has(n)) byNum.set(n, []);
+    byNum.get(n)!.push(uid);
+  }
+  return [...byNum.entries()].sort((a, b) => a[0] - b[0]).map(([, ids]) => ids);
+}
+
+// Pre-start: choose each round's format and, for scramble rounds, assign teams
+// (uneven is fine). Saved to the event's round_config; the Start action turns
+// these into real rounds + scramble teams.
+function RoundSetupSection({
+  eventId,
+  onSaved,
+}: {
+  eventId: number;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [players, setPlayers] = useState<RCPlayer[]>([]);
+  const [rounds, setRounds] = useState<UIRound[] | null>(null);
+  const [assign, setAssign] = useState<Record<number, Record<string, number | null>>>({});
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [savedMsg, setSavedMsg] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/events/${eventId}/round-config`, { cache: "no-store" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setErr(body.error ?? "Failed to load round setup");
+      return;
+    }
+    setPlayers(body.players ?? []);
+    setRounds(
+      (body.rounds ?? []).map((r: { format: "individual" | "scramble"; hole_count: number }) => ({
+        format: r.format,
+        hole_count: r.hole_count,
+      })),
+    );
+    const a: Record<number, Record<string, number | null>> = {};
+    (body.rounds ?? []).forEach(
+      (r: { teams?: string[][] }, i: number) => {
+        a[i] = {};
+        (r.teams ?? []).forEach((team, idx) => {
+          for (const uid of team) a[i][uid] = idx + 1;
+        });
+      },
+    );
+    setAssign(a);
+  }, [eventId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (!rounds) return null;
+  // A single individual round needs no setup screen.
+  if (rounds.length === 1 && rounds[0].format === "individual" && players.length === 0) return null;
+
+  function setFormat(i: number, format: "individual" | "scramble") {
+    setRounds((rs) => rs!.map((r, idx) => (idx === i ? { ...r, format } : r)));
+    setSavedMsg(false);
+  }
+  function setTeamNum(i: number, uid: string, value: string) {
+    const n = value === "" ? null : Number(value);
+    if (n != null && (!Number.isInteger(n) || n < 1 || n > 8)) return;
+    setAssign((a) => ({ ...a, [i]: { ...(a[i] ?? {}), [uid]: n } }));
+    setSavedMsg(false);
+  }
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    setSavedMsg(false);
+    try {
+      const payload = {
+        rounds: rounds!.map((r, i) => ({
+          format: r.format,
+          teams: r.format === "scramble" ? buildTeams(assign[i] ?? {}) : [],
+        })),
+      };
+      const res = await fetch(`/api/events/${eventId}/round-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Save failed");
+      setSavedMsg(true);
+      await onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <SectionLabel>Round setup</SectionLabel>
+      {err && (
+        <div className="mb-2 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          {err}
+        </div>
+      )}
+      <div className="space-y-3">
+        {rounds.map((r, i) => (
+          <div key={i} className="v2-card">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-[var(--v2-text)]">
+                Round {i + 1} · {r.hole_count} holes
+              </span>
+              <div className="inline-flex overflow-hidden rounded-lg border border-[var(--v2-border)]">
+                {(["individual", "scramble"] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFormat(i, f)}
+                    className={`px-2.5 py-1 text-xs font-semibold capitalize ${
+                      r.format === f
+                        ? "bg-[var(--v2-gold)] text-[var(--v2-green-deep)]"
+                        : "text-[var(--v2-text-dim)]"
+                    }`}
+                  >
+                    {f === "individual" ? "Individual" : "Scramble"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {r.format === "scramble" && (
+              <div className="mt-2 border-t border-[var(--v2-border)] pt-2">
+                <div className="mb-1 text-[11px] text-[var(--v2-text-dim)]">
+                  Assign each player a team number (uneven teams are fine; leave blank to skip).
+                </div>
+                <ul className="divide-y divide-[var(--v2-border)]">
+                  {players.map((p) => (
+                    <li key={p.user_id} className="flex items-center justify-between gap-2 py-1.5">
+                      <span className="min-w-0 flex-1 truncate text-sm text-[var(--v2-text)]">
+                        {p.display_name}
+                      </span>
+                      <label className="flex items-center gap-1 text-xs text-[var(--v2-text-dim)]">
+                        Team
+                        <input
+                          type="number"
+                          min={1}
+                          max={8}
+                          value={assign[i]?.[p.user_id] ?? ""}
+                          onChange={(e) => setTeamNum(i, p.user_id, e.target.value)}
+                          className={`w-14 ${inputCls}`}
+                        />
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                {players.length === 0 && (
+                  <div className="text-xs text-[var(--v2-text-faint)]">Add players first.</div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={save} disabled={saving} className={`mt-2 ${goldBtn}`}>
+        {saving ? "Saving…" : "Save round setup"}
+      </button>
+      {savedMsg && <span className="ml-2 text-xs text-[var(--v2-sage)]">Saved</span>}
+    </section>
+  );
+}
+
 type EventDetail = {
   id: number;
   name: string;
@@ -650,20 +825,26 @@ export function V2EventManage({ id }: { id: string }) {
           </label>
         </section>
 
-        <ScrambleTeamsSection
-          eventId={Number(id)}
-          players={players}
-          scrambleData={scrambleData}
-          disabled={event.status === "completed" || event.status === "archived"}
-          onSaved={reload}
-        />
+        {/* Pre-start: pick each round's format + scramble teams. Post-start the
+            round exists, so team edits move to ScrambleTeamsSection below. */}
+        {!locked && <RoundSetupSection eventId={Number(id)} onSaved={reload} />}
+
+        {scrambleData?.round_id && (
+          <ScrambleTeamsSection
+            eventId={Number(id)}
+            players={players}
+            scrambleData={scrambleData}
+            disabled={event.status === "completed" || event.status === "archived"}
+            onSaved={reload}
+          />
+        )}
 
         {!locked && (
           <section className="rounded-xl border border-[var(--v2-gold)]/30 bg-[var(--v2-gold)]/8 p-3.5">
             <div className="text-sm font-semibold text-[var(--v2-gold)]">Start event</div>
             <p className="mt-1 text-xs text-[var(--v2-text-dim)]">
-              Locks the roster and side games, creates round 1 (individual) and round 2 (scramble),
-              and seeds the poker deck if Poker is enabled.
+              Locks the roster, side games, and round setup, creates the rounds, and seeds the poker
+              deck if Poker is enabled.
             </p>
             <button
               type="button"
