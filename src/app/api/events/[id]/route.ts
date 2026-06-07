@@ -14,6 +14,8 @@ type EventDetailRow = {
   description: string | null;
   status: EventStatus;
   exclude_from_leaderboard: boolean;
+  total_holes: number;
+  round_config: unknown;
   created_by: string;
   created_at: string;
 };
@@ -41,7 +43,8 @@ async function loadEvent(eventId: number) {
     .prepare(
       `SELECT e.id, e.name, e.course_id, c.name AS course_name,
               e.start_date, e.end_date, e.entry_fee_cents, e.description,
-              e.status, e.exclude_from_leaderboard, e.created_by, e.created_at
+              e.status, e.exclude_from_leaderboard, e.total_holes, e.round_config,
+              e.created_by, e.created_at
        FROM events e JOIN courses c ON c.id = e.course_id
        WHERE e.id = ?`,
     )

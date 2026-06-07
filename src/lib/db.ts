@@ -800,6 +800,7 @@ async function ensureEventHoleConfigColumns(sql: postgres.Sql): Promise<void> {
   await sql.unsafe(`
     ALTER TABLE events ADD COLUMN IF NOT EXISTS total_holes      SMALLINT NOT NULL DEFAULT 18;
     ALTER TABLE events ADD COLUMN IF NOT EXISTS second_course_id INTEGER REFERENCES courses(id);
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS round_config     JSONB;
   `);
   await sql.unsafe(`
     DO $$
