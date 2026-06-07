@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { ClassicPlayerQuickView } from "@/components/player-quick-view";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { InvitePanel } from "@/components/invite-panel";
 import type { EventStatus } from "@/lib/types";
@@ -91,6 +92,8 @@ export function ClassicEventDetail({ id }: { id: string }) {
   const [standingsError, setStandingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("live");
+  // Player tapped anywhere on the page → open the quick-view card.
+  const [quickView, setQuickView] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/events/${id}`, { cache: "no-store" });
@@ -283,6 +286,7 @@ export function ClassicEventDetail({ id }: { id: string }) {
                 rounds={rounds}
                 standings={standings}
                 eventStatus={event.status}
+                onPlayer={setQuickView}
               />
             )}
             {tab === "side" && (
@@ -291,9 +295,10 @@ export function ClassicEventDetail({ id }: { id: string }) {
                 isOrganizer={isOrganizer}
                 standings={standings}
                 reload={loadStandings}
+                onPlayer={setQuickView}
               />
             )}
-            {tab === "leaderboard" && <LeaderboardView standings={standings} />}
+            {tab === "leaderboard" && <LeaderboardView standings={standings} onPlayer={setQuickView} />}
             {tab === "payouts" && (
               <PayoutsView
                 entryPotCents={event.entry_fee_cents * players.length}
@@ -305,7 +310,37 @@ export function ClassicEventDetail({ id }: { id: string }) {
           </>
         )}
       </section>
+      <ClassicPlayerQuickView playerId={quickView} viewerId={user?.id ?? null} onClose={() => setQuickView(null)} />
     </div>
+  );
+}
+
+// A player name that opens the quick-view card when tapped (plain text if no
+// handler is provided, e.g. for guests without a user id).
+function ClassicName({
+  id,
+  name,
+  onPlayer,
+  className = "",
+}: {
+  id: string;
+  name: string;
+  onPlayer?: (id: string) => void;
+  className?: string;
+}) {
+  if (!onPlayer) return <span className={className}>{name}</span>;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onPlayer(id);
+      }}
+      className={`text-left underline decoration-dotted decoration-gray-400 underline-offset-2 ${className}`}
+    >
+      {name}
+    </button>
   );
 }
 
@@ -315,12 +350,14 @@ function LiveTab({
   rounds,
   standings,
   eventStatus,
+  onPlayer,
 }: {
   eventId: number;
   players: Participant[];
   rounds: EventRound[];
   standings: EventStandings | null;
   eventStatus: EventStatus;
+  onPlayer?: (id: string) => void;
 }) {
   if (players.length === 0) {
     return (
@@ -338,7 +375,7 @@ function LiveTab({
         <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
           {players.map((p) => (
             <li key={p.user_id} className="px-3 py-2 text-sm flex items-center justify-between">
-              <span className="text-gray-900">{p.display_name}</span>
+              <ClassicName id={p.user_id} name={p.display_name} onPlayer={onPlayer} className="text-gray-900" />
               {p.group_num != null && (
                 <span className="text-xs text-gray-500">Group {p.group_num}</span>
               )}
@@ -363,6 +400,7 @@ function LiveTab({
             playerCount={players.length}
             standings={standings}
             eventLive={eventStatus === "in_progress"}
+            onPlayer={onPlayer}
           />
         ))}
       </ul>
@@ -373,7 +411,7 @@ function LiveTab({
         <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white text-sm">
           {players.map((p) => (
             <li key={p.user_id} className="px-3 py-2 flex items-center justify-between">
-              <span className="text-gray-900">{p.display_name}</span>
+              <ClassicName id={p.user_id} name={p.display_name} onPlayer={onPlayer} className="text-gray-900" />
               {p.group_num != null && (
                 <span className="text-xs text-gray-500">Group {p.group_num}</span>
               )}
@@ -391,12 +429,14 @@ function RoundCard({
   playerCount,
   standings,
   eventLive,
+  onPlayer,
 }: {
   eventId: number;
   round: EventRound;
   playerCount: number;
   standings: EventStandings | null;
   eventLive: boolean;
+  onPlayer?: (id: string) => void;
 }) {
   // Per-round mini-leaderboard sourced from standings.leaderboard[*].per_round.
   type MiniRow = {
@@ -487,9 +527,12 @@ function RoundCard({
                   <span className="w-4 text-gray-400 text-right">
                     {i + 1}
                   </span>
-                  <span className="flex-1 truncate text-gray-800">
-                    {row.display_name}
-                  </span>
+                  <ClassicName
+                    id={row.player_id}
+                    name={row.display_name}
+                    onPlayer={onPlayer}
+                    className="flex-1 truncate text-gray-800"
+                  />
                   <span className="text-gray-500">
                     thru {row.through}
                   </span>
@@ -565,7 +608,13 @@ function vsParTone(vsPar: number, through: number): string {
   return "text-green-700";
 }
 
-function LeaderboardView({ standings }: { standings: EventStandings | null }) {
+function LeaderboardView({
+  standings,
+  onPlayer,
+}: {
+  standings: EventStandings | null;
+  onPlayer?: (id: string) => void;
+}) {
   const [expanded, setExpanded] = useState<string | null>(null);
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.leaderboard.length === 0) {
@@ -593,7 +642,18 @@ function LeaderboardView({ standings }: { standings: EventStandings | null }) {
               >
                 {isLeader ? "👑" : row.through > 0 && tied ? `T${rank}` : rank}
               </span>
-              <span className="flex-1 text-sm text-gray-900 truncate">
+              <span
+                role={onPlayer ? "button" : undefined}
+                onClick={
+                  onPlayer
+                    ? (e) => {
+                        e.stopPropagation();
+                        onPlayer(row.player_id);
+                      }
+                    : undefined
+                }
+                className={`flex-1 text-sm text-gray-900 truncate ${onPlayer ? "underline decoration-dotted decoration-gray-400 underline-offset-2" : ""}`}
+              >
                 {row.display_name}
               </span>
               <span className="text-xs text-gray-500">
@@ -664,11 +724,13 @@ function SideGamesView({
   isOrganizer,
   standings,
   reload,
+  onPlayer,
 }: {
   eventId: number;
   isOrganizer: boolean;
   standings: EventStandings | null;
   reload: () => void;
+  onPlayer?: (id: string) => void;
 }) {
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.side_games.length === 0) {
@@ -685,9 +747,9 @@ function SideGamesView({
             <div className="text-xs text-gray-500">Pot {formatMoney(g.pot_cents)}</div>
           </header>
           <div className="px-3 py-2">
-            {g.kind === "best18" && <Best18Block rows={standings.best18} />}
-            {g.kind === "worst18" && <Worst18Block rows={standings.worst18} />}
-            {g.kind === "stableford" && <StablefordBlock rows={standings.stableford} />}
+            {g.kind === "best18" && <Best18Block rows={standings.best18} onPlayer={onPlayer} />}
+            {g.kind === "worst18" && <Worst18Block rows={standings.worst18} onPlayer={onPlayer} />}
+            {g.kind === "stableford" && <StablefordBlock rows={standings.stableford} onPlayer={onPlayer} />}
             {g.kind === "most_same" && <MostSameBlock rows={standings.most_same} />}
             {g.kind === "poker" && (
               <PokerWinnerBlock
@@ -802,7 +864,7 @@ function PokerWinnerBlock({
   );
 }
 
-function Best18Block({ rows }: { rows: Best18Entry[] | null }) {
+function Best18Block({ rows, onPlayer }: { rows: Best18Entry[] | null; onPlayer?: (id: string) => void }) {
   if (!rows || rows.length === 0)
     return <p className="text-xs text-gray-500">No scores yet.</p>;
   return (
@@ -810,7 +872,7 @@ function Best18Block({ rows }: { rows: Best18Entry[] | null }) {
       {rows.map((r, idx) => (
         <li key={r.player_id} className="flex items-center gap-2 py-1">
           <span className="w-5 text-xs text-gray-400 text-right">{idx + 1}</span>
-          <span className="flex-1 truncate text-gray-900">{r.display_name}</span>
+          <ClassicName id={r.player_id} name={r.display_name} onPlayer={onPlayer} className="flex-1 truncate text-gray-900" />
           {!r.has_full_data && (
             <span className="text-[10px] text-amber-600">partial</span>
           )}
@@ -821,7 +883,7 @@ function Best18Block({ rows }: { rows: Best18Entry[] | null }) {
   );
 }
 
-function Worst18Block({ rows }: { rows: Worst18Entry[] | null }) {
+function Worst18Block({ rows, onPlayer }: { rows: Worst18Entry[] | null; onPlayer?: (id: string) => void }) {
   if (!rows || rows.length === 0)
     return <p className="text-xs text-gray-500">No scores yet.</p>;
   return (
@@ -829,7 +891,7 @@ function Worst18Block({ rows }: { rows: Worst18Entry[] | null }) {
       {rows.map((r, idx) => (
         <li key={r.player_id} className="flex items-center gap-2 py-1">
           <span className="w-5 text-xs text-gray-400 text-right">{idx + 1}</span>
-          <span className="flex-1 truncate text-gray-900">{r.display_name}</span>
+          <ClassicName id={r.player_id} name={r.display_name} onPlayer={onPlayer} className="flex-1 truncate text-gray-900" />
           {!r.has_full_data && (
             <span className="text-[10px] text-amber-600">partial</span>
           )}
@@ -840,7 +902,7 @@ function Worst18Block({ rows }: { rows: Worst18Entry[] | null }) {
   );
 }
 
-function StablefordBlock({ rows }: { rows: StablefordEntry[] | null }) {
+function StablefordBlock({ rows, onPlayer }: { rows: StablefordEntry[] | null; onPlayer?: (id: string) => void }) {
   if (!rows || rows.length === 0)
     return <p className="text-xs text-gray-500">No scores yet.</p>;
   return (
@@ -848,7 +910,7 @@ function StablefordBlock({ rows }: { rows: StablefordEntry[] | null }) {
       {rows.map((r, idx) => (
         <li key={r.player_id} className="flex items-center gap-2 py-1">
           <span className="w-5 text-xs text-gray-400 text-right">{idx + 1}</span>
-          <span className="flex-1 truncate text-gray-900">{r.display_name}</span>
+          <ClassicName id={r.player_id} name={r.display_name} onPlayer={onPlayer} className="flex-1 truncate text-gray-900" />
           {!r.has_full_data && (
             <span className="text-[10px] text-amber-600">partial</span>
           )}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { V2PlayerQuickView } from "@/components/player-quick-view";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import { InvitePanel } from "@/components/invite-panel";
 import { V2LivePill } from "@/components/v2/live-pill";
@@ -107,6 +108,8 @@ export function V2EventDetail({ id }: { id: string }) {
   const [standings, setStandings] = useState<EventStandings | null>(null);
   const [standingsError, setStandingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Player tapped anywhere on the page → open the quick-view card.
+  const [quickView, setQuickView] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("live");
 
   const load = useCallback(async () => {
@@ -302,15 +305,16 @@ export function V2EventDetail({ id }: { id: string }) {
           ) : (
             <>
               {tab === "live" && (
-                <LiveTab eventId={event.id} players={players} rounds={rounds} standings={standings} eventStatus={event.status} />
+                <LiveTab eventId={event.id} players={players} rounds={rounds} standings={standings} eventStatus={event.status} onPlayer={setQuickView} />
               )}
-              {tab === "leaderboard" && <LeaderboardView standings={standings} />}
+              {tab === "leaderboard" && <LeaderboardView standings={standings} onPlayer={setQuickView} />}
               {tab === "side" && (
                 <SideGamesView
                   eventId={event.id}
                   isOrganizer={isOrganizer}
                   standings={standings}
                   reload={loadStandings}
+                  onPlayer={setQuickView}
                 />
               )}
               {tab === "payouts" && (
@@ -325,6 +329,7 @@ export function V2EventDetail({ id }: { id: string }) {
           )}
         </section>
       </div>
+      <V2PlayerQuickView playerId={quickView} viewerId={user?.id ?? null} onClose={() => setQuickView(null)} />
     </div>
   );
 }
@@ -359,12 +364,28 @@ function StandingsError({ message, onRetry }: { message: string; onRetry: () => 
   );
 }
 
-function PlayersList({ players }: { players: Participant[] }) {
+function PlayersList({
+  players,
+  onPlayer,
+}: {
+  players: Participant[];
+  onPlayer?: (id: string) => void;
+}) {
   return (
     <ul className="v2-card divide-y divide-[var(--v2-border)] !p-0">
       {players.map((p) => (
         <li key={p.user_id} className="flex items-center justify-between px-3.5 py-2.5 text-sm">
-          <span className="text-[var(--v2-text)]">{p.display_name}</span>
+          {onPlayer ? (
+            <button
+              type="button"
+              onClick={() => onPlayer(p.user_id)}
+              className="text-left text-[var(--v2-text)] underline decoration-dotted decoration-[var(--v2-text-faint)] underline-offset-2"
+            >
+              {p.display_name}
+            </button>
+          ) : (
+            <span className="text-[var(--v2-text)]">{p.display_name}</span>
+          )}
           {p.group_num != null && (
             <span className="text-xs text-[var(--v2-text-dim)]">Group {p.group_num}</span>
           )}
@@ -380,12 +401,14 @@ function LiveTab({
   rounds,
   standings,
   eventStatus,
+  onPlayer,
 }: {
   eventId: number;
   players: Participant[];
   rounds: EventRound[];
   standings: EventStandings | null;
   eventStatus: EventStatus;
+  onPlayer?: (id: string) => void;
 }) {
   if (players.length === 0) {
     return (
@@ -396,7 +419,7 @@ function LiveTab({
     return (
       <div>
         <SectionLabel>Players ({players.length})</SectionLabel>
-        <PlayersList players={players} />
+        <PlayersList players={players} onPlayer={onPlayer} />
         <p className="mt-3 text-xs text-[var(--v2-text-faint)]">
           Rounds appear once the organizer starts the event.
         </p>
@@ -416,13 +439,14 @@ function LiveTab({
               playerCount={players.length}
               standings={standings}
               eventLive={eventStatus === "in_progress"}
+              onPlayer={onPlayer}
             />
           ))}
         </ul>
       </div>
       <div>
         <SectionLabel>Players ({players.length})</SectionLabel>
-        <PlayersList players={players} />
+        <PlayersList players={players} onPlayer={onPlayer} />
       </div>
     </div>
   );
@@ -434,12 +458,14 @@ function RoundCard({
   playerCount,
   standings,
   eventLive,
+  onPlayer,
 }: {
   eventId: number;
   round: EventRound;
   playerCount: number;
   standings: EventStandings | null;
   eventLive: boolean;
+  onPlayer?: (id: string) => void;
 }) {
   type MiniRow = {
     player_id: string;
@@ -502,7 +528,21 @@ function RoundCard({
             {top.map((row, i) => (
               <li key={row.player_id} className="flex items-center gap-2 text-xs">
                 <span className="w-4 text-right text-[var(--v2-text-faint)]">{i + 1}</span>
-                <span className="flex-1 truncate text-[var(--v2-text)]">{row.display_name}</span>
+                <span
+                  role={onPlayer ? "button" : undefined}
+                  onClick={
+                    onPlayer
+                      ? (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onPlayer(row.player_id);
+                        }
+                      : undefined
+                  }
+                  className={`flex-1 truncate text-[var(--v2-text)] ${onPlayer ? "underline decoration-dotted decoration-[var(--v2-text-faint)] underline-offset-2" : ""}`}
+                >
+                  {row.display_name}
+                </span>
                 <span className="text-[var(--v2-text-dim)]">thru {row.through}</span>
                 <span className="w-8 text-right font-medium text-[var(--v2-text)]">
                   {row.strokes || "–"}
@@ -606,7 +646,13 @@ const SIDE_GAME_LABEL: Record<SideGameSummary["kind"], string> = {
   stableford: "Stableford",
 };
 
-function LeaderboardView({ standings }: { standings: EventStandings | null }) {
+function LeaderboardView({
+  standings,
+  onPlayer,
+}: {
+  standings: EventStandings | null;
+  onPlayer?: (id: string) => void;
+}) {
   const [expanded, setExpanded] = useState<string | null>(null);
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.leaderboard.length === 0) {
@@ -635,7 +681,21 @@ function LeaderboardView({ standings }: { standings: EventStandings | null }) {
               >
                 {isLeader ? "👑" : row.through > 0 && tied ? `T${rank}` : rank}
               </span>
-              <span className="flex-1 truncate text-sm text-[var(--v2-text)]">{row.display_name}</span>
+              <span
+                role={onPlayer ? "button" : undefined}
+                tabIndex={onPlayer ? 0 : undefined}
+                onClick={
+                  onPlayer
+                    ? (e) => {
+                        e.stopPropagation();
+                        onPlayer(row.player_id);
+                      }
+                    : undefined
+                }
+                className={`flex-1 truncate text-sm text-[var(--v2-text)] ${onPlayer ? "underline decoration-dotted decoration-[var(--v2-text-faint)] underline-offset-2" : ""}`}
+              >
+                {row.display_name}
+              </span>
               <span className="text-xs text-[var(--v2-text-dim)]">
                 {row.through > 0 ? `thru ${row.through}` : "—"}
               </span>
@@ -705,11 +765,13 @@ function SideGamesView({
   isOrganizer,
   standings,
   reload,
+  onPlayer,
 }: {
   eventId: number;
   isOrganizer: boolean;
   standings: EventStandings | null;
   reload: () => void;
+  onPlayer?: (id: string) => void;
 }) {
   if (!standings) return <EmptyHint text="Loading…" />;
   if (standings.side_games.length === 0) {
@@ -724,9 +786,9 @@ function SideGamesView({
             <div className="text-xs text-[var(--v2-gold)]">Pot {formatMoney(g.pot_cents)}</div>
           </header>
           <div className="px-3.5 py-2.5">
-            {g.kind === "best18" && <RankNumberList rows={mapBest(standings.best18)} />}
-            {g.kind === "worst18" && <RankNumberList rows={mapWorst(standings.worst18)} />}
-            {g.kind === "stableford" && <RankNumberList rows={mapStableford(standings.stableford)} unit="pts" />}
+            {g.kind === "best18" && <RankNumberList rows={mapBest(standings.best18)} onPlayer={onPlayer} />}
+            {g.kind === "worst18" && <RankNumberList rows={mapWorst(standings.worst18)} onPlayer={onPlayer} />}
+            {g.kind === "stableford" && <RankNumberList rows={mapStableford(standings.stableford)} unit="pts" onPlayer={onPlayer} />}
             {g.kind === "most_same" && <MostSameBlock rows={standings.most_same} />}
             {g.kind === "poker" && (
               <PokerWinnerBlock
@@ -878,7 +940,15 @@ function mapStableford(rows: StablefordEntry[] | null): RankRow[] | null {
   }));
 }
 
-function RankNumberList({ rows, unit }: { rows: RankRow[] | null; unit?: string }) {
+function RankNumberList({
+  rows,
+  unit,
+  onPlayer,
+}: {
+  rows: RankRow[] | null;
+  unit?: string;
+  onPlayer?: (id: string) => void;
+}) {
   if (!rows || rows.length === 0)
     return <p className="text-xs text-[var(--v2-text-dim)]">No scores yet.</p>;
   return (
@@ -886,7 +956,17 @@ function RankNumberList({ rows, unit }: { rows: RankRow[] | null; unit?: string 
       {rows.map((r, idx) => (
         <li key={r.player_id} className="flex items-center gap-2 py-1">
           <span className="w-5 text-right text-xs text-[var(--v2-text-faint)]">{idx + 1}</span>
-          <span className="flex-1 truncate text-[var(--v2-text)]">{r.display_name}</span>
+          {onPlayer ? (
+            <button
+              type="button"
+              onClick={() => onPlayer(r.player_id)}
+              className="min-w-0 flex-1 truncate text-left text-[var(--v2-text)] underline decoration-dotted decoration-[var(--v2-text-faint)] underline-offset-2"
+            >
+              {r.display_name}
+            </button>
+          ) : (
+            <span className="flex-1 truncate text-[var(--v2-text)]">{r.display_name}</span>
+          )}
           {r.partial && <span className="text-[10px] text-[var(--v2-amber-warn)]">partial</span>}
           <span className="font-semibold text-[var(--v2-text)]">
             {r.value ? `${r.value}${unit ? ` ${unit}` : ""}` : "–"}
