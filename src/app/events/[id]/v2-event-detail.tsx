@@ -301,7 +301,7 @@ export function V2EventDetail({ id }: { id: string }) {
           ) : (
             <>
               {tab === "live" && (
-                <LiveTab eventId={event.id} players={players} rounds={rounds} standings={standings} />
+                <LiveTab eventId={event.id} players={players} rounds={rounds} standings={standings} eventStatus={event.status} />
               )}
               {tab === "leaderboard" && <LeaderboardView standings={standings} />}
               {tab === "side" && (
@@ -378,11 +378,13 @@ function LiveTab({
   players,
   rounds,
   standings,
+  eventStatus,
 }: {
   eventId: number;
   players: Participant[];
   rounds: EventRound[];
   standings: EventStandings | null;
+  eventStatus: EventStatus;
 }) {
   if (players.length === 0) {
     return (
@@ -412,6 +414,7 @@ function LiveTab({
               round={r}
               playerCount={players.length}
               standings={standings}
+              eventLive={eventStatus === "in_progress"}
             />
           ))}
         </ul>
@@ -429,11 +432,13 @@ function RoundCard({
   round,
   playerCount,
   standings,
+  eventLive,
 }: {
   eventId: number;
   round: EventRound;
   playerCount: number;
   standings: EventStandings | null;
+  eventLive: boolean;
 }) {
   type MiniRow = {
     player_id: string;
@@ -464,18 +469,21 @@ function RoundCard({
   });
   const top = miniRows.slice(0, 3);
   const anyStarted = miniRows.some((r) => r.through > 0);
+  // Only "live" while the event itself is in progress — a completed event's
+  // rounds are final, not live, even though they have scores.
+  const isLive = anyStarted && eventLive;
   const maxThrough = miniRows.reduce((m, r) => Math.max(m, r.through), 0);
   const playersScored = miniRows.filter((r) => r.through > 0).length;
 
   return (
-    <li className={anyStarted ? "v2-card-live overflow-hidden !p-0" : "v2-card overflow-hidden !p-0"}>
+    <li className={isLive ? "v2-card-live overflow-hidden !p-0" : "v2-card overflow-hidden !p-0"}>
       <Link href={`/events/${eventId}/score/${round.id}`} className="block p-3.5">
         <div className="flex items-center justify-between">
           <div className="text-[15px] font-semibold text-[var(--v2-text)]" style={serif}>
             Round {round.round_number}
           </div>
           <span className="flex items-center gap-2 text-xs">
-            {anyStarted && <V2LivePill />}
+            {isLive && <V2LivePill />}
             <span className="capitalize text-[var(--v2-text-dim)]">{round.round_format}</span>
           </span>
         </div>
