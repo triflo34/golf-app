@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { stablefordPoints } from "@/lib/stableford";
 
 type RoundInfo = {
   id: number;
@@ -54,6 +55,7 @@ type RoundLoad = {
   scores: ScoreInfo[];
   teams: TeamInfo[];
   team_scores: TeamScoreInfo[];
+  stableford_enabled?: boolean;
 };
 
 function cellTone(strokes: number | null, par: number): string {
@@ -116,6 +118,8 @@ export function ClassicEventScorecard({ id, roundId }: { id: string; roundId: st
 
   const { round, holes, players, scores, teams, team_scores } = data;
   const isScramble = round.round_format === "scramble";
+  // Stableford is individual-only, so the points column shows on individual rounds.
+  const showPoints = Boolean(data.stableford_enabled) && !isScramble;
 
   const front = holes.filter((h) => h.hole_number <= 9);
   const back = holes.filter((h) => h.hole_number >= 10);
@@ -217,6 +221,11 @@ export function ClassicEventScorecard({ id, roundId }: { id: string; roundId: st
               <th className="px-2 py-1.5 text-center text-[11px] font-bold text-gray-700 bg-gray-200 border-b border-gray-200">
                 v Par
               </th>
+              {showPoints && (
+                <th className="px-2 py-1.5 text-center text-[11px] font-bold text-gray-700 bg-gray-200 border-b border-gray-200">
+                  Pts
+                </th>
+              )}
             </tr>
             <tr className="bg-green-50 text-green-900">
               <td className="sticky left-0 z-10 bg-green-50 px-2 py-1.5 text-left text-[11px] font-semibold border-b border-green-200">
@@ -254,6 +263,11 @@ export function ClassicEventScorecard({ id, roundId }: { id: string; roundId: st
               <td className="px-2 py-1.5 text-center text-[11px] font-bold border-b border-green-200 bg-green-100">
                 —
               </td>
+              {showPoints && (
+                <td className="px-2 py-1.5 text-center text-[11px] font-bold border-b border-green-200 bg-green-100">
+                  —
+                </td>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -343,7 +357,12 @@ export function ClassicEventScorecard({ id, roundId }: { id: string; roundId: st
                             key={`fs-${p.user_id}-${h.hole_number}`}
                             className={`px-2 py-1.5 text-center text-xs border-b border-gray-100 ${cellTone(s, h.par)}`}
                           >
-                            {s ?? "·"}
+                            <span className="block leading-none">{s ?? "·"}</span>
+                            {showPoints && s != null && (
+                              <span className="block text-[8px] font-semibold leading-none text-green-700">
+                                {stablefordPoints(s, h.par)}
+                              </span>
+                            )}
                           </td>
                         );
                       })}
@@ -359,7 +378,12 @@ export function ClassicEventScorecard({ id, roundId }: { id: string; roundId: st
                             key={`bs-${p.user_id}-${h.hole_number}`}
                             className={`px-2 py-1.5 text-center text-xs border-b border-gray-100 ${cellTone(s, h.par)}`}
                           >
-                            {s ?? "·"}
+                            <span className="block leading-none">{s ?? "·"}</span>
+                            {showPoints && s != null && (
+                              <span className="block text-[8px] font-semibold leading-none text-green-700">
+                                {stablefordPoints(s, h.par)}
+                              </span>
+                            )}
                           </td>
                         );
                       })}
@@ -384,6 +408,16 @@ export function ClassicEventScorecard({ id, roundId }: { id: string; roundId: st
                       >
                         {tot.through === 0 ? "—" : vsParLabel(vsPar)}
                       </td>
+                      {showPoints && (
+                        <td className="px-2 py-1.5 text-center text-xs font-bold text-green-700 bg-gray-100 border-b border-gray-100">
+                          {tot.through === 0
+                            ? "—"
+                            : holes.reduce((sum, h) => {
+                                const s = get(h.hole_number);
+                                return s == null ? sum : sum + stablefordPoints(s, h.par);
+                              }, 0)}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
