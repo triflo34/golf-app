@@ -455,6 +455,27 @@ export function ClassicEventManage({ id }: { id: string }) {
     }
   }
 
+  async function setExcludeFromLeaderboard(value: boolean) {
+    setBusy(true);
+    setError(null);
+    setEvent((prev) => (prev ? { ...prev, exclude_from_leaderboard: value } : prev));
+    try {
+      const res = await fetch(`/api/events/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exclude_from_leaderboard: value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Update failed");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="max-w-lg mx-auto px-4 py-6 pb-24 space-y-6">
       <div>
@@ -597,6 +618,33 @@ export function ClassicEventManage({ id }: { id: string }) {
             );
           })}
         </ul>
+      </section>
+
+      {/* Event settings — togglable any time, including after the event ends,
+          so an event mistakenly hidden from stats can be brought back. */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Event settings</h2>
+        <label className="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-white p-3">
+          <input
+            type="checkbox"
+            checked={!event.exclude_from_leaderboard}
+            onChange={(e) => setExcludeFromLeaderboard(!e.target.checked)}
+            disabled={busy}
+            className="mt-0.5 accent-green-700"
+          />
+          <span>
+            <span className="block text-sm text-gray-900">
+              Count in overall stats &amp; leaderboards
+            </span>
+            <span className="mt-0.5 block text-xs text-gray-500">
+              When off, this event is left out of cross-event stats and season
+              leaderboards.{" "}
+              {event.exclude_from_leaderboard
+                ? "Currently hidden from stats."
+                : "Currently counted."}
+            </span>
+          </span>
+        </label>
       </section>
 
       <ScrambleTeamsSection
