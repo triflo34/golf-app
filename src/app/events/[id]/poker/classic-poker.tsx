@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import type { PokerCard } from "@/lib/types";
+import {
+  evaluatePokerHand,
+  compareHands,
+  HAND_RANKING,
+  type HandResult,
+} from "@/lib/poker-hand";
 
 type HandRow = {
   player_id: string;
@@ -151,6 +157,40 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
         : [],
     [user, data],
   );
+
+  const wildRank = data?.deck?.wild_card?.rank ?? null;
+
+  // Best 5-card hand each player is holding, keyed by player_id.
+  const handResults = useMemo(() => {
+    const m = new Map<string, HandResult | null>();
+    if (data && Array.isArray(data.hands)) {
+      for (const h of data.hands) {
+        m.set(h.player_id, evaluatePokerHand(h.cards, wildRank));
+      }
+    }
+    return m;
+  }, [data, wildRank]);
+
+  // Leading hand(s) — helps the organizer confirm the winner (ties possible).
+  const bestPlayerIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!data) return ids;
+    let best: HandResult | null = null;
+    for (const h of data.hands) {
+      const r = handResults.get(h.player_id);
+      if (!r) continue;
+      if (!best || compareHands(r, best) > 0) {
+        best = r;
+        ids.clear();
+        ids.add(h.player_id);
+      } else if (compareHands(r, best) === 0) {
+        ids.add(h.player_id);
+      }
+    }
+    return ids;
+  }, [data, handResults]);
+
+  const myHandResult = user ? handResults.get(user.id) ?? null : null;
 
   if (authLoading || !user) {
     return (
@@ -431,6 +471,20 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
                 );
               })}
             </div>
+            {myHandResult && (
+              <div className="mt-3 flex items-baseline gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  You&rsquo;ve got
+                </span>
+                <span className="text-sm font-semibold text-amber-900">
+                  {myHandResult.label}
+                </span>
+                <span className="text-xs text-amber-800">
+                  {myHandResult.detail}
+                  {myHandResult.usedWild && " · using your wild"}
+                </span>
+              </div>
+            )}
             <div className="mt-2 text-[11px] text-gray-500">
               {reorderPick == null
                 ? "Tap a card, then another, to swap their positions."
@@ -454,6 +508,29 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
             Other players&rsquo; cards stay face-down until the event is finished.
           </p>
         )}
+        {data.event_completed &&
+          data.viewer_is_organizer &&
+          bestPlayerIds.size > 0 && (
+            <p className="mb-2 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-[11px] text-gray-700">
+              {bestPlayerIds.size > 1 ? (
+                <>
+                  {bestPlayerIds.size} players tie for the best hand — confirm the
+                  winner below.
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-gray-900">
+                    {
+                      data.hands.find((h) => bestPlayerIds.has(h.player_id))
+                        ?.display_name
+                    }
+                  </span>{" "}
+                  holds the best hand. Confirm with{" "}
+                  <span className="font-semibold">Win</span>.
+                </>
+              )}
+            </p>
+          )}
         <ul className="space-y-2">
           {data.hands.map((h) => {
             const pendingForPlayer = data.pending_swaps.filter(
@@ -463,6 +540,9 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
             const isMe = h.player_id === user.id;
             // Reveal face-up only once the event is over (or for your own hand).
             const revealed = data.event_completed || isMe;
+            const result = handResults.get(h.player_id) ?? null;
+            const isBest =
+              data.event_completed && bestPlayerIds.has(h.player_id);
             return (
               <li
                 key={h.player_id}
@@ -475,6 +555,11 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
                     {isMe && <span className="ml-1 text-[10px] text-gray-400">you</span>}
                   </span>
                   <span className="text-xs text-gray-600">{h.cards.length}/5</span>
+                  {isBest && !isWinner && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-200 font-semibold text-yellow-900">
+                      {bestPlayerIds.size > 1 ? "tied best" : "best hand"}
+                    </span>
+                  )}
                   {pendingForPlayer > 0 && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
                       {pendingForPlayer} pending
@@ -506,11 +591,32 @@ export function ClassicPoker({ id, backRound }: { id: string; backRound?: string
                     h.cards.map((_, i) => <CardBack key={i} />)
                   )}
                 </div>
+                {revealed && result && (
+                  <div className="mt-2 text-xs">
+                    <span className="font-semibold text-gray-900">{result.label}</span>
+                    <span className="text-gray-500"> · {result.detail}</span>
+                  </div>
+                )}
               </li>
             );
           })}
         </ul>
       </section>
+
+      <details className="rounded-lg border border-gray-200 bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-gray-700">
+          Poker hand rankings (high to low)
+        </summary>
+        <ol className="mt-2 space-y-1">
+          {HAND_RANKING.map((r, i) => (
+            <li key={r.category} className="flex items-baseline gap-2 text-[13px] leading-snug">
+              <span className="w-4 shrink-0 text-right text-[11px] text-gray-400">{i + 1}</span>
+              <span className="shrink-0 font-semibold text-gray-900">{r.label}</span>
+              <span className="text-gray-500">{r.blurb}</span>
+            </li>
+          ))}
+        </ol>
+      </details>
 
       <p className="text-[11px] text-gray-400">
         Cards auto-draw as scores are saved. {data.deck && (

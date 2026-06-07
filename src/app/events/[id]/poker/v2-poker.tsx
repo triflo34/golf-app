@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import type { PokerCard } from "@/lib/types";
+import {
+  evaluatePokerHand,
+  compareHands,
+  HAND_RANKING,
+  type HandResult,
+} from "@/lib/poker-hand";
 
 type HandRow = {
   player_id: string;
@@ -164,6 +170,41 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
         : [],
     [user, data],
   );
+
+  const wildRank = data?.deck?.wild_card?.rank ?? null;
+
+  // Best 5-card hand each player is currently holding, keyed by player_id.
+  const handResults = useMemo(() => {
+    const m = new Map<string, HandResult | null>();
+    if (data && Array.isArray(data.hands)) {
+      for (const h of data.hands) {
+        m.set(h.player_id, evaluatePokerHand(h.cards, wildRank));
+      }
+    }
+    return m;
+  }, [data, wildRank]);
+
+  // The leading hand(s) — used to help the organizer confirm the winner.
+  // Ties are possible (and the organizer breaks them by hand).
+  const bestPlayerIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!data) return ids;
+    let best: HandResult | null = null;
+    for (const h of data.hands) {
+      const r = handResults.get(h.player_id);
+      if (!r) continue;
+      if (!best || compareHands(r, best) > 0) {
+        best = r;
+        ids.clear();
+        ids.add(h.player_id);
+      } else if (compareHands(r, best) === 0) {
+        ids.add(h.player_id);
+      }
+    }
+    return ids;
+  }, [data, handResults]);
+
+  const myHandResult = user ? handResults.get(user.id) ?? null : null;
 
   if (authLoading || !user) {
     return (
@@ -394,6 +435,20 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                   );
                 })}
               </div>
+              {myHandResult && (
+                <div className="mt-3 flex items-baseline gap-2 rounded-lg border border-[var(--v2-gold)]/30 bg-[var(--v2-gold)]/[0.06] px-3 py-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--v2-text-dim)]">
+                    You&rsquo;ve got
+                  </span>
+                  <span className="text-sm font-semibold text-[var(--v2-gold)]">
+                    {myHandResult.label}
+                  </span>
+                  <span className="text-xs text-[var(--v2-text-dim)]">
+                    {myHandResult.detail}
+                    {myHandResult.usedWild && " · using your wild"}
+                  </span>
+                </div>
+              )}
               <div className="mt-2 text-[11px] text-[var(--v2-text-faint)]">
                 {reorderPick == null
                   ? "Optional: tap two cards to reorder them. Cards are earned automatically from your scores."
@@ -421,6 +476,27 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
               Other players&rsquo; cards stay face-down until the event is finished.
             </p>
           )}
+          {data.event_completed &&
+            data.viewer_is_organizer &&
+            bestPlayerIds.size > 0 && (
+              <p className="mb-2 rounded-lg border border-[var(--v2-gold)]/30 bg-[var(--v2-gold)]/[0.06] px-3 py-2 text-[11px] text-[var(--v2-text-dim)]">
+                {bestPlayerIds.size > 1 ? (
+                  <>
+                    {bestPlayerIds.size} players tie for the best hand —
+                    confirm the winner below.
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold text-[var(--v2-gold)]">
+                      {data.hands.find((h) => bestPlayerIds.has(h.player_id))
+                        ?.display_name}
+                    </span>{" "}
+                    holds the best hand. Confirm with{" "}
+                    <span className="font-semibold">Win</span>.
+                  </>
+                )}
+              </p>
+            )}
           <ul className="space-y-2">
             {data.hands.map((h) => {
               const pendingForPlayer = data.pending_swaps.filter(
@@ -430,6 +506,10 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
               const isMe = h.player_id === user.id;
               // Reveal face-up only once the event is over (or for your own hand).
               const revealed = data.event_completed || isMe;
+              const result = handResults.get(h.player_id) ?? null;
+              // Only surface the "leading hand" hint once everyone is revealed.
+              const isBest =
+                data.event_completed && bestPlayerIds.has(h.player_id);
               return (
                 <li
                   key={h.player_id}
@@ -442,6 +522,11 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                       {isMe && <span className="ml-1 text-[10px] text-[var(--v2-text-faint)]">you</span>}
                     </span>
                     <span className="text-xs text-[var(--v2-text-dim)]">{h.cards.length}/5</span>
+                    {isBest && !isWinner && (
+                      <span className="rounded bg-[var(--v2-gold)]/25 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--v2-gold)]">
+                        {bestPlayerIds.size > 1 ? "tied best" : "best hand"}
+                      </span>
+                    )}
                     {pendingForPlayer > 0 && (
                       <span className="rounded bg-[var(--v2-gold)]/20 px-1.5 py-0.5 text-[10px] text-[var(--v2-gold)]">
                         {pendingForPlayer} pending
@@ -473,6 +558,14 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
                       h.cards.map((_, i) => <CardBack key={i} />)
                     )}
                   </div>
+                  {revealed && result && (
+                    <div className="mt-2 text-xs">
+                      <span className="font-semibold text-[var(--v2-text)]">
+                        {result.label}
+                      </span>
+                      <span className="text-[var(--v2-text-dim)]"> · {result.detail}</span>
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -532,8 +625,25 @@ function RulesPanel() {
         </p>
         <p>
           <span className="text-[var(--v2-text)]">Best 5-card poker hand wins the pot</span> — the
-          organizer confirms the winner at the end.
+          app ranks every hand and flags the leader; the organizer confirms the
+          winner at the end.
         </p>
+      </div>
+      <div className="mt-3 border-t border-[var(--v2-border)] pt-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--v2-gold)]">
+          Hand rankings — high to low
+        </div>
+        <ol className="space-y-1">
+          {HAND_RANKING.map((r, i) => (
+            <li key={r.category} className="flex items-baseline gap-2 text-[13px] leading-snug">
+              <span className="w-4 shrink-0 text-right text-[11px] text-[var(--v2-text-faint)]">
+                {i + 1}
+              </span>
+              <span className="shrink-0 font-semibold text-[var(--v2-text)]">{r.label}</span>
+              <span className="text-[var(--v2-text-dim)]">{r.blurb}</span>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );
