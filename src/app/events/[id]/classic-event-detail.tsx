@@ -572,6 +572,9 @@ function LeaderboardView({ standings }: { standings: EventStandings | null }) {
     return <EmptyHint text="Leaderboard appears once scoring starts." />;
   }
   const ranks = computeRanks(standings.leaderboard);
+  // Stableford enabled → show each player's running points alongside strokes.
+  const pointsById = new Map((standings.stableford ?? []).map((s) => [s.player_id, s.points]));
+  const showPoints = standings.stableford != null;
   return (
     <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
       {standings.leaderboard.map((row, idx) => {
@@ -602,6 +605,11 @@ function LeaderboardView({ standings }: { standings: EventStandings | null }) {
               <span className={`w-10 text-right text-xs ${vsParTone(row.vs_par, row.through)}`}>
                 {row.through === 0 ? "" : vsParLabel(row.vs_par)}
               </span>
+              {showPoints && (
+                <span className="w-12 text-right text-xs font-semibold text-green-700">
+                  {row.through === 0 ? "" : `${pointsById.get(row.player_id) ?? 0} pt`}
+                </span>
+              )}
             </button>
             {isOpen && (
               <div className="border-t border-gray-100 bg-gray-50 px-3 py-2">

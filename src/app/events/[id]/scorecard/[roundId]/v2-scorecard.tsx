@@ -295,7 +295,12 @@ export function V2EventScorecard({ id, roundId }: { id: string; roundId: string 
                           key={`fs-${key}-${h.hole_number}`}
                           className={`border-b border-[var(--v2-border)] px-2 py-1.5 text-center text-xs ${cellTone(s, h.par)}`}
                         >
-                          {s ?? "·"}
+                          <span className="block leading-none">{s ?? "·"}</span>
+                          {showPoints && s != null && (
+                            <span className="block text-[8px] font-semibold leading-none text-[var(--v2-gold)]">
+                              {stablefordPoints(s, h.par)}
+                            </span>
+                          )}
                         </td>
                       );
                     })}
@@ -307,7 +312,12 @@ export function V2EventScorecard({ id, roundId }: { id: string; roundId: string 
                           key={`bs-${key}-${h.hole_number}`}
                           className={`border-b border-[var(--v2-border)] px-2 py-1.5 text-center text-xs ${cellTone(s, h.par)}`}
                         >
-                          {s ?? "·"}
+                          <span className="block leading-none">{s ?? "·"}</span>
+                          {showPoints && s != null && (
+                            <span className="block text-[8px] font-semibold leading-none text-[var(--v2-gold)]">
+                              {stablefordPoints(s, h.par)}
+                            </span>
+                          )}
                         </td>
                       );
                     })}

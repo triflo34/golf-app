@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrQueue } from "@/lib/offline-queue";
+import { stablefordPoints } from "@/lib/stableford";
 import type { ScoreEditEntry } from "@/app/api/events/[id]/rounds/[roundId]/edits/route";
 
 // Coalesce a burst of taps on one cell into a single save this long after the
@@ -71,6 +72,7 @@ type RoundLoad = {
   viewer_is_organizer: boolean;
   event_status: string | null;
   poker_enabled: boolean;
+  stableford_enabled: boolean;
 };
 
 function classify(strokes: number, par: number): { label: string; tone: string } {
@@ -95,6 +97,7 @@ type LeaderRow = {
   strokes: number;
   through: number;
   vsPar: number;
+  points: number;
   rank: number;
   is_leader: boolean;
 };
@@ -309,10 +312,10 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
   const leaderboard: LeaderRow[] = useMemo(() => {
     if (!data) return [];
     const parByHole = new Map(data.holes.map((h) => [h.hole_number, h.par]));
-    type Agg = { through: number; strokes: number; vsPar: number };
+    type Agg = { through: number; strokes: number; vsPar: number; points: number };
     if (isScramble) {
       const rows = data.teams.map((tm) => {
-        let a: Agg = { through: 0, strokes: 0, vsPar: 0 };
+        let a: Agg = { through: 0, strokes: 0, vsPar: 0, points: 0 };
         for (const h of data.holes) {
           const s = teamStrokes.get(`${tm.id}:${h.hole_number}`);
           if (s != null) {
@@ -320,6 +323,7 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
               through: a.through + 1,
               strokes: a.strokes + s,
               vsPar: a.vsPar + s - (parByHole.get(h.hole_number) ?? 4),
+              points: 0,
             };
           }
         }
@@ -329,14 +333,16 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
       return rankRows(rows);
     }
     const rows = data.players.map((p) => {
-      let a: Agg = { through: 0, strokes: 0, vsPar: 0 };
+      let a: Agg = { through: 0, strokes: 0, vsPar: 0, points: 0 };
       for (const h of data.holes) {
         const s = playerStrokes.get(`${p.user_id}:${h.hole_number}`);
         if (s != null) {
+          const par = parByHole.get(h.hole_number) ?? 4;
           a = {
             through: a.through + 1,
             strokes: a.strokes + s,
-            vsPar: a.vsPar + s - (parByHole.get(h.hole_number) ?? 4),
+            vsPar: a.vsPar + s - par,
+            points: a.points + stablefordPoints(s, par),
           };
         }
       }
@@ -454,6 +460,8 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
 
   const minHole = holes[0]?.hole_number ?? 1;
   const maxHole = holes[holes.length - 1]?.hole_number ?? 18;
+  // Stableford is individual-only, so only show running points on individual rounds.
+  const showPoints = !!data.stableford_enabled && !isScramble;
   const unitCount = isScramble ? teams.length : players.length;
   const totalCells = holes.length * unitCount;
   const filledCells = isScramble
@@ -581,8 +589,15 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
                         </div>
                       </div>
                     </div>
-                    <div className={`text-lg font-bold ${vsParTone}`}>
-                      {row.through === 0 ? "—" : vsParLabel(row.vsPar)}
+                    <div className="flex flex-col items-end">
+                      <div className={`text-lg font-bold ${vsParTone}`}>
+                        {row.through === 0 ? "—" : vsParLabel(row.vsPar)}
+                      </div>
+                      {showPoints && row.through > 0 && (
+                        <div className="text-[10px] font-semibold text-green-700">
+                          {row.points} pts
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
