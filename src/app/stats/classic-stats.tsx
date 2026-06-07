@@ -329,7 +329,7 @@ function H2HTab({ season }: { season: number | "all" }) {
                             : "text-gray-500 font-semibold"
                         }`}
                       >
-                        {aWon ? "▶" : bWon ? "◀" : "tie"}
+                        {aWon ? "◀" : bWon ? "▶" : "tie"}
                       </div>
                       <div className={bWon ? "font-bold text-green-700" : ""}>
                         {data.b.name}: {h.b_score}
