@@ -66,7 +66,8 @@ export type SideGameKind =
   | "best18"
   | "worst18"
   | "most_same"
-  | "scramble_winners";
+  | "scramble_winners"
+  | "stableford";
 
 export type GolfEvent = {
   id: number;

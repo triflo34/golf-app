@@ -155,6 +155,8 @@ async function bootstrap(): Promise<void> {
   await ensureEventParticipantSeqColumn(sql);
   console.log("[db] bootstrap: ensureRoundsExcludedColumn");
   await ensureRoundsExcludedColumn(sql);
+  console.log("[db] bootstrap: ensureSideGameKinds");
+  await ensureSideGameKinds(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -193,6 +195,27 @@ async function ensureCriticalColumns(): Promise<void> {
   // the event page work. Guarantee them here so SKIP_DB_BOOTSTRAP prod is safe.
   console.log("[db] ensureCriticalColumns: hole_score_snapshots");
   await ensureHoleScoreSnapshotColumns(sql);
+  console.log("[db] ensureCriticalColumns: side_game_kinds");
+  await ensureSideGameKinds(sql);
+}
+
+// The side_games.kind CHECK was created inline, so existing databases reject
+// any kind added later (e.g. 'stableford'). Widen the constraint in place.
+async function ensureSideGameKinds(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'side_games_kind_check'
+          AND pg_get_constraintdef(oid) LIKE '%stableford%'
+      ) THEN
+        ALTER TABLE side_games DROP CONSTRAINT IF EXISTS side_games_kind_check;
+        ALTER TABLE side_games ADD CONSTRAINT side_games_kind_check
+          CHECK (kind IN ('poker','best18','worst18','most_same','scramble_winners','stableford'));
+      END IF;
+    END$$;
+  `);
 }
 
 async function ensureEventInviteColumns(sql: postgres.Sql): Promise<void> {
@@ -432,7 +455,7 @@ const SCHEMA_SQL = `
     id         SERIAL PRIMARY KEY,
     event_id   INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     kind       TEXT NOT NULL
-                CHECK (kind IN ('poker','best18','worst18','most_same','scramble_winners')),
+                CHECK (kind IN ('poker','best18','worst18','most_same','scramble_winners','stableford')),
     pot_cents  INTEGER NOT NULL DEFAULT 0,
     config     JSONB,
     UNIQUE (event_id, kind)

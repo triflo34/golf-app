@@ -17,6 +17,7 @@ import type {
   ScrambleWinners,
   Settlement,
   SideGameSummary,
+  StablefordEntry,
   Worst18Entry,
 } from "@/lib/standings";
 
@@ -602,6 +603,7 @@ const SIDE_GAME_LABEL: Record<SideGameSummary["kind"], string> = {
   worst18: "Worst 18",
   most_same: "Most Same Number",
   scramble_winners: "3-Man Scramble Winners",
+  stableford: "Stableford",
 };
 
 function LeaderboardView({ standings }: { standings: EventStandings | null }) {
@@ -716,6 +718,7 @@ function SideGamesView({
           <div className="px-3.5 py-2.5">
             {g.kind === "best18" && <RankNumberList rows={mapBest(standings.best18)} />}
             {g.kind === "worst18" && <RankNumberList rows={mapWorst(standings.worst18)} />}
+            {g.kind === "stableford" && <RankNumberList rows={mapStableford(standings.stableford)} />}
             {g.kind === "most_same" && <MostSameBlock rows={standings.most_same} />}
             {g.kind === "poker" && (
               <PokerWinnerBlock
@@ -854,6 +857,15 @@ function mapWorst(rows: Worst18Entry[] | null): RankRow[] | null {
     player_id: r.player_id,
     display_name: r.display_name,
     value: r.total,
+    partial: !r.has_full_data,
+  }));
+}
+function mapStableford(rows: StablefordEntry[] | null): RankRow[] | null {
+  if (!rows) return null;
+  return rows.map((r) => ({
+    player_id: r.player_id,
+    display_name: r.display_name,
+    value: r.points,
     partial: !r.has_full_data,
   }));
 }
@@ -1136,6 +1148,16 @@ function FinalPayoutWinner({
       <PayoutWinnerLine
         name={standings.worst18[0].display_name}
         detail={`Total ${standings.worst18[0].total}`}
+        amount={potCents}
+      />
+    );
+  }
+  if (kind === "stableford" && standings.stableford && standings.stableford.length > 0) {
+    const top = standings.stableford[0];
+    return (
+      <PayoutWinnerLine
+        name={top.display_name}
+        detail={`${top.points} pts`}
         amount={potCents}
       />
     );

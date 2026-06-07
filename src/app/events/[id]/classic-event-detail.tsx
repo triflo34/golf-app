@@ -15,6 +15,7 @@ import type {
   ScrambleWinners,
   Settlement,
   SideGameSummary,
+  StablefordEntry,
   Worst18Entry,
 } from "@/lib/standings";
 
@@ -554,6 +555,7 @@ const SIDE_GAME_LABEL: Record<SideGameSummary["kind"], string> = {
   worst18: "Worst 18",
   most_same: "Most Same Number",
   scramble_winners: "3-Man Scramble Winners",
+  stableford: "Stableford",
 };
 
 function vsParTone(vsPar: number, through: number): string {
@@ -677,6 +679,7 @@ function SideGamesView({
           <div className="px-3 py-2">
             {g.kind === "best18" && <Best18Block rows={standings.best18} />}
             {g.kind === "worst18" && <Worst18Block rows={standings.worst18} />}
+            {g.kind === "stableford" && <StablefordBlock rows={standings.stableford} />}
             {g.kind === "most_same" && <MostSameBlock rows={standings.most_same} />}
             {g.kind === "poker" && (
               <PokerWinnerBlock
@@ -823,6 +826,25 @@ function Worst18Block({ rows }: { rows: Worst18Entry[] | null }) {
             <span className="text-[10px] text-amber-600">partial</span>
           )}
           <span className="font-semibold text-gray-900">{r.total || "–"}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StablefordBlock({ rows }: { rows: StablefordEntry[] | null }) {
+  if (!rows || rows.length === 0)
+    return <p className="text-xs text-gray-500">No scores yet.</p>;
+  return (
+    <ul className="text-sm">
+      {rows.map((r, idx) => (
+        <li key={r.player_id} className="flex items-center gap-2 py-1">
+          <span className="w-5 text-xs text-gray-400 text-right">{idx + 1}</span>
+          <span className="flex-1 truncate text-gray-900">{r.display_name}</span>
+          {!r.has_full_data && (
+            <span className="text-[10px] text-amber-600">partial</span>
+          )}
+          <span className="font-semibold text-gray-900">{r.points || "–"} pts</span>
         </li>
       ))}
     </ul>
@@ -1087,6 +1109,16 @@ function FinalPayoutWinner({
       <PayoutWinnerLine
         name={standings.worst18[0].display_name}
         detail={`Total ${standings.worst18[0].total}`}
+        amount={potCents}
+      />
+    );
+  }
+  if (kind === "stableford" && standings.stableford && standings.stableford.length > 0) {
+    const top = standings.stableford[0];
+    return (
+      <PayoutWinnerLine
+        name={top.display_name}
+        detail={`${top.points} pts`}
         amount={potCents}
       />
     );

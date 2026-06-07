@@ -38,6 +38,21 @@ export type MostSameEntry = {
   count: number;
 };
 
+export type StablefordEntry = {
+  player_id: string;
+  display_name: string;
+  points: number; // total Stableford points across rounds (most wins)
+  has_full_data: boolean; // every hole of every round scored
+};
+
+// Points by score-to-par: double bogey or worse = 0, bogey 1, par 2, birdie 4,
+// eagle 8, albatross 16. Bad holes cap at zero so they don't sink the round.
+export function stablefordPoints(strokes: number, par: number): number {
+  const diff = strokes - par;
+  if (diff >= 2) return 0;
+  return 2 ** (1 - diff);
+}
+
 export type ScrambleTeamStanding = {
   team_id: number;
   name: string;
@@ -54,7 +69,7 @@ export type ScrambleWinners = {
 };
 
 export type SideGameSummary = {
-  kind: "poker" | "best18" | "worst18" | "most_same" | "scramble_winners";
+  kind: "poker" | "best18" | "worst18" | "most_same" | "scramble_winners" | "stableford";
   pot_cents: number;
 };
 
@@ -96,6 +111,7 @@ export type EventStandings = {
   best18: Best18Entry[] | null;
   worst18: Worst18Entry[] | null;
   most_same: MostSameEntry[] | null;
+  stableford: StablefordEntry[] | null;
   scramble_winners: ScrambleWinners | null;
   poker: PokerStandings | null;
   settlement: Settlement | null;
@@ -159,6 +175,7 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
       best18: null,
       worst18: null,
       most_same: null,
+      stableford: null,
       scramble_winners: null,
       poker: null,
       settlement: null,
@@ -328,6 +345,30 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
       };
     });
     worst18.sort((a, b) => b.total - a.total);
+  }
+
+  // ---- Stableford ---- points by score-to-par across every round; most wins.
+  let stableford: StablefordEntry[] | null = null;
+  if (enabledSet.has("stableford")) {
+    stableford = players.map((p) => {
+      let points = 0;
+      let full = true;
+      for (const r of rounds) {
+        const rs = scoresByPlayerRound.get(p.user_id)?.get(r.id) ?? [];
+        for (const s of rs) {
+          const par = s.par ?? parByHole.get(s.hole_number) ?? 4;
+          points += stablefordPoints(s.strokes, par);
+        }
+        if (rs.length !== r.hole_count) full = false;
+      }
+      return {
+        player_id: p.user_id,
+        display_name: p.display_name,
+        points,
+        has_full_data: full,
+      };
+    });
+    stableford.sort((a, b) => b.points - a.points);
   }
 
   // ---- Most Same Number (round 1 only) ----
@@ -520,6 +561,7 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
     best18,
     worst18,
     mostSame,
+    stableford,
     scrambleWinners,
     poker,
   });
@@ -529,6 +571,7 @@ export async function loadEventStandings(eventId: number): Promise<EventStanding
     best18,
     worst18,
     most_same: mostSame,
+    stableford,
     scramble_winners: scrambleWinners,
     poker,
     settlement,
@@ -584,6 +627,7 @@ function computeSettlement(args: {
   best18: Best18Entry[] | null;
   worst18: Worst18Entry[] | null;
   mostSame: MostSameEntry[] | null;
+  stableford: StablefordEntry[] | null;
   scrambleWinners: ScrambleWinners | null;
   poker: PokerStandings | null;
 }): Settlement {
@@ -595,6 +639,7 @@ function computeSettlement(args: {
     best18,
     worst18,
     mostSame,
+    stableford,
     scrambleWinners,
     poker,
   } = args;
@@ -649,6 +694,11 @@ function computeSettlement(args: {
     potByKind.get("most_same") ?? 0,
     tiedWinners(mostSame, (r) => r.count, "max", (r) => r.player_id),
     "Most Same Number",
+  );
+  settlePool(
+    potByKind.get("stableford") ?? 0,
+    tiedWinners(stableford, (r) => r.points, "max", (r) => r.player_id),
+    "Stableford",
   );
   if (scrambleWinners?.winner_team_id != null) {
     const team = scrambleWinners.team_standings.find(
