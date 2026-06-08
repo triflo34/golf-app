@@ -41,12 +41,15 @@ export function V2Avatar({
   className = "",
 }: Props) {
   const px = `${size}px`;
-  // Initials inside a gold avatar read better in green-deep than off-white.
+  // Avatar backgrounds (gold/silver/bronze gradients, tone hexes) are the same
+  // in light + dark, so the ink is theme-independent: dark green reads on the
+  // bright gold/silver/bronze badges, off-white on the saturated tones. (Do NOT
+  // use --v2-green-deep here — it flips to white in light mode for button text.)
   const fg =
     leader || tone === "gold"
-      ? "var(--v2-green-deep)"
+      ? "#1a2e1a"
       : tone === "silver" || tone === "bronze"
-        ? "var(--v2-green-deep)"
+        ? "#1a2e1a"
         : "#fff";
 
   const background = leader
