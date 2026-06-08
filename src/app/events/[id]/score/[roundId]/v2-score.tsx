@@ -82,11 +82,11 @@ type RoundLoad = {
 function scoreType(strokes: number, par: number): { label: string; chip: string } {
   const d = strokes - par;
   if (d <= -2) return { label: "Eagle+", chip: "bg-[var(--v2-gold)]/25 text-[var(--v2-gold-bright)]" };
-  if (d === -1) return { label: "Birdie", chip: "bg-red-500/25 text-red-300" };
+  if (d === -1) return { label: "Birdie", chip: "bg-red-500/25 text-[var(--v2-red-text)]" };
   if (d === 0) return { label: "Par", chip: "bg-[var(--v2-sage)]/20 text-[var(--v2-score-soft)]" };
-  if (d === 1) return { label: "Bogey", chip: "bg-blue-500/20 text-blue-300" };
-  if (d === 2) return { label: "Double", chip: "bg-blue-700/40 text-blue-200" };
-  return { label: `+${d}`, chip: "bg-white/5 text-[var(--v2-text-dim)]" };
+  if (d === 1) return { label: "Bogey", chip: "bg-[var(--v2-blue-fill)] text-[var(--v2-blue-text)]" };
+  if (d === 2) return { label: "Double", chip: "bg-[var(--v2-blue-fill-strong)] text-[var(--v2-blue-text-strong)]" };
+  return { label: `+${d}`, chip: "bg-[var(--v2-chip-neutral)] text-[var(--v2-text-dim)]" };
 }
 
 function vsParLabel(n: number): string {
@@ -97,7 +97,7 @@ function vsParLabel(n: number): string {
 function vsParTone(vsPar: number, through: number): string {
   if (through === 0) return "text-[var(--v2-text-dim)]";
   if (vsPar < 0) return "text-[var(--v2-sage)]";
-  if (vsPar > 0) return "text-red-300";
+  if (vsPar > 0) return "text-[var(--v2-red-text)]";
   return "text-[var(--v2-text-dim)]";
 }
 
@@ -367,7 +367,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
         <Link href={`/events/${id}`} className="text-sm text-[var(--v2-gold)]">
           ← Event
         </Link>
-        <div className="mt-3 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+        <div className="mt-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
           {error}
         </div>
       </div>
@@ -670,7 +670,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
         </div>
 
         {error && (
-          <div className="mt-3 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          <div className="mt-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
             {error}
           </div>
         )}
@@ -707,7 +707,7 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
                       )}
                       {(!e.subject_name || e.subject_name === e.edited_by_name) && <>set</>} hole {e.hole_number}{" "}
                       {e.new_strokes == null ? (
-                        <>to <span className="font-semibold text-red-300">cleared</span></>
+                        <>to <span className="font-semibold text-[var(--v2-red-text)]">cleared</span></>
                       ) : e.old_strokes == null ? (
                         <>to <span className="font-semibold text-[var(--v2-sage)]">{e.new_strokes}</span></>
                       ) : (

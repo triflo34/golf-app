@@ -99,11 +99,11 @@ export function V2CourseDetail() {
       {c.external_id &&
         c.last_fetched_at &&
         daysAgo(c.last_fetched_at) >= 30 && (
-          <V2Card className="mb-4 border-amber-700 bg-amber-950/30">
-            <div className="font-semibold text-amber-300">
+          <V2Card className="mb-4 border-[var(--v2-warn-border)] bg-[var(--v2-warn-bg)]">
+            <div className="font-semibold text-[var(--v2-warn-text)]">
               Course data may be out of date
             </div>
-            <div className="text-xs text-amber-200/80">
+            <div className="text-xs text-[var(--v2-warn-text-strong)]">
               Last refreshed {daysAgo(c.last_fetched_at)} days ago.
               {user?.is_admin
                 ? " Use the admin tools below to pull fresh data."
@@ -121,7 +121,7 @@ export function V2CourseDetail() {
             {user?.is_admin && (
               <Link
                 href={`/courses/${c.id}/edit-holes`}
-                className="rounded-full border border-amber-700 px-2 py-1 text-xs font-medium text-amber-300 hover:bg-amber-950/40"
+                className="rounded-full border border-[var(--v2-warn-border)] px-2 py-1 text-xs font-medium text-[var(--v2-warn-text)] hover:bg-[var(--v2-warn-bg)]"
               >
                 Edit holes
               </Link>
@@ -290,7 +290,7 @@ function V2AdminRenamePanel({
         </div>
       </div>
       {error && (
-        <div className="mt-2 rounded border border-red-800 bg-red-950/60 px-2 py-1 text-xs text-red-300">
+        <div className="mt-2 rounded border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-2 py-1 text-xs text-[var(--v2-red-text)]">
           {error}
         </div>
       )}
@@ -404,7 +404,7 @@ function V2AdminApiPanel({
         </div>
       )}
       {error && (
-        <div className="mt-2 rounded border border-red-800 bg-red-950/60 px-2 py-1 text-xs text-red-300">
+        <div className="mt-2 rounded border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-2 py-1 text-xs text-[var(--v2-red-text)]">
           {error}
         </div>
       )}
@@ -681,8 +681,8 @@ function FavoriteToggle({
       aria-label={fav ? "Unfavorite" : "Favorite"}
       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl transition ${
         fav
-          ? "bg-red-950/60 text-red-300 hover:bg-red-950"
-          : "bg-[var(--v2-surface-2)] text-[var(--v2-muted)] hover:text-red-300"
+          ? "bg-[var(--v2-danger-bg)] text-[var(--v2-red-text)] hover:bg-[var(--v2-danger-bg)]"
+          : "bg-[var(--v2-surface-2)] text-[var(--v2-muted)] hover:text-[var(--v2-red-text)]"
       } disabled:opacity-50`}
     >
       {fav ? "♥" : "♡"}

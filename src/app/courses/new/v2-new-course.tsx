@@ -190,8 +190,8 @@ export function V2NewCourse() {
           <div className="text-xs text-[var(--v2-muted)]">Searching…</div>
         )}
         {rateLimited ? (
-          <div className="rounded border border-orange-700 bg-orange-950/40 p-2.5 text-xs text-orange-200">
-            <div className="mb-0.5 font-semibold text-orange-300">
+          <div className="rounded border border-[var(--v2-warn-border)] bg-[var(--v2-warn-bg)] p-2.5 text-xs text-[var(--v2-warn-text-strong)]">
+            <div className="mb-0.5 font-semibold text-[var(--v2-warn-text)]">
               ⏱ Daily search limit reached
             </div>
             <div>
@@ -201,7 +201,7 @@ export function V2NewCourse() {
             </div>
           </div>
         ) : searchError ? (
-          <div className="rounded border border-amber-700 bg-amber-950/40 px-2 py-1 text-xs text-amber-200">
+          <div className="rounded border border-[var(--v2-warn-border)] bg-[var(--v2-warn-bg)] px-2 py-1 text-xs text-[var(--v2-warn-text-strong)]">
             {searchError}
           </div>
         ) : null}
@@ -258,7 +258,7 @@ export function V2NewCourse() {
                         className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
                           r.source === "local"
                             ? "bg-[var(--v2-score)]/20 text-[var(--v2-score-soft)]"
-                            : "bg-blue-500/20 text-blue-300"
+                            : "bg-[var(--v2-blue-fill)] text-[var(--v2-blue-text)]"
                         }`}
                       >
                         {r.source === "local" ? "saved" : "import"}
@@ -271,7 +271,7 @@ export function V2NewCourse() {
                         ` · ${r.holes} holes · par ${r.par}`}
                     </div>
                     {importing && (
-                      <div className="mt-0.5 text-[10px] text-blue-300">
+                      <div className="mt-0.5 text-[10px] text-[var(--v2-blue-text)]">
                         Importing…
                       </div>
                     )}
@@ -290,7 +290,7 @@ export function V2NewCourse() {
       </details>
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-950/60 p-3 text-sm text-red-300">
+        <div className="mb-4 rounded-lg bg-[var(--v2-danger-bg)] p-3 text-sm text-[var(--v2-red-text)]">
           {error}
         </div>
       )}

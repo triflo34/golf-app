@@ -223,7 +223,7 @@ export function V2Admin() {
                   <div className="truncate text-sm font-semibold text-[var(--v2-text)]">
                     {u.display_name}
                     {u.hidden && (
-                      <span className="ml-2 rounded bg-red-500/20 px-2 py-0.5 text-[10px] font-semibold text-red-300">
+                      <span className="ml-2 rounded bg-red-500/20 px-2 py-0.5 text-[10px] font-semibold text-[var(--v2-red-text)]">
                         hidden
                       </span>
                     )}
@@ -348,7 +348,7 @@ function MergeModal({
       </p>
 
       {error && (
-        <div className="mb-3 rounded-lg border border-red-800 bg-red-950/60 p-2.5 text-sm text-red-300">
+        <div className="mb-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] p-2.5 text-sm text-[var(--v2-red-text)]">
           {error}
         </div>
       )}
@@ -456,7 +456,7 @@ function PromoteModal({
       </p>
 
       {error && (
-        <div className="mb-3 rounded-lg border border-red-800 bg-red-950/60 p-2.5 text-sm text-red-300">
+        <div className="mb-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] p-2.5 text-sm text-[var(--v2-red-text)]">
           {error}
         </div>
       )}
@@ -550,7 +550,7 @@ function ResetPasswordModal({
       <p className="mb-3 text-xs text-[var(--v2-text-dim)]">Set a new password for @{user.username}</p>
 
       {error && (
-        <div className="mb-3 rounded-lg border border-red-800 bg-red-950/60 p-2.5 text-sm text-red-300">
+        <div className="mb-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] p-2.5 text-sm text-[var(--v2-red-text)]">
           {error}
         </div>
       )}

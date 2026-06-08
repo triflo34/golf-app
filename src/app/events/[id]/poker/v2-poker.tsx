@@ -220,7 +220,7 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
           ← Event
         </Link>
         {error && (
-          <div className="mt-3 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          <div className="mt-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
             {error}
           </div>
         )}
@@ -357,7 +357,7 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
         {showRules && <RulesPanel />}
 
         {error && (
-          <div className="rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          <div className="rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
             {error}
           </div>
         )}
@@ -592,10 +592,10 @@ export function V2Poker({ id, backRound }: { id: string; backRound?: string }) {
 }
 
 const RULES: { label: string; desc: string; tone: string }[] = [
-  { label: "Birdie or better", desc: "Draw 2 cards — and the community wild re-rolls.", tone: "bg-red-500/20 text-red-300" },
+  { label: "Birdie or better", desc: "Draw 2 cards — and the community wild re-rolls.", tone: "bg-red-500/20 text-[var(--v2-red-text)]" },
   { label: "Par", desc: "Draw 1 card.", tone: "bg-[var(--v2-sage)]/20 text-[var(--v2-score-soft)]" },
-  { label: "Bogey", desc: "No card on its own — but every 2nd bogey earns 1 card.", tone: "bg-blue-500/20 text-blue-300" },
-  { label: "Double or worse", desc: "No card.", tone: "bg-white/5 text-[var(--v2-text-dim)]" },
+  { label: "Bogey", desc: "No card on its own — but every 2nd bogey earns 1 card.", tone: "bg-[var(--v2-blue-fill)] text-[var(--v2-blue-text)]" },
+  { label: "Double or worse", desc: "No card.", tone: "bg-[var(--v2-chip-neutral)] text-[var(--v2-text-dim)]" },
 ];
 
 function RulesPanel() {

@@ -68,10 +68,31 @@ html[data-ui="v2"] {
   --v2-amber-border: rgba(226, 133, 90, 0.4);
 
   /* semantic surfaces for inline danger/warn/success blocks (use these in
-     components instead of bg-red-950/border-red-800 so they theme correctly) */
-  --v2-danger-bg: rgba(226, 75, 74, 0.12);
-  --v2-danger-border: rgba(226, 75, 74, 0.4);
-  --v2-danger-text: #f0a3a2;
+     components instead of bg-red-950/border-red-800 so they theme correctly).
+     Dark values match the original raw Tailwind classes exactly. */
+  --v2-danger-bg: rgba(69, 10, 10, 0.6);   /* = bg-red-950/60 */
+  --v2-danger-border: #991b1b;             /* = border-red-800 */
+  --v2-danger-text: #fca5a5;               /* = text-red-300 */
+  --v2-red-text: #fca5a5;                  /* themeable red for scores + errors (= red-300) */
+
+  /* card elevation — none in dark (border-only), subtle in light */
+  --v2-card-shadow: none;
+
+  /* traditional golf score-chip colours (bogey/double = blue, triple+ = neutral).
+     Dark values match the original raw classes; light values stay readable. */
+  --v2-blue-fill: rgba(59, 130, 246, 0.2);     /* = blue-500/20 */
+  --v2-blue-fill-strong: rgba(29, 78, 216, 0.4); /* = blue-700/40 */
+  --v2-blue-text: #93c5fd;                     /* = blue-300 */
+  --v2-blue-text-strong: #bfdbfe;              /* = blue-200 */
+  --v2-chip-neutral: rgba(255, 255, 255, 0.05);
+  --v2-chip-neutral-strong: rgba(255, 255, 255, 0.1);
+
+  /* warning panels (amber/orange). Dark matches the original raw classes. */
+  --v2-warn-bg: rgba(69, 26, 3, 0.4);        /* ≈ amber-950/40 */
+  --v2-warn-border: #b45309;                 /* amber-700 */
+  --v2-warn-fill: rgba(245, 158, 11, 0.2);   /* ≈ amber-500/20 */
+  --v2-warn-text: #fcd34d;                   /* amber-300 */
+  --v2-warn-text-strong: #fde68a;            /* amber-200 */
 
   /* gradients */
   --v2-card-grad: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(20, 30, 20, 0.6) 100%);
@@ -83,67 +104,86 @@ html[data-ui="v2"] {
   --v2-bronze: #d85a30;
 }
 
-/* ---- LIGHT theme: same token names, warm-paper palette that keeps the
-   gold + sage identity. Gold is deepened for text/border contrast on light;
-   bright gold is reserved for fills/highlights. Tune freely — every screen
-   reads from here. ---- */
+/* ---- LIGHT theme: follows the ORIGINAL (classic) UI colour scheme — green-50
+   backgrounds, white cards with a soft shadow, gray text hierarchy, and
+   green-700 as the primary accent (the v2 "gold" accent maps to classic green
+   in light). Every screen reads from here, so the v2 layout keeps its shape
+   while wearing the classic palette. Scoped to v2 only; classic pages untouched. ---- */
 html[data-ui="v2"][data-theme="light"] {
-  --v2-bg-0: #e7ece1;
-  --v2-bg-1: #f6f8f2;
-  --v2-bg-2: #eef2e8;
-  --v2-bg: #f6f8f2;
-  --v2-green-deep: #1a2e1a;
+  --v2-bg-0: #e6f4ea;          /* nav / recessed — slightly deeper green-50 */
+  --v2-bg-1: #f0fdf4;          /* classic --background (green-50) */
+  --v2-bg-2: #e9f9ef;          /* gentle gradient target */
+  --v2-bg: #f0fdf4;
+  --v2-green-deep: #ffffff;    /* text-on-accent → white, like classic green buttons */
 
-  --v2-gold: #9a7d1e;          /* deep gold reads on light */
-  --v2-gold-bright: #c79b22;
-  --v2-gold-deep: #806615;
-  --v2-accent: #9a7d1e;
-  --v2-accent-soft: #c79b22;
+  /* primary accent → classic green (the "gold" of light mode) */
+  --v2-gold: #15803d;          /* green-700 */
+  --v2-gold-bright: #16a34a;   /* green-600 */
+  --v2-gold-deep: #166534;     /* green-800 */
+  --v2-accent: #15803d;
+  --v2-accent-soft: #16a34a;
 
-  --v2-sage: #5f8a33;          /* deepened for text contrast */
+  --v2-sage: #15803d;          /* under-par / success → classic green */
   --v2-coral: #c14a22;
   --v2-pink: #c13d68;
   --v2-purple: #5b53c4;
-  --v2-red: #c0392b;
-  --v2-amber-warn: #c2691f;
-  --v2-score: #5f8a33;
-  --v2-score-soft: #6f9b3f;
+  --v2-red: #dc2626;           /* classic red-600 */
+  --v2-amber-warn: #b45309;    /* amber-700 */
+  --v2-score: #15803d;
+  --v2-score-soft: #16a34a;
 
-  --v2-fg: #18241a;
-  --v2-text: #18241a;
-  --v2-text-dim: #566256;
-  --v2-text-faint: #8a978a;
-  --v2-muted: #566256;
+  --v2-fg: #14532d;            /* classic --foreground (green-900) */
+  --v2-text: #14532d;
+  --v2-text-dim: #4b5563;      /* gray-600 */
+  --v2-text-faint: #9ca3af;    /* gray-400 */
+  --v2-muted: #4b5563;
 
-  --v2-surface: rgba(255, 255, 255, 0.88);
+  --v2-surface: #ffffff;
   --v2-surface-2: #ffffff;
-  --v2-well: rgba(24, 36, 26, 0.06);
-  --v2-border: rgba(154, 125, 30, 0.22);
-  --v2-border-hover: rgba(154, 125, 30, 0.4);
+  --v2-well: #f3f4f6;          /* gray-100 recessed track */
+  --v2-border: #e5e7eb;        /* gray-200 card outline */
+  --v2-border-hover: #d1d5db;  /* gray-300 */
 
-  --v2-gold-fill: rgba(212, 175, 55, 0.16);
-  --v2-gold-fill-strong: rgba(212, 175, 55, 0.22);
-  --v2-gold-border: rgba(154, 125, 30, 0.35);
-  --v2-gold-border-mid: rgba(154, 125, 30, 0.45);
-  --v2-gold-border-strong: rgba(154, 125, 30, 0.55);
-  --v2-gold-glow: rgba(212, 175, 55, 0.22);
-  --v2-gold-flash: rgba(212, 175, 55, 0.3);
-  --v2-sage-fill: rgba(111, 155, 63, 0.16);
-  --v2-sage-fill-soft: rgba(111, 155, 63, 0.1);
-  --v2-sage-border: rgba(111, 155, 63, 0.35);
-  --v2-red-fill: rgba(192, 57, 43, 0.12);
-  --v2-amber-fill: rgba(194, 105, 31, 0.12);
-  --v2-amber-border: rgba(194, 105, 31, 0.4);
+  /* selected/accent fills → green tints */
+  --v2-gold-fill: rgba(21, 128, 61, 0.1);
+  --v2-gold-fill-strong: rgba(21, 128, 61, 0.14);
+  --v2-gold-border: rgba(21, 128, 61, 0.3);
+  --v2-gold-border-mid: rgba(21, 128, 61, 0.4);
+  --v2-gold-border-strong: rgba(21, 128, 61, 0.5);
+  --v2-gold-glow: rgba(21, 128, 61, 0.12);
+  --v2-gold-flash: rgba(21, 128, 61, 0.18);
+  --v2-sage-fill: rgba(21, 128, 61, 0.1);
+  --v2-sage-fill-soft: rgba(21, 128, 61, 0.07);
+  --v2-sage-border: rgba(21, 128, 61, 0.3);
+  --v2-red-fill: rgba(220, 38, 38, 0.1);
+  --v2-amber-fill: rgba(180, 83, 9, 0.1);
+  --v2-amber-border: rgba(180, 83, 9, 0.3);
 
-  --v2-danger-bg: rgba(192, 57, 43, 0.1);
-  --v2-danger-border: rgba(192, 57, 43, 0.35);
-  --v2-danger-text: #9a2820;
+  --v2-danger-bg: rgba(220, 38, 38, 0.08);   /* red-50-ish */
+  --v2-danger-border: rgba(220, 38, 38, 0.3);
+  --v2-danger-text: #b91c1c;                 /* red-700 */
+  --v2-red-text: #c0392b;                    /* readable red for scores + errors */
 
-  --v2-card-grad: linear-gradient(135deg, rgba(212, 175, 55, 0.14) 0%, rgba(255, 255, 255, 0.9) 100%);
-  --v2-card-live-bg: linear-gradient(135deg, #eaf3e2 0%, #f6f8f2 100%);
-  --v2-lb-you-bg: linear-gradient(90deg, rgba(111, 155, 63, 0.14) 0%, rgba(255, 255, 255, 0.85) 70%);
+  --v2-card-shadow: 0 1px 3px 0 rgba(20, 40, 25, 0.08), 0 1px 2px -1px rgba(20, 40, 25, 0.06);
 
-  --v2-silver: #8a8880;
+  --v2-blue-fill: rgba(37, 99, 235, 0.12);
+  --v2-blue-fill-strong: rgba(37, 99, 235, 0.18);
+  --v2-blue-text: #1d4ed8;       /* blue-700 */
+  --v2-blue-text-strong: #1e40af; /* blue-800 */
+  --v2-chip-neutral: rgba(20, 40, 25, 0.06);
+  --v2-chip-neutral-strong: rgba(20, 40, 25, 0.08);
+
+  --v2-warn-bg: rgba(180, 83, 9, 0.08);
+  --v2-warn-border: rgba(180, 83, 9, 0.35);
+  --v2-warn-fill: rgba(180, 83, 9, 0.12);
+  --v2-warn-text: #b45309;       /* amber-700 */
+  --v2-warn-text-strong: #92400e; /* amber-800 */
+
+  --v2-card-grad: linear-gradient(135deg, rgba(21, 128, 61, 0.08) 0%, #ffffff 100%);
+  --v2-card-live-bg: linear-gradient(135deg, #e6f7ec 0%, #f0fdf4 100%);
+  --v2-lb-you-bg: linear-gradient(90deg, rgba(21, 128, 61, 0.1) 0%, #ffffff 70%);
+
+  --v2-silver: #9ca3af;
   --v2-bronze: #b0532a;
 }
 
@@ -240,6 +280,7 @@ html[data-ui="v2"] .v2-card {
   border: 0.5px solid var(--v2-border);
   border-radius: 13px;
   padding: 14px;
+  box-shadow: var(--v2-card-shadow);
   transition: border-color 0.2s ease;
 }
 
@@ -337,6 +378,7 @@ html[data-ui="v2"] .v2-lb-row {
   background: var(--v2-surface);
   border: 0.5px solid var(--v2-border);
   border-radius: 13px;
+  box-shadow: var(--v2-card-shadow);
   transition: transform 0.15s ease, border-color 0.2s ease;
 }
 html[data-ui="v2"] .v2-lb-row:hover {

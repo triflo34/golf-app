@@ -41,7 +41,7 @@ export function V2PlayerProfileFull({ playerId }: { playerId: string }) {
         ← Back
       </Link>
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">{error}</div>
+        <div className="mt-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">{error}</div>
       ) : !stats ? (
         <div className="mt-8 text-center text-sm text-[var(--v2-text-dim)]">Loading…</div>
       ) : (

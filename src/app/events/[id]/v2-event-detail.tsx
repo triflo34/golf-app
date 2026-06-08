@@ -98,7 +98,7 @@ function vsParLabel(n: number): string {
 function vsParTone(vsPar: number, through: number): string {
   if (through === 0) return "text-[var(--v2-text-dim)]";
   if (vsPar < 0) return "text-[var(--v2-sage)]";
-  if (vsPar > 0) return "text-red-300";
+  if (vsPar > 0) return "text-[var(--v2-red-text)]";
   return "text-[var(--v2-text-dim)]";
 }
 
@@ -186,7 +186,7 @@ export function V2EventDetail({ id }: { id: string }) {
         <Link href="/events" className="text-sm text-[var(--v2-gold)]">
           ← Events
         </Link>
-        <div className="mt-4 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+        <div className="mt-4 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
           {error}
         </div>
       </div>
@@ -351,7 +351,7 @@ function EmptyHint({ text }: { text: string }) {
 function StandingsError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="v2-card">
-      <div className="text-sm font-medium text-red-300">Couldn&apos;t load standings</div>
+      <div className="text-sm font-medium text-[var(--v2-red-text)]">Couldn&apos;t load standings</div>
       <div className="mt-1 text-xs text-[var(--v2-text-dim)] break-words">{message}</div>
       <button
         type="button"
@@ -862,7 +862,7 @@ function PokerWinnerBlock({
         Open poker hand →
       </Link>
       {err && (
-        <div className="mt-2 rounded-md border border-red-800 bg-red-950/60 px-2 py-1 text-xs text-red-300">
+        <div className="mt-2 rounded-md border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-2 py-1 text-xs text-[var(--v2-red-text)]">
           {err}
         </div>
       )}
@@ -1047,7 +1047,7 @@ function ScrambleWinnersBlock({
   return (
     <div>
       {err && (
-        <div className="mb-2 rounded-md border border-red-800 bg-red-950/60 px-2 py-1 text-xs text-red-300">
+        <div className="mb-2 rounded-md border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-2 py-1 text-xs text-[var(--v2-red-text)]">
           {err}
         </div>
       )}
@@ -1203,7 +1203,7 @@ function SettlementBlock({ settlement }: { settlement: Settlement }) {
                 in {formatMoney(p.paid_cents)} · won {formatMoney(p.won_cents)}
               </span>
               <span
-                className={`w-16 text-right font-semibold ${p.net_cents > 0 ? "text-[var(--v2-sage)]" : p.net_cents < 0 ? "text-red-300" : "text-[var(--v2-text-dim)]"}`}
+                className={`w-16 text-right font-semibold ${p.net_cents > 0 ? "text-[var(--v2-sage)]" : p.net_cents < 0 ? "text-[var(--v2-red-text)]" : "text-[var(--v2-text-dim)]"}`}
               >
                 {net(p.net_cents)}
               </span>

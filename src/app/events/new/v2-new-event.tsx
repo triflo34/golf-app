@@ -385,7 +385,7 @@ export function V2NewEvent() {
         </label>
 
         {error && (
-          <div className="rounded-md border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+          <div className="rounded-md border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
             {error}
           </div>
         )}

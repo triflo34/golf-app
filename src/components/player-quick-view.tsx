@@ -88,7 +88,7 @@ export function V2PlayerQuickView({
         onClick={(e) => e.stopPropagation()}
       >
         {error ? (
-          <div className="py-6 text-center text-sm text-red-300">{error}</div>
+          <div className="py-6 text-center text-sm text-[var(--v2-red-text)]">{error}</div>
         ) : !stats ? (
           <div className="py-8 text-center text-sm text-[var(--v2-text-dim)]">Loading…</div>
         ) : (

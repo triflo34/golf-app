@@ -118,7 +118,7 @@ export function V2Round() {
       </Link>
 
       {data.excluded && (
-        <div className="mt-3 rounded-xl border border-amber-700 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+        <div className="mt-3 rounded-xl border border-[var(--v2-warn-border)] bg-[var(--v2-warn-bg)] px-3 py-2 text-xs text-[var(--v2-warn-text-strong)]">
           <span className="font-semibold">Excluded from stats.</span> This
           round is hidden from the leaderboard, handicap, head-to-head, and
           all aggregates.
@@ -134,12 +134,12 @@ export function V2Round() {
             {data.course_name} →
           </Link>
           {data.hole_count === 9 && (
-            <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300">
+            <span className="rounded bg-[var(--v2-blue-fill)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--v2-blue-text)]">
               9 holes
             </span>
           )}
           {data.excluded && (
-            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+            <span className="rounded bg-[var(--v2-warn-fill)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--v2-warn-text)]">
               excluded
             </span>
           )}
@@ -223,16 +223,16 @@ export function V2Round() {
                     <span className="rounded bg-[var(--v2-accent)]/20 px-2 py-0.5 text-[var(--v2-accent)]">
                       🦅 {s.hole_stats!.eagles}
                     </span>
-                    <span className="rounded bg-red-500/20 px-2 py-0.5 text-red-300">
+                    <span className="rounded bg-red-500/20 px-2 py-0.5 text-[var(--v2-red-text)]">
                       Birdies {s.hole_stats!.birdies}
                     </span>
                     <span className="rounded bg-[var(--v2-score)]/20 px-2 py-0.5 text-[var(--v2-score-soft)]">
                       Pars {s.hole_stats!.pars}
                     </span>
-                    <span className="rounded bg-blue-500/25 px-2 py-0.5 text-blue-300">
+                    <span className="rounded bg-[var(--v2-blue-fill)] px-2 py-0.5 text-[var(--v2-blue-text)]">
                       Bogeys {s.hole_stats!.bogeys}
                     </span>
-                    <span className="rounded bg-blue-700/40 px-2 py-0.5 text-blue-200">
+                    <span className="rounded bg-[var(--v2-blue-fill-strong)] px-2 py-0.5 text-[var(--v2-blue-text-strong)]">
                       2+ {s.hole_stats!.doubles_plus}
                     </span>
                   </div>
@@ -254,7 +254,7 @@ export function V2Round() {
             {!confirming ? (
               <button
                 onClick={() => setConfirming(true)}
-                className="flex-1 rounded-2xl border border-red-900 bg-transparent py-2.5 text-sm font-semibold text-red-400 hover:bg-red-950/40"
+                className="flex-1 rounded-2xl border border-[var(--v2-danger-border)] bg-transparent py-2.5 text-sm font-semibold text-red-400 hover:bg-[var(--v2-danger-bg)]"
               >
                 Delete
               </button>
@@ -283,7 +283,7 @@ export function V2Round() {
             className={`w-full rounded-2xl border py-2 text-sm font-medium transition disabled:opacity-50 ${
               data.excluded
                 ? "border-[var(--v2-accent)]/40 bg-[var(--v2-accent)]/10 text-[var(--v2-accent)] hover:bg-[var(--v2-accent)]/20"
-                : "border-amber-800 bg-transparent text-amber-300 hover:bg-amber-950/40"
+                : "border-[var(--v2-warn-border)] bg-transparent text-[var(--v2-warn-text)] hover:bg-[var(--v2-warn-bg)]"
             }`}
           >
             {togglingExclude
@@ -314,7 +314,7 @@ function V2WeatherStrip({ weather }: { weather: RoundWeatherSummary }) {
   const precip = weather.precip_in;
   const label = wmoLabel(weather.weather_code);
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-blue-950/40 px-3 py-2 text-xs text-[var(--v2-muted)]">
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-[var(--v2-blue-fill)] px-3 py-2 text-xs text-[var(--v2-muted)]">
       <span className="font-medium text-white">{label}</span>
       {hi != null && lo != null && (
         <span>

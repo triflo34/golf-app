@@ -62,17 +62,17 @@ function cellTone(strokes: number | null, par: number): string {
   if (strokes == null) return "text-[var(--v2-text-faint)]";
   const d = strokes - par;
   if (d <= -2) return "bg-[var(--v2-gold)]/25 text-[var(--v2-gold-bright)] font-bold";
-  if (d === -1) return "bg-red-500/25 text-red-300 font-bold";
+  if (d === -1) return "bg-red-500/25 text-[var(--v2-red-text)] font-bold";
   if (d === 0) return "bg-[var(--v2-sage)]/18 text-[var(--v2-score-soft)]";
-  if (d === 1) return "bg-blue-500/20 text-blue-300";
-  if (d === 2) return "bg-blue-700/40 text-blue-200 font-semibold";
-  return "bg-white/10 text-[var(--v2-text-dim)] font-semibold";
+  if (d === 1) return "bg-[var(--v2-blue-fill)] text-[var(--v2-blue-text)]";
+  if (d === 2) return "bg-[var(--v2-blue-fill-strong)] text-[var(--v2-blue-text-strong)] font-semibold";
+  return "bg-[var(--v2-chip-neutral-strong)] text-[var(--v2-text-dim)] font-semibold";
 }
 
 function vsParTone(vsPar: number, through: number): string {
   if (through === 0) return "text-[var(--v2-text-faint)]";
   if (vsPar < 0) return "text-[var(--v2-sage)]";
-  if (vsPar > 0) return "text-red-300";
+  if (vsPar > 0) return "text-[var(--v2-red-text)]";
   return "text-[var(--v2-text-dim)]";
 }
 
@@ -112,7 +112,7 @@ export function V2EventScorecard({ id, roundId }: { id: string; roundId: string 
           ← Event
         </Link>
         {error ? (
-          <div className="mt-3 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          <div className="mt-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
             {error}
           </div>
         ) : (
@@ -349,11 +349,11 @@ export function V2EventScorecard({ id, roundId }: { id: string; roundId: string 
 
         <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
           <Legend tone="bg-[var(--v2-gold)]/25 text-[var(--v2-gold-bright)]" label="Eagle+" />
-          <Legend tone="bg-red-500/25 text-red-300" label="Birdie" />
+          <Legend tone="bg-red-500/25 text-[var(--v2-red-text)]" label="Birdie" />
           <Legend tone="bg-[var(--v2-sage)]/18 text-[var(--v2-score-soft)]" label="Par" />
-          <Legend tone="bg-blue-500/20 text-blue-300" label="Bogey" />
-          <Legend tone="bg-blue-700/40 text-blue-200" label="Double" />
-          <Legend tone="bg-white/10 text-[var(--v2-text-dim)]" label="3+" />
+          <Legend tone="bg-[var(--v2-blue-fill)] text-[var(--v2-blue-text)]" label="Bogey" />
+          <Legend tone="bg-[var(--v2-blue-fill-strong)] text-[var(--v2-blue-text-strong)]" label="Double" />
+          <Legend tone="bg-[var(--v2-chip-neutral-strong)] text-[var(--v2-text-dim)]" label="3+" />
         </div>
       </div>
     </div>
