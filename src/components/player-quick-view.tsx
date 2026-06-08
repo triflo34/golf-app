@@ -112,7 +112,7 @@ export function V2PlayerQuickView({
                 { label: "Wins", value: stats.total_wins },
                 { label: "Avg 18", value: stats.avg_score_18 ?? "—" },
               ].map((t) => (
-                <div key={t.label} className="rounded-lg bg-[var(--v2-surface-2)]/50 px-2 py-2 text-center">
+                <div key={t.label} className="rounded-lg bg-[var(--v2-well)] px-2 py-2 text-center">
                   <div
                     className="text-lg font-bold text-[var(--v2-text)]"
                     style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}

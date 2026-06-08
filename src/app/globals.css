@@ -118,7 +118,7 @@ html[data-ui="v2"][data-theme="light"] {
 
   /* primary accent → classic green (the "gold" of light mode) */
   --v2-gold: #15803d;          /* green-700 */
-  --v2-gold-bright: #16a34a;   /* green-600 */
+  --v2-gold-bright: #166534;   /* green-800 — kept dark so eagle-chip text reads */
   --v2-gold-deep: #166534;     /* green-800 */
   --v2-accent: #15803d;
   --v2-accent-soft: #16a34a;
@@ -130,7 +130,7 @@ html[data-ui="v2"][data-theme="light"] {
   --v2-red: #dc2626;           /* classic red-600 */
   --v2-amber-warn: #b45309;    /* amber-700 */
   --v2-score: #15803d;
-  --v2-score-soft: #16a34a;
+  --v2-score-soft: #15803d;    /* green-700 — par-chip text needs contrast on light */
 
   --v2-fg: #14532d;            /* classic --foreground (green-900) */
   --v2-text: #14532d;
