@@ -120,7 +120,7 @@ function ScrambleTeamsSection({
     <section>
       <SectionLabel>Scramble teams (round 2)</SectionLabel>
       {err && (
-        <div className="mb-2 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+        <div className="mb-2 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
           {err}
         </div>
       )}
@@ -260,7 +260,7 @@ function RoundSetupSection({
     <section>
       <SectionLabel>Round setup</SectionLabel>
       {err && (
-        <div className="mb-2 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+        <div className="mb-2 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
           {err}
         </div>
       )}
@@ -425,7 +425,7 @@ export function V2EventManage({ id }: { id: string }) {
           ← Event
         </Link>
         {error && (
-          <div className="mt-3 rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          <div className="mt-3 rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
             {error}
           </div>
         )}
@@ -669,7 +669,7 @@ export function V2EventManage({ id }: { id: string }) {
         </div>
 
         {error && (
-          <div className="rounded-lg border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          <div className="rounded-lg border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">
             {error}
           </div>
         )}
@@ -731,7 +731,7 @@ export function V2EventManage({ id }: { id: string }) {
                       type="button"
                       onClick={() => removePlayer(p.user_id)}
                       disabled={busy}
-                      className="text-xs text-red-300 hover:underline disabled:opacity-50"
+                      className="text-xs text-[var(--v2-red-text)] hover:underline disabled:opacity-50"
                     >
                       Remove
                     </button>
@@ -877,8 +877,8 @@ export function V2EventManage({ id }: { id: string }) {
           </section>
         )}
 
-        <section className="rounded-xl border border-red-900/50 bg-red-950/30 p-3.5">
-          <div className="text-sm font-semibold text-red-300">Danger zone</div>
+        <section className="rounded-xl border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] p-3.5">
+          <div className="text-sm font-semibold text-[var(--v2-red-text)]">Danger zone</div>
           <p className="mt-1 text-xs text-red-200/70">
             Permanently delete this event and all of its rounds, scores, side games, and poker
             state. This cannot be undone.
@@ -887,7 +887,7 @@ export function V2EventManage({ id }: { id: string }) {
             type="button"
             onClick={deleteEvent}
             disabled={busy}
-            className="mt-2 w-full rounded-md border border-red-700 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-700 hover:text-white disabled:opacity-50"
+            className="mt-2 w-full rounded-md border border-red-700 px-4 py-2 text-sm font-semibold text-[var(--v2-red-text)] hover:bg-red-700 hover:text-white disabled:opacity-50"
           >
             Delete event
           </button>

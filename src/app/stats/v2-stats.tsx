@@ -481,10 +481,10 @@ function HoleStatsPanel({ row }: { row: LeaderboardRow }) {
         </div>
         <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
           <span className="rounded bg-[var(--v2-gold)]/20 px-2 py-0.5 text-[var(--v2-gold-bright)]">🦅 {hs.eagles}</span>
-          <span className="rounded bg-red-500/20 px-2 py-0.5 text-red-300">Birdies {hs.birdies}</span>
+          <span className="rounded bg-red-500/20 px-2 py-0.5 text-[var(--v2-red-text)]">Birdies {hs.birdies}</span>
           <span className="rounded bg-[var(--v2-sage)]/18 px-2 py-0.5 text-[var(--v2-score-soft)]">Pars {hs.pars}</span>
-          <span className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-300">Bogeys {hs.bogeys}</span>
-          <span className="rounded bg-blue-700/35 px-2 py-0.5 text-blue-200">2+ {hs.doubles_plus}</span>
+          <span className="rounded bg-[var(--v2-blue-fill)] px-2 py-0.5 text-[var(--v2-blue-text)]">Bogeys {hs.bogeys}</span>
+          <span className="rounded bg-[var(--v2-blue-fill-strong)] px-2 py-0.5 text-[var(--v2-blue-text-strong)]">2+ {hs.doubles_plus}</span>
         </div>
       </div>
     </div>
@@ -707,7 +707,7 @@ function H2HTab({ season }: { season: number | "all" }) {
         </V2Card>
       ) : error ? (
         <V2Card>
-          <div className="py-3 text-sm text-red-300">{error}</div>
+          <div className="py-3 text-sm text-[var(--v2-red-text)]">{error}</div>
         </V2Card>
       ) : data && data.rounds_played === 0 ? (
         <V2Card>

@@ -50,7 +50,7 @@ function vsParLabel(n: number): string {
 function vsParTone(vsPar: number, through: number): string {
   if (through === 0) return "text-[var(--v2-text-dim)]";
   if (vsPar < 0) return "text-[var(--v2-sage)]";
-  if (vsPar > 0) return "text-red-300";
+  if (vsPar > 0) return "text-[var(--v2-red-text)]";
   return "text-[var(--v2-text-dim)]";
 }
 

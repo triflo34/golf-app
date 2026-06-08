@@ -212,7 +212,7 @@ export function V2Profile() {
         <V2Card className="mt-3">
           <div className="space-y-3">
             {editError && (
-              <div className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">{editError}</div>
+              <div className="rounded-lg bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">{editError}</div>
             )}
             {editSuccess && (
               <div className="rounded-lg bg-green-950/50 px-3 py-2 text-sm text-green-300">Profile updated.</div>
@@ -405,7 +405,7 @@ export function V2Profile() {
         {showPwd && (
           <form onSubmit={changePassword} className="mt-3 space-y-3">
             {pwdError && (
-              <div className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">{pwdError}</div>
+              <div className="rounded-lg bg-[var(--v2-danger-bg)] px-3 py-2 text-sm text-[var(--v2-red-text)]">{pwdError}</div>
             )}
             {pwdSuccess && (
               <div className="rounded-lg bg-green-950/50 px-3 py-2 text-sm text-green-300">Password updated.</div>
@@ -475,7 +475,7 @@ export function V2Profile() {
 
         <button
           onClick={signOut}
-          className="w-full rounded-2xl border border-red-900 bg-red-950/50 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-950"
+          className="w-full rounded-2xl border border-[var(--v2-danger-border)] bg-[var(--v2-danger-bg)] px-4 py-3 text-sm font-semibold text-[var(--v2-red-text)] hover:bg-[var(--v2-danger-bg)]"
         >
           Sign Out
         </button>

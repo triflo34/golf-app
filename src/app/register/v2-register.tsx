@@ -51,7 +51,7 @@ export function V2Register() {
           <h2 className="text-xl font-semibold text-white">Create Account</h2>
 
           {error && (
-            <div className="rounded-lg bg-red-950/60 p-3 text-sm text-red-300">
+            <div className="rounded-lg bg-[var(--v2-danger-bg)] p-3 text-sm text-[var(--v2-red-text)]">
               {error}
             </div>
           )}
