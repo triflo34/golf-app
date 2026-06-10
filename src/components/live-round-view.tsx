@@ -575,6 +575,13 @@ export function LiveRoundView({ roundId, variant = "classic" }: Props) {
 
       <div className={cls.dock}>
         <div className={cls.dockNavRow}>
+          <Link
+            href={`/courses/${round.course_id}/strategy?hole=${hole}`}
+            title="Hole strategy map"
+            className={`${cls.navBtn} flex items-center justify-center text-base`}
+          >
+            🗺
+          </Link>
           <button
             type="button"
             onClick={() => setHole((h) => Math.max(minHole, h - 1))}

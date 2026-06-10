@@ -199,6 +199,11 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureHoleScoreSnapshotColumns(sql);
   console.log("[db] ensureCriticalColumns: side_game_kinds");
   await ensureSideGameKinds(sql);
+  // The strategy-map API reads course_geo_cache on every hole load; without
+  // the table it 502s ("relation course_geo_cache does not exist") on
+  // SKIP_DB_BOOTSTRAP deployments. Guarantee it here.
+  console.log("[db] ensureCriticalColumns: course_geo_cache");
+  await ensureCourseGeoCacheTable(sql);
 }
 
 // Cached OSM/Overpass course geometry for the hole-strategy maps. One row per

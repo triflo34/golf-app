@@ -43,15 +43,22 @@ async function loadFromOverpass(center: LatLng): Promise<Pick<CourseGeo, "geojso
 }
 
 async function geoForCourseRow(course: CourseRow, refresh: boolean): Promise<CourseGeo> {
+  // The cache is an optimization — never let it take the feature down. If the
+  // table is missing (e.g. migration hasn't run yet) fall through to Overpass.
+  let cached: { center_lat: number; center_lng: number; geojson: unknown; holes: unknown; fetched_at: string } | undefined;
   if (!refresh) {
-    const cached = await db
-      .prepare(
-        `SELECT center_lat, center_lng, geojson, holes, fetched_at
-         FROM course_geo_cache WHERE course_id = ?`,
-      )
-      .get<{ center_lat: number; center_lng: number; geojson: unknown; holes: unknown; fetched_at: string }>(
-        course.id,
-      );
+    try {
+      cached = await db
+        .prepare(
+          `SELECT center_lat, center_lng, geojson, holes, fetched_at
+           FROM course_geo_cache WHERE course_id = ?`,
+        )
+        .get<{ center_lat: number; center_lng: number; geojson: unknown; holes: unknown; fetched_at: string }>(
+          course.id,
+        );
+    } catch (e) {
+      console.error("[strategy] cache read failed:", e instanceof Error ? e.message : e);
+    }
     if (cached && Date.now() - new Date(cached.fetched_at).getTime() < CACHE_TTL_MS) {
       const holes = (typeof cached.holes === "string" ? JSON.parse(cached.holes) : cached.holes) as HoleData[];
       const geojson = (typeof cached.geojson === "string" ? JSON.parse(cached.geojson) : cached.geojson) as CourseGeo["geojson"];
@@ -77,15 +84,19 @@ async function geoForCourseRow(course: CourseRow, refresh: boolean): Promise<Cou
 
   const { geojson, holes, availableHoles } = await loadFromOverpass(center);
   const fetchedAt = new Date().toISOString();
-  await db
-    .prepare(
-      `INSERT INTO course_geo_cache (course_id, center_lat, center_lng, geojson, holes, fetched_at)
-       VALUES (?, ?, ?, ?::jsonb, ?::jsonb, ?)
-       ON CONFLICT (course_id) DO UPDATE SET
-         center_lat = EXCLUDED.center_lat, center_lng = EXCLUDED.center_lng,
-         geojson = EXCLUDED.geojson, holes = EXCLUDED.holes, fetched_at = EXCLUDED.fetched_at`,
-    )
-    .run(course.id, center.lat, center.lng, JSON.stringify(geojson), JSON.stringify(holes), fetchedAt);
+  try {
+    await db
+      .prepare(
+        `INSERT INTO course_geo_cache (course_id, center_lat, center_lng, geojson, holes, fetched_at)
+         VALUES (?, ?, ?, ?::jsonb, ?::jsonb, ?)
+         ON CONFLICT (course_id) DO UPDATE SET
+           center_lat = EXCLUDED.center_lat, center_lng = EXCLUDED.center_lng,
+           geojson = EXCLUDED.geojson, holes = EXCLUDED.holes, fetched_at = EXCLUDED.fetched_at`,
+      )
+      .run(course.id, center.lat, center.lng, JSON.stringify(geojson), JSON.stringify(holes), fetchedAt);
+  } catch (e) {
+    console.error("[strategy] cache write failed:", e instanceof Error ? e.message : e);
+  }
 
   return { center, availableHoles, holes, geojson, source: "overpass", fetchedAt };
 }
