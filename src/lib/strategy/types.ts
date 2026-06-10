@@ -88,7 +88,7 @@ export type CourseGeo = {
   holes: HoleData[];
   /** Raw normalized FeatureCollection (all course features, hole-agnostic). */
   geojson: GeoJSONFeatureCollection;
-  source: "overpass" | "cache" | "fixture";
+  source: "overpass" | "cache" | "fixture" | "manual";
   fetchedAt: string;
 };
 

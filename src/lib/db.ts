@@ -220,6 +220,23 @@ async function ensureCourseGeoCacheTable(sql: postgres.Sql): Promise<void> {
       fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // User-set hole geometry (the primary source for strategy maps — local OSM
+  // coverage proved too thin). Two taps per hole on the satellite editor: tee
+  // + green. hazards is reserved for tapped bunkers/water later.
+  await sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS course_hole_geo (
+      course_id   INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      hole_number SMALLINT NOT NULL,
+      tee_lat     DOUBLE PRECISION NOT NULL,
+      tee_lng     DOUBLE PRECISION NOT NULL,
+      green_lat   DOUBLE PRECISION NOT NULL,
+      green_lng   DOUBLE PRECISION NOT NULL,
+      hazards     JSONB,
+      updated_by  TEXT REFERENCES users(id),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (course_id, hole_number)
+    );
+  `);
 }
 
 // The side_games.kind CHECK was created inline, so existing databases reject

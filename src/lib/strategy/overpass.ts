@@ -17,7 +17,10 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.private.coffee/api/interpreter",
 ];
 
-const FETCH_TIMEOUT_MS = 30_000;
+// Per-attempt cap. The caller also passes an overall deadline so the WORST
+// case (every endpoint blackholing) still fails fast enough for the UI to
+// show its error + demo fallback instead of spinning forever.
+const PER_TRY_TIMEOUT_MS = 10_000;
 
 type OverpassElement = {
   type: "way" | "relation" | "node";
@@ -30,13 +33,22 @@ type OverpassElement = {
 
 type OverpassResponse = { elements: OverpassElement[] };
 
+// Overall budget for one logical query across all endpoints/retries. Keeps
+// the strategy API responsive even when egress blackholes every endpoint.
+const TOTAL_BUDGET_MS = 18_000;
+
 async function overpassQuery(query: string): Promise<OverpassResponse> {
+  const deadlineAt = Date.now() + TOTAL_BUDGET_MS;
   let lastErr: Error | null = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
     for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = deadlineAt - Date.now();
+      if (remaining < 1500) {
+        throw lastErr ?? new Error("Overpass timed out");
+      }
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        const timer = setTimeout(() => controller.abort(), Math.min(PER_TRY_TIMEOUT_MS, remaining));
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
