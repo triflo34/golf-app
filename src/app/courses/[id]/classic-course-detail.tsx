@@ -136,6 +136,13 @@ export function ClassicCourseDetail() {
         </div>
       )}
 
+      <Link
+        href={`/courses/${c.id}/strategy`}
+        className="card mb-4 block text-center text-sm font-medium text-green-700 hover:bg-green-50"
+      >
+        🗺 Hole strategy map →
+      </Link>
+
       <div className="card">
         <h2 className="font-semibold text-gray-800 mb-3 text-sm">
           Top scores ({data.rounds_played} rounds played here)
