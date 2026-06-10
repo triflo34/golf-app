@@ -30,11 +30,17 @@ const accent = "text-[var(--v2-gold,#15803d)]";
 const card =
   "rounded-xl border border-[var(--v2-border,#e5e7eb)] bg-[var(--v2-surface,#ffffff)] p-3.5";
 
-export function StrategyClient({ courseId }: { courseId: string }) {
+export function StrategyClient({
+  courseId,
+  initialHole = 1,
+}: {
+  courseId: string;
+  initialHole?: number;
+}) {
   const { user, loading: authLoading } = useAuth();
   const [courseName, setCourseName] = useState<string>("");
   const [holeCount, setHoleCount] = useState(18);
-  const [hole, setHole] = useState(1);
+  const [hole, setHole] = useState(initialHole);
   const [drive, setDrive] = useState(230);
   const [demo, setDemo] = useState(false);
 

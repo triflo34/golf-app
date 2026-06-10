@@ -773,6 +773,13 @@ export function ClassicEventScore({ id, roundId }: { id: string; roundId: string
 
       <div className="safe-area-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur shadow-[0_-8px_24px_rgba(0,0,0,0.08)]">
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
+          <Link
+            href={`/courses/${round.course_id}/strategy?hole=${hole}`}
+            title="Hole strategy map"
+            className="flex w-11 h-11 items-center justify-center rounded-md border border-green-300 bg-white text-base"
+          >
+            🗺
+          </Link>
           <button
             type="button"
             onClick={() => goToHole(Math.max(minHole, hole - 1))}
