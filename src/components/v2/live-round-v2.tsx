@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { CopyLinkButton } from "@/components/copy-link-button";
@@ -12,12 +11,6 @@ import { V2LivePill } from "@/components/v2/live-pill";
 import { V2SyncBanner } from "@/components/v2/sync-banner";
 import { V2LeaderboardRow } from "@/components/v2/leaderboard-row";
 import type { LiveLeaderRow, LiveRoundLoad } from "@/app/api/rounds/live/[id]/route";
-
-// Strategy sheet is heavy (MapLibre); load it only when first opened.
-const StrategySheet = dynamic(
-  () => import("@/components/strategy/strategy-sheet").then((m) => m.StrategySheet),
-  { ssr: false },
-);
 
 type Props = { roundId: number };
 
@@ -61,7 +54,6 @@ export function LiveRoundV2({ roundId }: Props) {
   const [hole, setHole] = useState(1);
   const [pending, setPending] = useState<PendingMap>(new Map());
   const [finishing, setFinishing] = useState(false);
-  const [showStrategy, setShowStrategy] = useState(false);
 
   // Sync banner state — online flag + queued mutation count.
   const [online, setOnline] = useState(() =>
@@ -537,14 +529,6 @@ export function LiveRoundV2({ roundId }: Props) {
           <div className="flex items-center gap-2 border-b border-[var(--v2-border)] px-4 py-2">
             <button
               type="button"
-              onClick={() => setShowStrategy(true)}
-              title="Hole strategy map"
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-gold)]/40 bg-[var(--v2-surface)] text-base"
-            >
-              🗺
-            </button>
-            <button
-              type="button"
               onClick={() => setHole((h) => Math.max(minHole, h - 1))}
               disabled={hole <= minHole}
               className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface)] text-lg text-[var(--v2-text)] disabled:opacity-30"
@@ -673,14 +657,6 @@ export function LiveRoundV2({ roundId }: Props) {
           </div>
         </div>
       </div>
-
-      {showStrategy && (
-        <StrategySheet
-          courseId={round.course_id}
-          holeNumber={hole}
-          onClose={() => setShowStrategy(false)}
-        />
-      )}
     </div>
   );
 }

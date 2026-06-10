@@ -157,8 +157,6 @@ async function bootstrap(): Promise<void> {
   await ensureRoundsExcludedColumn(sql);
   console.log("[db] bootstrap: ensureSideGameKinds");
   await ensureSideGameKinds(sql);
-  console.log("[db] bootstrap: ensureCourseGeoCacheTable");
-  await ensureCourseGeoCacheTable(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -199,44 +197,6 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureHoleScoreSnapshotColumns(sql);
   console.log("[db] ensureCriticalColumns: side_game_kinds");
   await ensureSideGameKinds(sql);
-  // The strategy-map API reads course_geo_cache on every hole load; without
-  // the table it 502s ("relation course_geo_cache does not exist") on
-  // SKIP_DB_BOOTSTRAP deployments. Guarantee it here.
-  console.log("[db] ensureCriticalColumns: course_geo_cache");
-  await ensureCourseGeoCacheTable(sql);
-}
-
-// Cached OSM/Overpass course geometry for the hole-strategy maps. One row per
-// course: the normalized GeoJSON + prebuilt per-hole models. Refreshed when
-// stale (the API layer applies a 30-day TTL) or on demand with ?refresh=1.
-async function ensureCourseGeoCacheTable(sql: postgres.Sql): Promise<void> {
-  await sql.unsafe(`
-    CREATE TABLE IF NOT EXISTS course_geo_cache (
-      course_id  INTEGER PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
-      center_lat DOUBLE PRECISION NOT NULL,
-      center_lng DOUBLE PRECISION NOT NULL,
-      geojson    JSONB NOT NULL,
-      holes      JSONB NOT NULL,
-      fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-  // User-set hole geometry (the primary source for strategy maps — local OSM
-  // coverage proved too thin). Two taps per hole on the satellite editor: tee
-  // + green. hazards is reserved for tapped bunkers/water later.
-  await sql.unsafe(`
-    CREATE TABLE IF NOT EXISTS course_hole_geo (
-      course_id   INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-      hole_number SMALLINT NOT NULL,
-      tee_lat     DOUBLE PRECISION NOT NULL,
-      tee_lng     DOUBLE PRECISION NOT NULL,
-      green_lat   DOUBLE PRECISION NOT NULL,
-      green_lng   DOUBLE PRECISION NOT NULL,
-      hazards     JSONB,
-      updated_by  TEXT REFERENCES users(id),
-      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (course_id, hole_number)
-    );
-  `);
 }
 
 // The side_games.kind CHECK was created inline, so existing databases reject

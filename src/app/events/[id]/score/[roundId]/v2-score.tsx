@@ -3,19 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrQueue } from "@/lib/offline-queue";
 import { stablefordPoints } from "@/lib/stableford";
 import { V2LivePill } from "@/components/v2/live-pill";
 import { V2Avatar, toneForName } from "@/components/v2/avatar";
 import type { ScoreEditEntry } from "@/app/api/events/[id]/rounds/[roundId]/edits/route";
-
-// Strategy sheet is heavy (MapLibre); load it only when first opened.
-const StrategySheet = dynamic(
-  () => import("@/components/strategy/strategy-sheet").then((m) => m.StrategySheet),
-  { ssr: false },
-);
 
 // Coalesce a burst of taps on one cell into a single save this long after the
 // last tap. Tapping +/- up to a double bogey no longer fires a POST per tap.
@@ -132,7 +125,6 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
   const [hole, setHole] = useState(1);
   const [edits, setEdits] = useState<ScoreEditEntry[] | null>(null);
   const [showEdits, setShowEdits] = useState(false);
-  const [showStrategy, setShowStrategy] = useState(false);
 
   const [pendingScores, setPendingScores] = useState<Map<string, number | null>>(
     new Map(),
@@ -748,14 +740,6 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
           <div className="flex items-center gap-2 border-b border-[var(--v2-border)] px-4 py-2">
             <button
               type="button"
-              onClick={() => setShowStrategy(true)}
-              title="Hole strategy map"
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-gold)]/40 bg-[var(--v2-surface)] text-base"
-            >
-              🗺
-            </button>
-            <button
-              type="button"
               onClick={() => goToHole(Math.max(minHole, hole - 1))}
               disabled={hole <= minHole}
               className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--v2-border)] bg-[var(--v2-surface)] text-lg text-[var(--v2-text)] disabled:opacity-30"
@@ -843,14 +827,6 @@ export function V2EventScore({ id, roundId }: { id: string; roundId: string }) {
           </div>
         </div>
       </div>
-
-      {showStrategy && (
-        <StrategySheet
-          courseId={round.course_id}
-          holeNumber={hole}
-          onClose={() => setShowStrategy(false)}
-        />
-      )}
     </div>
   );
 }
