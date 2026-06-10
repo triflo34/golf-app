@@ -2,9 +2,15 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useAuth } from "@/components/auth-provider";
 import { HoleStrategyMap } from "@/components/strategy/hole-map";
-import type { GeoJSONFeatureCollection, HoleData, StrategyResult } from "@/lib/strategy/types";
+import type { GeoJSONFeatureCollection, HoleData, LatLng, StrategyResult } from "@/lib/strategy/types";
+
+const HoleSetupMap = dynamic(
+  () => import("@/components/strategy/hole-setup-map").then((m) => m.HoleSetupMap),
+  { ssr: false },
+);
 
 /**
  * Hole strategy screen. Styled with v2 tokens + explicit fallbacks
@@ -14,7 +20,7 @@ import type { GeoJSONFeatureCollection, HoleData, StrategyResult } from "@/lib/s
 
 type ApiResponse = {
   course: string;
-  source: "overpass" | "cache" | "fixture";
+  source: "overpass" | "cache" | "fixture" | "manual";
   fetched_at: string;
   available_holes: number[];
   hole: HoleData;
@@ -22,7 +28,12 @@ type ApiResponse = {
   strategy: StrategyResult;
 };
 
-type ApiError = { error: string; available_holes?: number[]; demo_available?: boolean };
+type ApiError = {
+  error: string;
+  available_holes?: number[];
+  demo_available?: boolean;
+  setup_available?: boolean;
+};
 
 const text = "text-[var(--v2-text,#14532d)]";
 const dim = "text-[var(--v2-text-dim,#4b5563)]";
@@ -50,6 +61,13 @@ export function StrategyClient({
   const [demoAvailable, setDemoAvailable] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Two-tap hole setup (the primary data path — see hole-setup-map).
+  const [setupMode, setSetupMode] = useState(false);
+  const [savingSetup, setSavingSetup] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [courseCoords, setCourseCoords] = useState<LatLng | null>(null);
+  const lastPlacedGreen = useRef<LatLng | null>(null);
+
   // Debounce drive-distance changes so dragging the slider fires one request.
   const driveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedDrive, setDebouncedDrive] = useState(drive);
@@ -68,6 +86,9 @@ export function StrategyClient({
       .then((d) => {
         if (d?.course?.name) setCourseName(d.course.name);
         if (Array.isArray(d?.holes) && d.holes.length > 0) setHoleCount(d.holes.length);
+        if (typeof d?.course?.latitude === "number" && typeof d?.course?.longitude === "number") {
+          setCourseCoords({ lat: d.course.latitude, lng: d.course.longitude });
+        }
       })
       .catch(() => {});
   }, [user, courseId]);
@@ -85,7 +106,7 @@ export function StrategyClient({
         const err = body as ApiError;
         setData(null);
         setError(err.error ?? "Failed to load hole");
-        setDemoAvailable(Boolean(err.demo_available) || demo === false);
+        setDemoAvailable(Boolean(err.demo_available));
         if (Array.isArray(err.available_holes)) setAvailableHoles(err.available_holes);
         return;
       }
@@ -113,9 +134,10 @@ export function StrategyClient({
     );
   }
 
-  const holes = availableHoles && availableHoles.length > 0
-    ? availableHoles
-    : Array.from({ length: holeCount }, (_, i) => i + 1);
+  // Always show every hole; ones without data render dimmed (tapping them
+  // lands on the error card with the setup button — the path to add them).
+  const holes = Array.from({ length: holeCount }, (_, i) => i + 1);
+  const hasData = (n: number) => availableHoles?.includes(n) ?? false;
 
   return (
     <div className="min-h-screen bg-[var(--v2-bg-1,#f0fdf4)] px-4 py-5">
@@ -145,7 +167,9 @@ export function StrategyClient({
               className={`min-w-9 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
                 hole === n
                   ? "border-[var(--v2-gold,#15803d)] bg-[var(--v2-gold,#15803d)] text-[var(--v2-green-deep,#ffffff)]"
-                  : `border-[var(--v2-border,#e5e7eb)] bg-[var(--v2-surface,#ffffff)] ${dim}`
+                  : hasData(n)
+                    ? `border-[var(--v2-border,#e5e7eb)] bg-[var(--v2-surface,#ffffff)] ${dim}`
+                    : "border-dashed border-[var(--v2-border,#e5e7eb)] bg-transparent text-[var(--v2-text-faint,#9ca3af)]"
               }`}
             >
               {n}
@@ -170,9 +194,47 @@ export function StrategyClient({
           />
         </div>
 
-        {/* Map */}
+        {/* Map / setup editor */}
         <div className="h-[460px] overflow-hidden rounded-xl border border-[var(--v2-border,#e5e7eb)]">
-          {data ? (
+          {setupMode ? (
+            <HoleSetupMap
+              holeNumber={hole}
+              initialCenter={
+                data?.hole.teeLocation ?? lastPlacedGreen.current ?? courseCoords
+              }
+              saving={savingSetup}
+              onCancel={() => {
+                setSetupMode(false);
+                setSetupError(null);
+              }}
+              onSave={async (tee, green) => {
+                setSavingSetup(true);
+                setSetupError(null);
+                try {
+                  const res = await fetch(`/api/courses/${courseId}/hole-geo`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ hole_number: hole, tee, green }),
+                  });
+                  const body = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(body.error ?? "Save failed");
+                  lastPlacedGreen.current = green;
+                  // Walk the course: advance to the next hole and stay in the
+                  // editor so all 18 can be placed in one pass.
+                  if (hole < holeCount) {
+                    setHole(hole + 1);
+                  } else {
+                    setSetupMode(false);
+                  }
+                  await load();
+                } catch (e) {
+                  setSetupError(e instanceof Error ? e.message : "Save failed");
+                } finally {
+                  setSavingSetup(false);
+                }
+              }}
+            />
+          ) : data ? (
             <HoleStrategyMap hole={data.hole} strategy={data.strategy} />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#0d1a0d] px-6 text-center">
@@ -181,11 +243,18 @@ export function StrategyClient({
               ) : (
                 <>
                   <div className="text-sm text-red-300">{error ?? "No data"}</div>
+                  <button
+                    type="button"
+                    onClick={() => setSetupMode(true)}
+                    className="rounded-lg bg-[#d4af37] px-3 py-1.5 text-xs font-bold text-[#1a2e1a]"
+                  >
+                    Set up this hole (tap tee + green)
+                  </button>
                   {demoAvailable && !demo && (
                     <button
                       type="button"
                       onClick={() => setDemo(true)}
-                      className="rounded-lg bg-[#d4af37] px-3 py-1.5 text-xs font-bold text-[#1a2e1a]"
+                      className="rounded-lg border border-[#d4af37] px-3 py-1.5 text-xs font-bold text-[#d4af37]"
                     >
                       Load demo hole
                     </button>
@@ -195,6 +264,22 @@ export function StrategyClient({
             </div>
           )}
         </div>
+
+        {setupError && (
+          <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {setupError}
+          </div>
+        )}
+
+        {!setupMode && (
+          <button
+            type="button"
+            onClick={() => setSetupMode(true)}
+            className={`text-xs ${dim} underline decoration-dotted underline-offset-2`}
+          >
+            {data?.source === "manual" ? "Adjust this hole's tee/green pins" : "Set up holes on the map"}
+          </button>
+        )}
 
         {/* Caddie */}
         {data && (

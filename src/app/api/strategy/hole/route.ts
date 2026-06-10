@@ -6,6 +6,7 @@ import { buildHoleModels } from "@/lib/strategy/hole-model";
 import { generateStrategy } from "@/lib/strategy/caddie";
 import { buildHoleFeatures } from "@/lib/strategy/overlays";
 import { DEMO_COURSE_GEO } from "@/lib/strategy/fixture";
+import { buildManualHoleData, type ManualHoleRow } from "@/lib/strategy/manual";
 import type { CourseGeo, HoleData, LatLng } from "@/lib/strategy/types";
 
 /**
@@ -142,13 +143,70 @@ export async function GET(request: Request) {
         .get<CourseRow>(courseId);
       if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
       courseLabel = course.name;
-      geo = await geoForCourseRow(course, refresh);
 
       // DB hole pars are authoritative over the length heuristic.
       const dbHoles = await db
         .prepare("SELECT hole_number, par FROM course_holes WHERE course_id = ?")
         .all<{ hole_number: number; par: number }>(courseId);
       const parByHole = new Map(dbHoles.map((h) => [h.hole_number, h.par]));
+
+      // PRIMARY source: holes our users placed in the satellite editor
+      // (tee + green per hole). No network, no rate limits, works for every
+      // course. OSM/Overpass is the fallback for holes not yet set up.
+      const manualRows = await db
+        .prepare(
+          `SELECT hole_number, tee_lat, tee_lng, green_lat, green_lng, hazards
+           FROM course_hole_geo WHERE course_id = ? ORDER BY hole_number ASC`,
+        )
+        .all<ManualHoleRow>(courseId);
+      const manualForHole = manualRows.find((r) => r.hole_number === holeNumber);
+
+      if (manualForHole) {
+        const holes = manualRows.map((r) =>
+          buildManualHoleData(r, parByHole.get(r.hole_number) ?? null),
+        );
+        geo = {
+          center: { lat: manualForHole.tee_lat, lng: manualForHole.tee_lng },
+          availableHoles: holes.map((h) => h.holeNumber),
+          holes,
+          geojson: { type: "FeatureCollection", features: [] },
+          source: "manual",
+          fetchedAt: new Date().toISOString(),
+        };
+      } else {
+        try {
+          geo = await geoForCourseRow(course, refresh);
+        } catch (e) {
+          // OSM unavailable (rate-limited / blocked / unmapped). If the user
+          // has set up ANY holes manually, surface those rather than failing.
+          if (manualRows.length === 0) throw e;
+          const holes = manualRows.map((r) =>
+            buildManualHoleData(r, parByHole.get(r.hole_number) ?? null),
+          );
+          geo = {
+            center: { lat: manualRows[0].tee_lat, lng: manualRows[0].tee_lng },
+            availableHoles: holes.map((h) => h.holeNumber),
+            holes,
+            geojson: { type: "FeatureCollection", features: [] },
+            source: "manual",
+            fetchedAt: new Date().toISOString(),
+          };
+        }
+        // Merge any manual holes over the OSM set (manual wins per hole).
+        if (geo.source !== "manual" && manualRows.length > 0) {
+          const manualHoles = manualRows.map((r) =>
+            buildManualHoleData(r, parByHole.get(r.hole_number) ?? null),
+          );
+          const byNumber = new Map(geo.holes.map((h) => [h.holeNumber, h]));
+          for (const mh of manualHoles) byNumber.set(mh.holeNumber, mh);
+          geo = {
+            ...geo,
+            holes: [...byNumber.values()].sort((a, b) => a.holeNumber - b.holeNumber),
+            availableHoles: [...byNumber.keys()].sort((a, b) => a - b),
+          };
+        }
+      }
+
       for (const h of geo.holes) {
         const dbPar = parByHole.get(h.holeNumber);
         if (dbPar) h.par = dbPar;
@@ -180,10 +238,12 @@ export async function GET(request: Request) {
         {
           error:
             geo.availableHoles.length === 0
-              ? `OpenStreetMap has no per-hole mapping (golf=hole centerlines) for ${courseLabel} yet.`
-              : `Hole ${holeNumber} isn't mapped for ${courseLabel}.`,
+              ? `No hole data for ${courseLabel} yet — set up the tee and green for each hole right on the map.`
+              : `Hole ${holeNumber} isn't set up for ${courseLabel} yet.`,
           available_holes: geo.availableHoles,
           source: geo.source,
+          // The in-app satellite editor can fix this for DB courses.
+          setup_available: Boolean(courseIdParam),
         },
         { status: 404 },
       );
@@ -205,10 +265,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: e.message }, { status: e.status });
     }
     const msg = e instanceof Error ? e.message : "Strategy fetch failed";
-    // Overpass unreachable (blocked egress / rate limit) → tell the client a
-    // demo is available rather than failing opaquely.
+    // Overpass unreachable (blocked egress / rate limit) → offer the editor
+    // (the no-network path) instead of failing opaquely.
     return NextResponse.json(
-      { error: `Course data fetch failed: ${msg}`, demo_available: true },
+      { error: `Course data fetch failed: ${msg}`, demo_available: true, setup_available: true },
       { status: 502 },
     );
   }

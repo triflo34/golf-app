@@ -144,11 +144,17 @@ export function StrategySheet({
           ) : error ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#0d1a0d] px-6 text-center">
               <div className="text-sm text-red-300">{error}</div>
+              <a
+                href={`/courses/${courseId}/strategy?hole=${holeNumber}`}
+                className="rounded-lg bg-[#d4af37] px-3 py-1.5 text-xs font-bold text-[#1a2e1a]"
+              >
+                Set up this hole (tap tee + green)
+              </a>
               {!demo && (
                 <button
                   type="button"
                   onClick={() => setDemo(true)}
-                  className="rounded-lg bg-[#d4af37] px-3 py-1.5 text-xs font-bold text-[#1a2e1a]"
+                  className="rounded-lg border border-[#d4af37] px-3 py-1.5 text-xs font-bold text-[#d4af37]"
                 >
                   Show demo hole
                 </button>
