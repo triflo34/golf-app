@@ -133,6 +133,13 @@ export function V2CourseDetail() {
         </>
       )}
 
+      <Link
+        href={`/courses/${c.id}/strategy`}
+        className="mb-4 block rounded-xl border border-[var(--v2-border)] bg-[var(--v2-surface)] px-4 py-3 text-center text-sm font-medium text-[var(--v2-text)] hover:border-[var(--v2-gold)]/30"
+      >
+        🗺 Hole strategy map →
+      </Link>
+
       <V2SectionTitle>
         Top Scores ({data.rounds_played} rounds played here)
       </V2SectionTitle>

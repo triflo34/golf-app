@@ -157,6 +157,8 @@ async function bootstrap(): Promise<void> {
   await ensureRoundsExcludedColumn(sql);
   console.log("[db] bootstrap: ensureSideGameKinds");
   await ensureSideGameKinds(sql);
+  console.log("[db] bootstrap: ensureCourseGeoCacheTable");
+  await ensureCourseGeoCacheTable(sql);
   console.log("[db] bootstrap: seedAdmin");
   await seedAdmin(sql);
   console.log("[db] bootstrap: seedCourses");
@@ -197,6 +199,22 @@ async function ensureCriticalColumns(): Promise<void> {
   await ensureHoleScoreSnapshotColumns(sql);
   console.log("[db] ensureCriticalColumns: side_game_kinds");
   await ensureSideGameKinds(sql);
+}
+
+// Cached OSM/Overpass course geometry for the hole-strategy maps. One row per
+// course: the normalized GeoJSON + prebuilt per-hole models. Refreshed when
+// stale (the API layer applies a 30-day TTL) or on demand with ?refresh=1.
+async function ensureCourseGeoCacheTable(sql: postgres.Sql): Promise<void> {
+  await sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS course_geo_cache (
+      course_id  INTEGER PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
+      center_lat DOUBLE PRECISION NOT NULL,
+      center_lng DOUBLE PRECISION NOT NULL,
+      geojson    JSONB NOT NULL,
+      holes      JSONB NOT NULL,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 }
 
 // The side_games.kind CHECK was created inline, so existing databases reject
